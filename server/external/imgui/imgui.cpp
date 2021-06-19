@@ -13221,7 +13221,7 @@ static void ImGui::DockNodeRemoveWindow(ImGuiDockNode* node, ImGuiWindow* window
     UpdateWindowParentAndRootLinks(window, window->Flags & ~ImGuiWindowFlags_ChildWindow, NULL); // Update immediately
 
     // Remove window
-    bool erased = false;
+    bool erased = false; (void) erased;
     for (int n = 0; n < node->Windows.Size; n++)
         if (node->Windows[n] == window)
         {

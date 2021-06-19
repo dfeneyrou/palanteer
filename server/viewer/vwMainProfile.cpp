@@ -597,13 +597,13 @@ vwMain::_drawTextProfile(Profile& prof)
         ImGui::TableNextRow();
         ImGui::TableNextColumn(); ImGui::TableHeader("Name");
         ImGui::TableNextColumn(); ImGui::TableHeader("Self % total");
-        if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) ImGui::SetTooltip(tooltipSelf);
+        if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) ImGui::SetTooltip("%s", tooltipSelf);
         ImGui::TableNextColumn(); ImGui::TableHeader(prof.kind==TIMINGS? "Self time" : "Self value");
-        if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) ImGui::SetTooltip(tooltipSelf);
+        if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) ImGui::SetTooltip("%s", tooltipSelf);
         ImGui::TableNextColumn(); ImGui::TableHeader("Incl. % total");
-        if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) ImGui::SetTooltip(tooltipIncl);
+        if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) ImGui::SetTooltip("%s", tooltipIncl);
         ImGui::TableNextColumn(); ImGui::TableHeader(prof.kind==TIMINGS? "Incl. time" : "Incl. value");
-        if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) ImGui::SetTooltip(tooltipIncl);
+        if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) ImGui::SetTooltip("%s", tooltipIncl);
         ImGui::TableNextColumn(); ImGui::TableHeader(prof.kind==MEMORY?"Allocs":"Count");
         //ImGui::TableHeadersRow();
 
