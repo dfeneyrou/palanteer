@@ -144,7 +144,7 @@ Full installation of Palanteer requires:
   - a C++11+ compiler (tested with gcc, clang and MSVC) 32 or 64 bits for the C++ instrumentation library
   - CPython 3.7+  with setuptools package
   - OpenGL 3.3+
-  -
+
 See [here](https://dfeneyrou.github.io/palanteer/index.html#requirements) for detailed requirements per component.
 
 Other dependencies are snapshotted inside this repository, so for information only:

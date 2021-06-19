@@ -1,20 +1,13 @@
                    <meta charset="utf-8" emacsmode="-*- markdown -*-">
-       **Look into Palanteer and get an omniscient view of your program**
-            Improve software code quality - C++ and Python
+                  **Look into Palanteer and get an omniscient view of your program**
+                  <a href="https://github.com/dfeneyrou/palanteer">Improve software code quality - C++ and Python </a>
 
-
-<center>
-
-![ ](images/header_perspective.png width=800px)
-
-> "Look into Palanteer and get an omniscient view of your program..."
-
-</center>
 
 
 <h1> @@ <a href="#">Overview</a> </h1>
 
-**Palanteer** is a 3-parts solution to software quality improvement for C++ and Python. <br/>
+![ ](images/header_perspective.png width=800px)
+**Palanteer** is a 3-parts solution to software quality improvement for C++ and Python.
 
 1. An **instrumentation library** for programs to rule them all. <br/> Provides the instrumentation API and remote communication capabilities.
   - C++:
@@ -775,7 +768,7 @@ C/C++ is a language made to juice performances from hardwares. Having an idea of
 
 For Python, this requirement is weaker because the language is interpreted.
 
-### C++ instrumentation code size, compilation speed and run-time speed
+### C++ instrumentation performance
 
 Assessing the characteristics of the instrumentation library is not straightforward as it depends on the compiler, the configuration, and how the API is used. <br/>
 However, two kinds of performance indicators are provided.
@@ -909,7 +902,7 @@ The following table provides the effect of the configuration variables related t
 
 !!! warning
     This table does not take into account:
-    * the `Palanteer` core code size (see [section above](#c++instrumentationcodesize,compilationspeedandrun-timespeed) for an estimation for x64 instructions set)
+    * the `Palanteer` core code size (see [section above](#c++instrumentationperformance) for an estimation for x64 instructions set)
     * the `Palanteer` core context (few KB)
     * the static strings in the program under observation. Using the external string feature fully cuts out this cost.
 
