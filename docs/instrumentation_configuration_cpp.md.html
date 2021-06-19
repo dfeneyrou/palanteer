@@ -1,0 +1,519 @@
+                   <meta charset="utf-8" emacsmode="-*- markdown -*-">
+       **Look into Palanteer and get an omniscient view of your program**
+            Improve software code quality - C++ and Python
+
+
+<h1> @@ <a href="index.html">Overview</a> </h1>
+<h1> @@ <a href="getting_started.md.html">Getting started</a> </h1>
+<h1> @@ <a href="base_concepts.md.html">Base concepts</a> </h1>
+<h1> @@ <a href="instrumentation_api_cpp.md.html">C++ Instrumentation API</a> </h1>
+<h1> @@ <a href="#">C++ Instrumentation configuration</a> </h1>
+
+
+For boolean configuration values, the expected values are 0 (disabled) or 1 (enabled).
+
+
+## Configuration strategies
+
+The `Palanteer` configuration is  defined inside the `palanteer.h` file as a list of macro constants with default values that can be overriden with compilation flags.
+
+Three types of configuration parameter exist:
+
+  - `Palanteer` parameters that are used only [where the library is implemented](#configurationoftheimplementation) (with `#define PL_IMPLEMENTATION`)
+  - `Palanteer` parameters that are used [by the instrumentation](#configurationoftheinstrumentation), so potentially everwhere (see note below)
+  - Your own [groups](base_concepts.md.html#groups) declaration/configuration
+
+!!! warning
+    For the sake of consistency, never override a parameter of the second type directly in each instrumented file.<br/>
+    First, it is not convenient. And if you miss one file, unconsistent configuration can lead to undefined behavior.
+
+Defining your own configuration can be done safely in several ways (non exhaustive):
+
+1. Directly modify the file `palanteer.h`
+  - Safe and easy way but with potential conflict when upgrading
+2. Create your own `myPalanteer.h` header which includes `palanteer.h` after defining some flags, and then use this header exclusively
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+File myPalanteer.h:
+-------------------
+// Set your configuration
+#define PL_EXTERNAL_STRINGS 1
+#define PL_COLLECTION_BUFFER_BYTE_QTY 100000
+
+// Define the group "DEBUG_ASSERT".
+//  Note: configuration through the build system is possible as we check existence before setting
+#ifndef PL_GROUP_DEBUG_ASSERT
+#define PL_GROUP_DEBUG_ASSERT 0
+#endif
+
+// Define the group "CONTAINER"
+#ifndef PL_GROUP_CONTAINER
+#define PL_GROUP_CONTAINER 1
+#endif
+...
+
+// Then include the original file
+#include "palanteer.h"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+3. In addition to (1) or (2), have some files dedicated to group definition, and include one of your choice in each source file.
+  - this strategy limits the scope of the code recompilation when changing a value for a group
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+File groups3DEngine.h:
+----------------------
+#ifndef PL_GROUP_DEBUG_ASSERT
+#define PL_GROUP_DEBUG_ASSERT 0
+#endif
+
+// Define the group "CONTAINER"
+#ifndef PL_GROUP_CONTAINER
+#define PL_GROUP_CONTAINER 1
+#endif
+
+
+File myCode.cpp:
+----------------
+// Include your instrumentation header (or the modified palanteer.h)
+#include "myPalanteer.h"
+
+// Include the groups definition (can be done before or after the instrumentation header)
+#include "groups3DEngine.h"
+
+// Your code with instrumentation covered by the groups defined in groups3DEngine.h
+...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    In short, adapt the strategie to the need. <br/>
+    For large projects it is recommended to use groups and at least wrap the instrumentation library as in point (2) above.
+
+The rest of this chapter describes all configuration parameters for the instrumentation.
+
+## Configuration of the implementation
+
+"Implementing" the library means defining the flag __PL_IMPLEMENTATION__ before including it. <br/>
+The library shall be implemented once and only once.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPLEMENTATION 1
+#include palanteer.h"
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some configuration parameters are applicable only in this "implementation file" (and ignored otherwise). <br/>
+These parameters are listed below and start with `PL_IMPL_`. They shall be set *before* the include of the `palanteer.h` file. <br/>
+They fully define the [memory usage](index.html#c++memoryusage) of the library.
+
+!!! note No worry: The default values fit most needs
+    These configuration variables exist just in case a finer control is required on the memory, or in case of "outstanding" usage.
+<br/>
+
+| Event collection                                                                    | Description                                                          | Default |
+|-------------------------------------------------------------------------------------|----------------------------------------------------------------------|:-------:|
+| [PL_IMPL_CATCH_SIGNALS](#pl_impl_catch_signals)                                     | Enables catching OS signals (segv, etc...)                           | 1       |
+| [PL_IMPL_COLLECTION_BUFFER_BYTE_QTY](#pl_impl_collection_buffer_byte_qty)           | Buffer size for event collection (2 are needed)                      | 5000 KB |
+| [PL_IMPL_DYN_STRING_QTY](#pl_impl_dyn_string_qty)                                   | Defines the maximum quantity of dynamic strings per collection round | 1024    |
+| [PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY](#pl_impl_remote_request_buffer_byte_qty)   | Buffer size for remote command request                               | 8 KB    |
+| [PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY](#pl_impl_remote_response_buffer_byte_qty) | Buffer size for remote command response                              | 8 KB    |
+| [PL_IMPL_STRING_BUFFER_BYTE_QTY](#pl_impl_string_buffer_byte_qty)                   | Buffer size for new string batch sending                             | 8 KB    |
+| [PL_IMPL_MAX_EXPECTED_STRING_QTY](#pl_impl_max_expected_string_qty)                 | Expected quantity of unique string for the program under test        | 4096    |
+| [PL_IMPL_MAX_CLI_QTY](#pl_impl_max_cli_qty)                                         | Maximum registered CLI quantity                                      | 128     |
+| [PL_IMPL_CLI_MAX_PARAM_QTY](#pl_impl_cli_max_param_qty)                             | Defines the maximum CLI parameter quantity                           | 8       |
+| [PL_IMPL_MANAGE_WINDOWS_SOCKET](#pl_impl_manage_windows_socket)                     | Enables socket initialization (Windows only)                         | 1       |
+
+<br/>
+
+| Automatic events                                            | Description                                                         | Default |
+| ---------                                                   | -----------                                                         | :-----: |
+| [PL_IMPL_OVERLOAD_NEW_DELETE](#pl_impl_overload_new_delete) | Enables the new/delete operators overload to collect memory events  | 1       |
+| [PL_IMPL_CONTEXT_SWITCH](#pl_impl_context_switch)           | Enables the collection of OS context switches, if enough privileges | 1       |
+
+<br/>
+
+| Crash and stacktrace                                  | Description                                              | Default                   |
+| ---------                                             | -----------                                              | :-----:                   |
+| [PL_IMPL_STACKTRACE](#pl_impl_stacktrace)             | Enables the stacktrace dump if a crash occurs            | Windows: 1 <br/> Linux: 0 |
+| [PL_IMPL_STACKTRACE_COLOR](#pl_impl_stacktrace_color) | Enable the color display of the built-in stacktrace dump | 1                         |
+
+<br/>
+
+| Platform support                                    | Description                           | Default          |
+| ---------                                           | -----------                           | :----:           |
+| [PL_IMPL_STACKTRACE_FUNC](#pl_impl_stacktrace_func) | Function called to log the stacktrace | `built-in`       |
+| [PL_IMPL_CRASH_EXIT_FUNC](#pl_impl_crash_exit_func) | Function called when a crash occurs   | `built-in`       |
+| [PL_IMPL_PRINT_STDERR](#pl_impl_print_stderr)       | Low level error text display function | printf on stderr |
+
+
+### PL_IMPL_CATCH_SIGNALS
+
+Catching signals allows the identification of some class of issues and their location (if it is an internal signal and if the stacktrace dump is enabled).
+
+This compilation flag enables the registration of an handler to catch useful signals for debugging purpose (SIGABRT, SIGFPE, SIGILL, SIGSEGV, SIGINT and SIGTERM). <br/>
+On Windows, it also registers vectored exceptions.
+
+The usual reason not to use this feature is if the program also wants to control signals.
+
+The default value is "enabled":
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_CATCH_SIGNALS 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### PL_IMPL_COLLECTION_BUFFER_BYTE_QTY
+
+As explained previously, events are collected with a [double storage bank mechanism](base_concepts.md.html#baseconcepts/c++specific/eventcollectionmechanism).
+
+The byte size of each bank buffer is defined by this constant.
+
+  * Too small a size and your threads may have to busy-wait until a fresh and empty buffer is available
+  * Too big a size and memory is wasted
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_COLLECTION_BUFFER_BYTE_QTY 5000000
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    The size shall be at least 56 byte (internal event size) * the peak event rate / the polling frequency. <br/>
+    Ex: for 1 million events per second and a polling frequency of 200 Hz, the minimum buffer size is 56 * 1000000 / 200 = 280000 bytes (without margin)
+
+### PL_IMPL_DYN_STRING_QTY
+
+[Dynamic strings](base_concepts.md.html#staticanddynamicstrings) are preallocated at initialization time for efficiency and fine control reasons. <br/>
+Their maximum size and their quantity per collection cycle shall be known from the beginning.
+
+!!!
+    Dynamic strings are more flexible than static strings but have a performance price and some constraints due to preallocation.
+
+This constant defines the maximum quantity of strings per collection cycle. <br/>
+If this pool of dynamic strings is depleted during a collection cycle, the logging thread will *busy-wait* until the pool is refilled after the collection process. Refer to the description of the [collection mechanism](base_concepts.md.html#baseconcepts/c++specific/eventcollectionmechanism) for details.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_DYN_STRING_QTY 1024
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY
+
+The maximum byte size of a received CLI request. <br/>
+If a larger request is received, the program stops on a failed assertion.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY 8*1024
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY
+
+The maximum byte size of a sent remote CLI response. <br/>
+If a CLI response is larger than the capacity of the buffer, an error status is returned for this CLI.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY 8*1024
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_STRING_BUFFER_BYTE_QTY
+
+The size of the buffer used to send unique new strings to the server. <br/>
+It shall be larger enough to hold any string in the program, else the program strops on a failed assertion. <br/>
+If more quantity of unique and new strings than this buffer can contain shall be sent to the server during one collection round, the sending is done in several batches.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_STRING_BUFFER_BYTE_QTY 8*1024
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_MAX_EXPECTED_STRING_QTY
+
+This value defines the initial allocation for the lookup identifying unique strings. <br/>
+If not large enough during the program execution, a reallocation occurs and doubles the size of the lookup. <br/>
+This parameter provides a way to avoid such additional allocation after `Palanteer` initialization, if it matters and if an upper bound on the quantity of unique strings in the program under test is known.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_MAX_EXPECTED_STRING_QTY 4096
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### PL_IMPL_MAX_CLI_QTY
+
+This constant defines the maximum quantity of registered CLI. <br/>
+If this quantity is exceeded, the program stops on a failed assertion.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_CLI_MAX_PARAM_QTY 128
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_CLI_MAX_PARAM_QTY
+
+This constant defines the maximum quantity of remote CLI parameters. <br/>
+If this quantity is exceeded, the program stops on a failed assertion.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_CLI_MAX_PARAM_QTY 8
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_MANAGE_WINDOWS_SOCKET
+
+This parameter is applicable only on Windows OS and has no effect under other OSes.
+
+Using sockets on Windows requires a global initialization (WSA).
+If your program already manages sockets by itself (initialization and uninitialization), then this flag shall be set to 0. <br/>
+
+When enabled, `Palanteer` instrumentation library automatically handles socket management and call the required functions (namely `WSAStartup(...)` and `WSACleanup()`)
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_MANAGE_WINDOWS_SOCKET 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_OVERLOAD_NEW_DELETE
+
+Dynamic memory allocation can be tracked automatically by overloading operator new & delete.
+It works in most cases but you may have to disable the overload.
+
+The alternative to track the dynamic memory allocations, in case these operators are already overloaded, is to instrument them directly.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_OVERLOAD_NEW_DELETE 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Change it to zero to disable the overload.
+
+### PL_IMPL_CONTEXT_SWITCH
+
+Tracking "context switches" from the operating system shows you the usage of the processor.
+In particular, which thread of your program is currently under execution, and if not, what the cores are doing.
+
+!!! warning
+    Accessing these information requires elevated privileges for security reasons. <br/>
+    On Windows, your program shall be run as administrator, and on Linux as root (or sudo). <br/>
+    If required privileges are not matching, context switches will simply not be collected.
+
+This variable configures the collection or not of the context switches.
+If this collection is enabled, it is effective only if the privileges are high enough, as described above.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_CONTEXT_SWITCH 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_STACKTRACE
+
+Dumping a clear stacktrace when a crash occurs is a great debugging tool. <br/>
+Ex:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+Crash without stacktrace feature enabled:
+-----------------------------------------
+[PALANTEER] signal 11 'Segmentation fault' received
+
+Crash with stacktrace feature enabled:
+--------------------------------------
+[PALANTEER] signal 11 'Segmentation fault' received
+  #0  0x7FA65883C83C : (null)
+  #1  testProgram.cpp(81) : void crashSubContractor<int>(unsigned short, int)
+  #2  testProgram.cpp(95) : doCrash_Please(int)
+  #3  testProgram.cpp(248) : doSomeWork(char const*, char const*, unsigned int, int, int, bool)
+  #4  invoke.h(60) : void std::__invoke_impl<void, void (*)(char const*, char const*, unsigned int, int, int, bool), char const*, char const*, int, int, int, bool>(std::__invoke_other, void (*&&)(char const*, char const*, unsigned int, int, int, bool), char const*&&, char const*&&, int&&, int&&, int&&, bool&&)
+  #5  invoke.h(95) : std::__invoke_result<void (*)(char const*, char const*, unsigned int, int, int, bool), char const*, char const*, int, int, int, bool>::type std::__invoke<void (*)(char const*, char const*, unsigned int, int, int, bool), char const*, char const*, int, int, int, bool>(void (*&&)(char const*, char const*, unsigned int, int, int, bool), char const*&&, char const*&&, int&&, int&&, int&&, bool&&)
+  #6  thread(244) : decltype (__invoke((_S_declval<0ul>)(), (_S_declval<1ul>)(), (_S_declval<2ul>)(), (_S_declval<3ul>)(), (_S_declval<4ul>)(), (_S_declval<5ul>)(), (_S_declval<6ul>)())) std::thread::_Invoker<std::tuple<void (*)(char const*, char const*, unsigned int, int, int, bool), char const*, char const*, int, int, int, bool> >::_M_invoke<0ul, 1ul, 2ul, 3ul, 4ul, 5ul, 6ul>(std::_Index_tuple<0ul, 1ul, 2ul, 3ul, 4ul, 5ul, 6ul>)
+  #7  thread(253) : std::thread::_Invoker<std::tuple<void (*)(char const*, char const*, unsigned int, int, int, bool), char const*, char const*, int, int, int, bool> >::operator()()
+  #8  thread(196) : std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)(char const*, char const*, unsigned int, int, int, bool), char const*, char const*, int, int, int, bool> > >::_M_run()
+  #9  0x7FA658C41B2B : (null)
+  #10 pthread_create.c(476) : start_thread
+  #11 clone.S(93) : __clone
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Getting a stacktrace requires two base functionalities:
+
+  - unwinding the call stack
+  - decoding the program counter addresses to get the associated filename, line number, and function name, demangled.
+
+On Window, the standard libraries provide all the required functions. <br/>
+On Linux, the stacktrace requires two external dynamic libraries:
+
+  - libunwind.so to unwind the call stack
+    - installed with "sudo apt install libunwind-dev"
+  - libdw.so, to read the DWARF debug information from the ELF binary and get the information on addresses
+    - installed with "sudo apt install libdw-dev"
+
+If your system meets the requirements, just set `PL_IMPL_STACKTRACE` to 1 in the build system to enable the feature.
+
+!!!
+    On Windows, the stacktrace will be directly visible only if your program is not graphical.<br/>
+    If it is graphical, you need to redirect the "stderr" output in a dialog box. This can be done by overriding the `PL_IMPL_PRINT_STDERR` macro.
+
+### PL_IMPL_STACKTRACE_COLOR
+
+This parameter simply enables the usage of terminal escape codes to add color into the text messages of the built-in stacktrace handler.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_STACKTRACE_COLOR 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_STACKTRACE_FUNC
+
+Getting a stacktrace is very dependent on the Operating System. <br/>
+At the moment, `Palanteer` provides built-in handlers only for Linux and Windows.
+
+This macro points to the function called to retrieve the stacktrace and dump it with both with `PL_IMPL_PRINT_STDERR` and as text in the record. <br/>
+In order to implement the feature for another Operating System, this macto shall be overriden.
+
+The default value is (built-in function):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_STACKTRACE_FUNC() plPriv::crashLogStackTrace()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_IMPL_CRASH_EXIT_FUNC
+
+This macro points to the last function called to terminate the program when an assertion fails or a signal is received. <br/>
+Before this call and if applicable, the record is already flushed to the server and stacktraces are already dumped).
+
+The typical use case for overriding this macro is on an embedded system where "exiting" has no meaning.
+
+The default value is simply calling the system exit function:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_CRASH_EXIT_FUNC() exit(1)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### PL_IMPL_PRINT_STDERR
+
+This macro function aims at displaying error messages issued by assertions or signals.
+It takes a text string as input, and two boolean values:
+
+ - The boolean `isCrash` tells that there will be several call to build the crash information. Else it is a lonely message.
+ - The boolean `isLastFromCrash` tells the end of the last information for the crash. A dialog box can then be displayed.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_PRINT_STDERR(msg, isCrash, isLastFromCrash) fprintf(stderr, "%s", msg)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On Windows OS, the display shall be redirected on a MessageBox for graphical programs, as there is no console display.
+
+## Configuration of the instrumentation
+
+This configuration **must** be consistent in all source files using `Palanteer` (see configuration [strategies](#configurationstrategies)).
+
+| Instrumentation parameters                        | Description                                                   | Default |
+| ---------                                         | -----------                                                   | :----:  |
+| [PL_EXTERNAL_STRINGS](#pl_external_strings)       | Enables external strings                                      | 0       |
+| [PL_DYN_STRING_MAX_SIZE](#pl_dyn_string_max_size) | Defines the maximum size of a dynamic string                  | 512 B   |
+| [PL_SHORT_STRING_HASH](#pl_short_string_hash)     | Use 32 bits hash rather than 64 bits                          | 0       |
+| [PL_SIMPLE_ASSERT](#pl_simple_assert)             | Disables the assertion enhancements and reverts to basic ones | 0       |
+
+<br/>
+
+| Platform support                                  | Description                                     | Default  |
+| ---------                                         | -----------                                     | :----:   |
+| [PL_GET_CLOCK_TICK_FUNC](#pl_get_clock_tick_func) | Getter for the high resolution clock            | built-in |
+| [PL_GET_SYS_THREAD_ID](#pl_get_sys_thread_id)     | Getter for the current system thread identifier | built-in |
+
+### PL_EXTERNAL_STRINGS
+
+The [external strings](index.html#externalstrings) feature" strips at compile time all static strings used by `Palanteer` so that:
+
+  * the instrumentation is obfuscated (no string content in the binary)
+  * the binary size is reduced due to this string removal
+
+The "price to pay" is the necessity to generate of a lookup *hash->strings* from the source code, and use it in the viewer to decode strings. <br/>
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_EXTERNAL_STRINGS 0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! warning
+    Dynamic strings are not concerned by this feature as they cannot be processed at compile time by definition. Another reason to avoid them.
+
+
+### PL_DYN_STRING_MAX_SIZE
+
+[Dynamic strings](base_concepts.md.html#staticanddynamicstrings) are preallocated at initialization time for efficiency and fine control reasons. <br/>
+
+This constant defines the maximum dynamic string size in bytes (null terminaison included). <br/>
+Larger strings are truncated.
+
+!!! tip Important
+    Stacktraces are sent as dynamic strings and C++ templatized names are known to be long...
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_DYN_STRING_MAX_SIZE 512
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### PL_SHORT_STRING_HASH
+
+All strings used by `Palanteer` are hashed. <br/>
+The selected hash function is the Fowler–Noll–Vo which is a good trade-off between:
+
+  * the compile time capability of C++11 (`constexpr` is pretty limited in this version)
+  * the run-time performance for dynamic strings
+  * the discriminative power of the hash
+
+By default, the 64 bits version is used to ensure that virtually no collision happens. <br/>
+This constant forces the usage of the 32 bit version of FNV.
+
+The only 'gain' is for 32 bit systems and only when using dynamic strings or recording context switches: run-time computation speed will then be slightly improved. <br/>
+Note that storage size and transmitted data are not reduced when using this flag.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_SHORT_STRING_HASH 0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_SIMPLE_ASSERT
+
+The [enhanced assertions feature](index.html#enhancedassertions) uses variadic templates which may increase the code size.
+
+With this compilation flag it is possible to keep the "per category compilation" feature of the `Palanteer` assertions but revert to the lighter and standard behavior of assertions by ignoring the extra context parameters.
+
+The typical usage of this feature is in constrained embedded systems where code size really matters.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_SIMPLE_ASSERT 0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_GET_CLOCK_TICK_FUNC
+
+This macro points to the function which provides a high resolution clock stored on a uint64_t.
+
+The built-in function for Windows and Linux provide an efficient one, which is also compatible with the one of the context switch (the source of information may differ).
+
+!!!
+    The value of the clock frequency does not matter as the clock is calibrated at initialization time.
+
+The default value is (built-in function):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Returned value is a uint64_t
+#define PL_GET_CLOCK_TICK_FUNC() plPriv::getClockTick()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_GET_SYS_THREAD_ID
+
+This macro points to the function which returns the current system thread identifier.
+
+The default value is (built-in function):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#if defined(__unix__)
+#define PL_GET_SYS_THREAD_ID() syscall(SYS_gettid)
+#endif
+#if defined(_WIN32)
+#define PL_GET_SYS_THREAD_ID() GetCurrentThreadId()
+#endif
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+<h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>
+<h1> @@ <a href="scripting_api.md.html">Scripting API</a> </h1>
+<h1> @@ <a href="more.md.html">More</a> </h1>
+
+
+<script>markdeepOptions = {tocStyle:'long', definitionStyle:'long'};</script>
+<link rel="stylesheet" href="palanteer.css">
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

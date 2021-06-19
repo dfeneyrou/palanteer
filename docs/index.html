@@ -1,0 +1,1027 @@
+                   <meta charset="utf-8" emacsmode="-*- markdown -*-">
+       **Look into Palanteer and get an omniscient view of your program**
+            Improve software code quality - C++ and Python
+
+
+<center>
+
+![ ](images/header_perspective.png width=800px)
+
+> "Look into Palanteer and get an omniscient view of your program..."
+
+</center>
+
+
+<h1> @@ <a href="#">Overview</a> </h1>
+
+**Palanteer** is a 3-parts solution to software quality improvement for C++ and Python. <br/>
+
+1. An **instrumentation library** for programs to rule them all. <br/> Provides the instrumentation API and remote communication capabilities.
+  - C++:
+    - ultra-light single-header cross-platform library
+    - very low overhead
+  - Python:
+    - One module for manual instrumentation
+    - Unmodified program can be analyzed as for `cProfile` with `-m` option
+1. Associated with the **interactive viewer**:
+   - Internal behaviors become obvious
+   - All data can be graphically visualized and manipulated.
+1. Associated with the **remote scripting Python module**:
+  - Easy stimulation and deep observation
+  - Enables trivial testing, measuring or monitoring
+
+
+<table width=100%></table>
++++++
+
+
+<table width=100%>
+<tr><td>
+
+- **Simple logging of meaningful atomic events**
+ - Time scopes, variable values, locks, markers, memory allocations, context switches...
+ - Global structure from the event hierarchy
+ - Typed (string, timestamp, float, integer...)
+ - C++
+    - Compile-time selection of per-user groups of events
+    - Very low overhead, typically few nanoseconds
+ - Python
+    - Automatic instrumentation of functions enter/leave
+    - Automatic tracking of interpreter memory allocations
+    - Automatic tracking of all raised exceptions
+    - Automatic tracking of garbage collection runs
+
+
+</td> <td>
+
+![Hierarchical scopes with graphable inner variables](images/scope_with_inner_variables.gif width=80%) ![High precision - nanosecond order](images/nanosecond_precision.gif width=80%)
+
+</td></tr>
+<tr><td>
+
+- **Lock usage tracking**
+  - Explicit threads' battle for locks
+  - Who is blocked by whom and for how long
+
+</td> <td>
+
+![Lock usage tracking](images/lock_contention.gif  width=80%)
+
+
+</td></tr>
+<tr><td>
+
+- **Memory usage tracking**
+ - Detect allocation hot spots, big allocators, temporary allocations...
+ - Leak detection (based on logged events)
+
+</td> <td>
+
+![Memory usage tracking with hot spots - here, typical temporary allocations](images/memory_spike.gif width=80%)
+
+</td></tr>
+<tr><td>
+
+- **Visualization of the data from the best vantage point**
+  - Smooth and interactive experience on a standard computer
+    - Even with huge records
+  - Many kinds of views to cover many kinds of needs
+    - Timelines for CPU, timeline for memory, flame graphs, lock contention, context switch, curves, histograms...
+  - Flexible layouts
+    - Drag&amp;drop support
+    - No limit on view quantity
+    - Can be saved and recalled later
+
+</td> <td>
+
+![Example of layout](images/views.gif width=80%)
+
+</td></tr>
+<tr><td>
+
+- **C++: Better assertions, enhanced with provided context**
+  - Just add variables or expressions as extra parameters
+  - Compile-time selection of user defined groups of assertions
+
+</td> <td>
+
+![Command line: dump of a failed enhanced assertion](images/crash_shell.png width=80%)
+
+</td></tr>
+<tr><td>
+
+- **C++: Stack trace dumping**
+ - Displayed in the terminal
+ - Recorded with all events before crash
+ - Available global context ease crash investigations
+
+</td> <td>
+
+![Logged stack trace in the viewer](images/crash_scope.png width=80%)
+
+</td></tr>
+<tr><td>
+
+- **C++: Full leveraging of static strings**
+  - Identified and hashed at compile time, no runtime cost
+  - "External strings": full stripping of instrumentation static strings from the binary
+    - Benefit: code size reduction and instrumentation obfuscation
+    - Strings are resolved with an external lookup generated from the code (tool provided)
+
+</td> <td>
+
+![Test program without external strings](images/no_external_string_effect.png width=80%)
+
+![Test program with external strings - smaller text section, no more instrumentation strings](images/external_string_effect.png width=80%)
+
+</td></tr>
+<tr><td>
+
+**Easy scripting of the stimulation and observation**
+
+- Elaborate deep and reliable system tests
+  - Stimulate with CLIs (remote commands from instrumentation), monitor via events
+- Automate the extraction of performance indicators
+- Scripting language is Python
+- Scripts are independent of the program's implementation language
+
+</td> <td>
+
+![Small functional scripted test](images/scripting.png width=80%)
+
+</td></tr></table>
+
+**Palanteer** is a free, lean and comprehensive solution for better and enjoyable software development!
+
+
+## C++ Features
+
+### Easy logging
+
+Each call to the instrumentation library is a piece of information on the execution of your program. <br/>
+The term "logging" in `Palanteer` does not relate to a generic string but to a typed, specialized and atomic data.
+
+The [instrumentation API](instrumentation_api_cpp.md.html) is straightforward and simple. As an example, the most representative ones are:
+ - **plScope**: start a named timestamp measurement, automatically closed at the end of the C++ scope
+ - **plData**: log a named value (numeric or dynamic string)
+ - **plVar**: log a variable (name and content)
+
+Example:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Declare your thread once after its creation (mandatory to enable inner event tracking)
+plDeclareThread("Worker 1");
+
+// Named variable value logging
+plData("Monster health", monsterHealth);
+
+// Variable logging, shorter equivalent to plData("monsterHealth", monsterHealth)
+plVar(monsterHealth);
+
+// Multiple variable logging, shorter equivalent to the multiple calls with one variable
+plVar(monsterHealth, monsterAttackCoef, monsterName);
+
+// Text logging
+plText("Level one reached");
+
+// Timestamped scope (automatically closed at C++ scope end)
+plScope("superFunction");
+
+// Add a marker (special event that is highlighted in timeline graphs)
+plMarker("user input", "Left arrow pressed");
+
+// ...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+All your data, whatever the quantity, can be smoothly visualized. And all of them can be viewed at least as a curve or histogram.
+
+### Compile-time instrumentation groups
+
+Grouping events by user-defined categories is a key feature of **Palanteer**. <br/>
+Each group can independently be compiled or fully ignored (zero instructions in the binary, zero run-time cost, almost zero compilation time cost).
+
+Per-topic instrumentation is a powerful tool for code quality:
+ - Deep instrumentation can be kept without any impact inside the code and re-activated only when needed
+ - Groups cover both logging and assertions, they generalize the standard NDEBUG flag
+ - Performance cost versus instrumentation level is fully under user control
+
+The "group" instrumentation API is directly derived from the general ones by replacing the prefix `pl` with `plg` and inserting the group name as first parameter.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Declare the group MYGROUP (just an example) with the prefix "PL_GROUP_" and give it the value 1 to be compiled or 0 to be fully ignored
+#ifndef PL_GROUP_MYGROUP
+#define PL_GROUP_MYGROUP 1
+#endif
+
+// => Use the same API but with prefix *plg* instead of *pl* and the group name as first parameter
+
+// Named variable value logging
+plgData(MYGROUP, "Monster health", monsterHealth);
+
+// Variable logging, shorter equivalent to plgData(MYGROUP, "monsterHealth", monsterHealth)
+plgVar(MYGROUP, monsterHealth);
+
+// Multiple variable logging, shorter equivalent to the multiple calls with one variable
+plgVar(MYGROUP, monsterHealth, monsterAttackCoef, monsterName);
+
+// Text logging
+plgText(MYGROUP, "Level one reached");
+
+// Scope tracking (automatically closed at scope end)
+plgScope(MYGROUP, "superFunction");
+
+// Add a marker (special event that is highlighted in timeline graphs)
+plgMarker(MYGROUP, "user input", "Left arrow pressed");
+
+// ...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! warning   Important!
+    Once used in a `Palanteer` API, the group **must be defined**, else the preprocessor rants (a lot...).
+
+A typical instrumentation covers the structure of the program but also inputs, outputs of computations, statistics, states...
+Remember that quantity is not a problem when using groups!
+
+### External strings
+
+Instrumenting the code, to track its execution, obviously means more accessible details inside your binary. <br/>
+There is at least 2 cases where this might be a problem:
+
+  - **Obfuscation**: if the production code embeds some instrumentation, the corresponding text strings are present in clear in the binary
+  - **Binary size reduction**: in embedded software, each byte matters. On the other side, instrumentation or any kind of observation is critical to be able to debug efficiently
+
+Both cases above are solved by using the "external strings" feature, simply by compiling with the flag `PL_EXTERNAL_STRINGS` set to 1.
+In this mode, all static strings used by `Palanteer` are stripped out at compilation time, only their hash remain in the binary.
+
+!!!
+    On Linux, the standard command `strings &lt;binary name&gt;` shows in clear all text strings of the binary. It is an easy way to check your embedded strings.
+
+In order to properly work with a record where the external string feature have been enabled, the additional actions below are required:
+
+ 1. Generate a lookup file *hash -> strings* from all sources
+   - The provided tool `./tools/extStringCppParser.py` parses C++ source files and generates this lookup
+   - A new lookup file shall be generated each time you add or modify an existing string used by `Palanteer`
+   - This process is fast enough to be part of a build system
+ 2. This lookup shall be used to recover the plain content of the strings (the `Palanteer` viewer and Python scripting module do it)
+   * As a fallback, the sad unrecognized strings are displayed as an 8 bytes hexadecimal hash, in the viewer and scripting module
+
+!!!
+    The simple tool `./tools/extStringDecoder.py` is an example how to recover obfuscating strings from `stdin` and output the result on `stdout`
+
+### Enhanced assertions
+
+Enhanced assertions ease investigations through provided context elements. This is especially true when an issue is hard to reproduce. <br/>
+The additional context is of course evaluated only in case of assertion failure.
+
+Example:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plAssert(a&lt;b);                                         // Standard form
+plAssert(a&lt;b, "A shall always be less than B");        // Documented form
+plAssert(a&lt;b, a, b);                                   // Extended form showing the values of 'a' and 'b' when assertion is failed
+plAssert(a&lt;b, "A shall always be less than B", a, b);  // Displays up to 9 parameters... © Ought to be enough for anybody
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+As for events, assertions can be conditionally compiled per user-defined categories. <br/>
+It can be seen as a generalization of the `NDEBUG` compilation flag (which acts as a global switch on standard assert).
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plgAssert(MYGROUP, a&lt;b);
+plgAssert(MYGROUP, a&lt;b, "A shall always be less than B");
+plgAssert(MYGROUP, a&lt;b, a, b);
+plgAssert(MYGROUP, a&lt;b, "A shall always be less than B", a, b);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the example above, the last assertion outputs the text below, optionally followed by the stack trace if enabled.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+[PALANTEER] Assertion failed: a&lt;b
+  On function: int main(int, char**)
+  On file    : c++/testprogram/testProgram.cpp(358)
+    - A shall always be less than B
+    - int     a                    = 314
+    - float   b                    = 123.000000
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! warning
+    Enhanced assertions are using variadic templates which may increase the code size. <br/>
+    By compiling with  the `PL_SIMPLE_ASSERT` flag set to 1, the assertions revert to the standard behavior (additional context parameters are ignored), while keeping the "per category compilation" feature.
+
+### Compile time selection of the features
+
+> "Pay only for what you use"
+
+Most features of `Palanteer` can be selected individually at compile time.
+
+
+| Feature name                                                                                                      | Constant                                                             | Default                            |
+|-------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------|:-----------------------------------|
+| [Event logging](#easylogging)                                                                                     | Enabled if `USE_PL`==1 and `PL_NOEVENT` is not 1                     | Disabled                           |
+| [`Palanteer` assertions](#enhancedassertions)                                                                     | Enabled if `USE_PL`==1 and `PL_NOASSERT` is not 1                    | Disabled                           |
+| [Remote control](#remotecontrol)                                                                                  | Enabled if `USE_PL`==1 and `PL_NOCONTROL` is not 1                   | Disabled                           |
+| [Event logging from group _YYY_](base_concepts.md.html#groups)                                                    | Enabled if event logging is enabled and `PL_GROUP_YYY` is 1          | `PL_GROUP_YYY` **must be defined** |
+| [Assertions from group _YYY_](base_concepts.md.html##groups)                                                      | Enabled if `Palanteer` assertions is enabled and `PL_GROUP_YYY` is 1 | `PL_GROUP_YYY` **must be defined** |
+| [External strings](#externalstrings)                                                                              | Enabled if `PL_EXTERNAL_STRINGS` is set to 1                         | Disabled                           |
+| [Simple (standard) `Palanteer` assertions](#enhancedassertions)                                                   | Enabled if `PL_SIMPLE_ASSERT` is set to 1                            | Enhanced assertions                |
+| [Memory tracking with new/delete overload](instrumentation_configuration_cpp.md.html#pl_impl_overload_new_delete) | Enabled if `PL_OVERLOAD_NEW_DELETE` is set to 1                      | Enabled                            |
+
+
+## Python features
+
+Python features differ from the C++ ones because of the nature of the language, interpreted, dynamic and high level. For instance:
+  - No concept of "compile-time"
+  - No need for enhanced assertions
+  - Built-in profiling API available
+  - ...
+
+### Automatic partial instrumentation
+
+The CPython interpreter offers dedicated profiling hooks that `Palanteer` leverages to automatically log:
+ - Entering or leaving a function
+ - Raised exception, caught or not
+ - Memory allocations (at the interpreter level)
+
+This means that **unmodified code** can already provide useful insights, by using the same mechanism than the standard `cProfile` module:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+> python3 -m palanteer program.py
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In this case, the instrumentation module connects to a server (viewer, or remote script), if present.
+
+The full usage is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+> python3 -m palanteer
+Palanteer profiler usage:
+
+Either:
+
+ 1) With code instrumentation: insert a call to palanteer.plInitAndStart(app_name, ...) in your main function.
+     See Palanteer documentation for details.
+     Manual instrumentation can provide much more information (ex: data, locks, ...) than just the automatic function profiling.
+
+ 2) With unmodified script:  'python -m palanteer [options] &lt;your script&gt;'
+     This syntax is similar to the cProfile usage. No script modification is required but only the function timings and exceptions are profiled.
+
+Options for case (2):
+ -s &lt;server IP address&gt; Set the server IP address (default is 127.0.0.1)
+ -p &lt;server TCP port&gt;   Set the server port       (default is 59059)
+ -f &lt;filename.pltraw&gt;   Save the profiling data into a file to be imported in the Palanteer viewer (default=remote connection)
+ -nf                    Do not automatically log the functions              (default=log functions)
+ -ne                    Do not automatically log the exceptions             (default=log exception)
+ -nm                    Do not log the memory allocations                   (default=log memory allocations)
+ -ng                    Do not automatically log the garbage collector runs (default=log gc)
+ -nc                    Do not automatically log the C functions            (default=both python and C functions)
+ -w                     Wait for server connection (Palanteer viewer or scripting module). Applicable only in case of remote connection.
+
+Note 1: in case of connection to the server and -w is not used and no server is reachable, profiling is simply skipped
+Note 2: on both Windows and Linux, context switch information is available only with root privileges (OS limitation)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+And with additional manual instrumentations, even better knowledge can be collected:
+  - content of variables (integral types or strings)
+  - manual scopes inside functions
+  - lock usage
+
+
+## Common features
+
+The features below are common to both C++ and Python instrumentations.
+
+### Memory usage and context switches
+
+Two kinds of data are automatically collected:
+
+  - Memory allocations and deallocation
+  - OS context switches
+
+**Memory**
+
+  - In C++, by default, memory allocations are tracked by overloading the `new` and `delete` operators
+  - In Python, the allocations are tracked on the interpreter level (i.e. what is seen by the OS)
+    - Tracking at the "object" level would insanely bloat records, as even an integer is an object and requires an internal (optimized) allocation.
+  - Note: memory event locations are identified only by the instrumented scopes.
+    - Collecting stacktraces is an heavy process, definitely outside the "light overhead" rules of the tool
+
+**Operating System context switches**
+
+  - Context switches correspond to the dynamic association between a system thread and a CPU "logical core"
+    - This information is critical for investigation of performance when CPU is saturated
+  - Context switches information is accessible only with privileged rights (i.e. as root or administrator)
+
+### Remote control
+
+Instrumentation libraries let you observe the execution of programs. It also lets you dynamically interact with them.<br/>
+With the control of both the stimulation and the observation, the range of new possibilities is wide:
+
+  * Conformance tests for a particular stimulation (matches the need of "system tests", "integration tests", "functional tests"...)
+  * KPI/performance/metric measurements
+  * Live service monitoring or control
+  * ...
+
+
+**Scripted dynamic control**
+
+The `Palanteer` Python scripting module gives you the remote control of the running state of a selection of threads. <br/>
+The code shall be instrumented with calls to `plFreezePoint()` on well chosen locations that will act as synchronization points. <br/>
+The remote scripts activate or release the "freeze" on these freeze points on a per-thread basis (see [`program_set_freeze_mode`](scripting_api.md.html#program_set_freeze_mode) and [`program_step_continue`](scripting_api.md.html#program_step_continue)), and are notified of freeze states.
+
+The typical usage of such synchronizations is to be able to reliably stimulate the program, at a controlled moment.
+
+**Scripted stimulation with CLIs**
+
+The stimulation part is done via remotely executed commands named CLI (Command Line Interface) that are declared beforehand inside the program.
+
+CLIs' input and output are text based. The reasons of such a choice are:
+
+  * The easiness to use, as declaring a CLI requires only 3 standard strings
+  * Inputs and outputs are generic and uniform, making their processing also uniform and light
+  * The target is to stimulate the program, not to build another fully-fledged RPC (Remote Procedure Call) middleware.
+
+The registration of a CLI for a given handler is done with the `plRegisterCli` function (see [CLI](base_concepts.md.html#baseconcepts/commandlineinterface) description for details), as shown in the example below:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// CLI registration parameters
+//   handler    : function to call for this CLI
+//   name       : name of the command (no space allowed)
+//   specParams : specification of the parameters, as a string
+//   description: description of the command and its usage
+
+// C++:
+plRegisterCli(bananaHandler, "getNiceText", "banana=int temperature=float mantra=string", "The purpose of this function is to return some text, just because we are worth it");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+or
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ python
+# Python:
+plRegisterCli(bananaHandler, "getNiceText", "banana=int temperature=float mantra=string", "The purpose of this function is to return some text, just because we are worth it")
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The action of the CLI handler is user-defined (ex: modify some state, launch internal functions...). Just be cautious with race conditions, as CLIs are called from the `Palanteer` reception thread.
+
+On the script side, calling a CLI is even simpler:
+  - input is a text string starting with the CLI name followed by its parameters (see scripting API [`program_cli`](scripting_api.md.html#program_cli) for details)
+  - output is a status and a reponse string (or error explanation)
+
+See an example below:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+status, text_answer = palanteer.program_cli("getNiceText  banana=23 temperature=37.2 mantra=Heaven")
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+**Scripted observation**
+
+After control and stimulation, the last piece of the scripting puzzle is the observation of the events sent by a program.
+
+The scripting module allows to:
+  - select events in a simple way while keeping the notion of hierarchy and association (see [`data_configure_events`](scripting_api.md.html#data_configure_events))
+  - poll and receive them per batch (see [`data_collect_events`](scripting_api.md.html#data_collect_events))
+
+The choice of receiving events synchronously, by polling, is motivated by the fact that scripts shall stay simple. <br/>
+Introducing callbacks or any kind of multi-threading at this level would not bring anything more except a whole range of problems for users.
+
+
+**Full example showing dynamic control, stimulation and observation**
+
+Below is a simple example of a C++ program instrumented with `Palanteer` and generating 100 000 random integers. The range can be remotely configured with a CLI.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// File: example.cpp
+// On Linux, build with:  g++ -DUSE_PL=1 -I &lt;palanteer C++ instrumentation folder&gt; example.cpp -lpthread -o example
+#include <stdlib.h>          // For "rand"
+#define PL_IMPLEMENTATION 1  // The instrumentation library shall be "implemented" once
+#include "palanteer.h"
+
+int globalMinValue = 0, globalMaxValue = 10;
+
+// Handler (=user implementation) of the example CLI, which sets the range
+void setBoundsCliHandler(plCliIo& cio)             // 'cio' is a communication helper passed to each C++ CLI handler
+{
+    int minValue = cio.getParamInt(0);             // Get the 2 CLI parameters as integers (as declared)
+    int maxValue = cio.getParamInt(1);
+    if(minValue>maxValue) {                        // Case where the CLI execution fails. The text answer contains some information about it
+        cio.setErrorState("Minimum value (%d) shall be lower than the maximum value (%d)", minValue, maxValue);
+        return;
+    }
+
+    // Modify the state of the program. No care about thread-safety here, to keep the example simple
+    globalMinValue = minValue;
+    globalMaxValue = maxValue;
+    // CLI execution was successful (because no call to cio.setErrorState())
+}
+
+
+int main(int argc, char** argv)
+{
+    plInitAndStart("example");              // Start the instrumentation, for the program named "example"
+    plDeclareThread("Main");                // Declare the current thread as "Main" so that it can be identified more easily in the script
+    plRegisterCli(setBoundsCliHandler, "config:setRange", "min=int max=int", "Sets the value bounds of the random generator");  // Declare our CLI
+    plFreezePoint();                        // Add a freeze point here to be able to configure the program at a controlled moment
+
+    plBegin("Generate some random values");
+    for(int i=0; i<100000; ++i) {
+        int value = globalMinValue + rand()%(globalMaxValue+1-globalMinValue);
+        plData("random data", value);       // Here are the "useful" values
+    }
+    plEnd("");                              // Shortcut for plEnd("Generate some random values")
+
+    plStopAndUninit();                      // Stop and uninitialize the instrumentation
+    return 0;
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The same, `example.py` (make it executable on Linux), written in python:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+#! /usr/bin/env python3
+import sys
+import random
+from palanteer import *
+
+globalMinValue, globalMaxValue =  0, 10
+
+# Handler (=implementation) of the example CLI, which sets the range
+def setBoundsCliHandler(minValue, maxValue):              # 2 parameters (both integer) as declared
+    global globalMinValue, globalMaxValue
+    if minValue>maxValue:                                 # Case where the CLI execution fails (non null status). The text answer contains some information about it
+        return 1, "Minimum value (%d) shall be lower than the maximum value (%d)" % (minValue, maxValue)
+
+    # Modify the state of the program
+    globalMinValue, globalMaxValue = minValue, maxValue
+    # CLI execution was successful (null status)
+    return 0, ""
+
+
+def main(argv):
+    global globalMinValue, globalMaxValue
+
+    plInitAndStart("example")                             # Start the instrumentation
+    plDeclareThread("Main")                               # Declare the current thread as "Main", so that it can be identified more easily in the script
+    plRegisterCli(setBoundsCliHandler, "config:setRange", "min=int max=int", "Sets the value bounds of the random generator")  # Declare the CLI
+    plFreezePoint()                                       # Add a freeze point here to be able to configure the program at a controlled moment
+
+    plBegin("Generate some random values")
+    for i in range(100000):
+        value = int(globalMinValue + random.random()*(globalMaxValue+1-globalMinValue))
+        plData("random data", value)                      # Here are the "useful" values
+    plEnd("")                                             # Shortcut for plEnd("Generate some random values")
+
+    plStopAndUninit()                                     # Stop and uninitialize the instrumentation
+
+# Bootstrap
+if __name__ == "__main__":
+    main(sys.argv)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+And a remote script, `remoteScript.py`, which launches one of the previous programs (C++ or Python), connects to it, then configures the range of random values and compute some statistics on them:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+#! /usr/bin/env python3
+import sys
+import palanteer_scripting as ps
+
+def main(argv):
+    if len(sys.argv)<2:
+        print("Error: missing parameters (the program to launch)")
+        sys.exit(1)
+
+    # Initialize the scripting module
+    ps.initialize_scripting()
+
+    # Enable the freeze mode so that we can safely configure the program once stopped on its freeze point
+    ps.program_set_freeze_mode(True)
+
+    # Launch the program under test
+    ps.process_launch(sys.argv[1], args=sys.argv[2:])
+    # From here, we are connected to the remote program
+
+    # Configure the selection of events to receive
+    my_selection = ps.EvtSpec(thread="Main", events=["random data"]) # Thread "Main", only the event "random data"
+    ps.data_configure_events(my_selection)
+
+    # Configure the program
+    status, response = ps.program_cli("config:setRange min=300 max=500")
+    if status!=0:
+        print("Error when configuring: %s\nKeeping original settings." % response)
+
+    # Disable the freeze mode so that the program resumes its execution
+    ps.program_set_freeze_mode(False)
+
+    # Collect the events as long as the program is alive or we got some events in the last round
+    qty, sum_values, min_value, max_value, has_worked = 0, 0, 1e9, 0, True
+    while ps.process_is_running() or has_worked:
+        has_worked = False
+        for e in ps.data_collect_events(timeout_sec=1.):  # Loop on received events, per batch
+            has_worked, qty, sum_values, min_value, max_value = True, qty+1, sum_values+e.value, min(min_value, e.value), max(max_value, e.value)
+
+    # Display the result of the processed collection of data
+    print("Quantity: %d\nMinimum : %d\nAverage : %d\nMaximum : %d" % (qty, min_value, sum_values/max(qty,1), max_value))
+
+    # Cleaning
+    ps.process_stop()            # Kills the launched process, if still running
+    ps.uninitialize_scripting()  # Uninitialize the scripting module
+
+
+# Bootstrap
+if __name__ == "__main__":
+    main(sys.argv)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The execution of `remoteScript.py` (on Linux) gives the following output:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+> time ./remoteScript.py example
+Quantity: 100000
+Minimum : 300
+Average : 400
+Maximum : 500
+./remoteScript.py example  0.62s user 0.02s system 24% cpu 2.587 total
+
+> time ./remoteScript.py python3 example.py
+Quantity: 100000
+Minimum : 300
+Average : 400
+Maximum : 500
+./remoteScript.py python3 example.py  0.86s user 0.02s system 33% cpu 2.624 total
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In this "heavy logging in loop" scenario, the scripting part is the bottleneck,
+hence the small difference between the `C++` and the `Python` program execution times.
+
+### Palanteer viewer
+
+![_](images/views.gif)
+
+The viewer has two main roles:
+- record and store the events from the execution of an instrumented program
+- display records to enable debugging, profiling, optimizing speed and memory, check behavior correctness, etc...
+
+**Recording**
+
+The 2 ways to create a record from an instrumented program are:
+ - live by remote connection with the program launched in **'connected mode'**
+ - offline by importing a .pltraw file generated with a program launched in **'file storage'** mode
+
+The viewer always listens so that launching your instrumented program in 'connected' mode is enough to connect both. <br/>
+If a direct connection is not possible nor desirable, the offline recording in file is the way to go. The event processing will occur at import time. <br/>
+Records are listed in the 'Catalog' window, per program and in chronological order. <br/>
+A nickname, which correspond to the 'build name' sent by the instrumented program, can be provided or edited to easily recall a particular one.
+
+**Views**
+
+Once loaded, a record can be visualized through any of these views:
+
+| View          | Description                                                                    | Dynamic           |
+|---------------|--------------------------------------------------------------------------------|:-----------------:|
+| **Timeline**  | Global and comprehensive display of the chronological execution of the program | Instantaneous     |
+| **Memory**    | Per thread chronological representation of the memory allocations and usage    | Instantaneous     |
+| **Text**      | Per thread text hierarchy of the recorded events                               | Instantaneous     |
+| **Plot**      | Curve plot of any kind of event                                                | Instantaneous     |
+| **Histogram** | Histogram of any event kind                                                    | Need computations |
+| **Profile**   | Per thread flame graph or array of timings, memory allocations or memory usage | Need computations |
+
+
+
+
+**Workspaces**
+
+The views arrangement, aka 'workspace', is adjustable simply by dragging window title bars or borders. <br/>
+The current workspace can be saved as a named 'template layout' in the 'View' menu and recalled later at any time.
+
+**Navigation**
+
+If you had only one key to remember, it would be:
+| Action | Description                               |
+|--------|-------------------------------------------|
+| **H key**  | Dedicated help for the window under focus |
+
+
+
+Unless not applicable or specified otherwise in the dedicated help window, the other usual actions for navigation are:
+
+| Action                           | Description                                        |
+|----------------------------------|----------------------------------------------------|
+| **H key**                        | Dedicated help for the window under focus          |
+| **F key**                        | Toggle full view screen                            |
+| **Ctrl-F key**                   | Text search view                                   |
+| **Right mouse button dragging**  | Move the visible part of the view                  |
+| **Left/Right key**               | Move horizontally                                  |
+| **Ctrl-Left/Right key**          | Move horizontally faster                           |
+| **Up/Down key**                  | Move vertically                                    |
+| **Mouse wheel**                  | Move vertically                                    |
+| **Middle mouse button dragging** | Measure/select a time range                        |
+| **Ctrl-Up/Down key**             | Time zoom                                          |
+| **Ctrl-Mouse wheel**             | Time zoom                                          |
+| **Left mouse**                   | Time synchronize views of the same group           |
+| **Double left mouse click**      | Time and range synchronize views of the same group |
+| **Right mouse click on an item** | Open a contextual menu related to the item         |
+| **Hover an item**                | Display a tooltip with detailed information        |
+
+
+**Views synchronization**
+
+Views can be 'associated' so that they  share the same time range and react to each other. This is called 'view synchronization'. <br/>
+This association is chosen in the top right combobox of the views
+
+By default, all views are associated with the Group 1 . The 'Group 2' provides a second shared focus. <br/>
+A view can also be 'Isolated' and become independant of all others.
+
+
+## Requirements
+
+Only very usual dependencies are required. <br/>
+Other dependencies are snapshotted inside this repository (see [dependencies](#thirdpartydependencies)).
+
+**C++ single-header instrumentation library**
+
+  - Compiler C++11 or above
+  - OS: Linux (32 or 64 bits) and Windows 10
+    - This list of supported platform could be extended with [additional work](more.md.html#addinganewplatformforinstrumentation)
+  - Optional requirement (for Linux only): stacktrace dump requires both libunwind and libdw
+    - On Ubuntu/Debian, just type: `sudo apt install libunwind-dev libdw-dev`
+    - On Windows, stacktrace dump works out of the box
+  - Tested processors: x86, x64, armv7l
+  - Tested compilers: gcc8+, clang7+, VS 2019
+  - MIT License (i.e. no constraint on disclosing your sources).
+
+**Python instrumentation module**
+
+  - Same requirement as the C++ instrumentation library (wrapped)
+  - CMake
+  - Python 3.7 or above
+    - As a C extension module is used, only the CPython interpreter is supported.
+  - `setuptools` Python package
+    - Usual Python packaging tool. If not present, install it with:
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+      pip install setuptools
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  - MIT License (i.e. no constraint on disclosing your sources).
+
+**Viewer**
+
+  - Compiler C++14 or above
+    - Mainly because C++11 does not have the convenient structure list initializer
+  - CMake
+  - OS: Linux 64 bits or Windows 10
+  - External dependencies: OpenGl >= 3.3, CMake
+  - Internal third party libraries (snapshot inside this repository, so just for your information), in particular:
+    - `Dear Imgui` (graphical toolkit)
+    - `zstd` (compression library)
+  - Tested compilers: gcc8., clang7+, VS 2019
+  - AGPLv3+ License  (except the lower level "platform layer" which is under the MIT License)
+
+**Python remote scripting module**
+
+  - CPython 3.7 or above
+  - `setuptools` Python package
+  - CMake
+  - Compiler C++14 or above
+  - OS: Linux 64 bits or Windows 10
+  - AGPLv3+ License
+
+
+## Performance
+
+C/C++ is a language made to juice performances from hardwares. Having an idea of the impact of the instrumentation on them is a must.
+
+For Python, this requirement is weaker because the language is interpreted.
+
+### C++ instrumentation code size, compilation speed and run-time speed
+
+Assessing the characteristics of the instrumentation library is not straightforward as it depends on the compiler, the configuration, and how the API is used. <br/>
+However, two kinds of performance indicators are provided.
+
+**1) A selection of measurements has been implemented inside the self tests** <br/>
+The "performance" test suite was run on a laptop with a Core I7 for Linux and Windows 10 .
+
+!!!
+    Results are approximates, they just give an idea on the real figures. <br/>
+    Code sizes vary with the quantization of the executable sizes. A precise measure should be based on the machine code, but it is harder to automate.
+
+The results for Linux (Debian 10, gcc) are:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+===========================================================================
+Assert (simple) code size                  | 20.0 bytes/assert            |
+Assert code size                           | 16.0 bytes/assert            |
+Assert+2 integers code size                | 80.0 bytes/assert            |
+Compilation speed (-O0)                    | 1731 event/s                 |
+Compilation speed (-O2)                    | 451 event/s                  |
+Event code size (-O2)                      | 64 bytes/event               |
+Event logging runtime                      | 6.1 ns                       |
+Palanteer code size - Context switch (-O2) | 12320 bytes                  |
+Palanteer code size - Control part (-O2)   | 28696 bytes                  |
+Palanteer code size - Total (-O2)          | 66152 bytes                  |
+===========================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The results for Windows 10 (MSVC 2019) are:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+===========================================================================
+Assert (simple) code size                  | 19.0 bytes/assert            |
+Assert code size                           | 19.0 bytes/assert            |
+Assert+2 integers code size                | 91.0 bytes/assert            |
+Compilation speed (-Od)                    | 878 event/s                  |
+Compilation speed (-O2)                    | 241 event/s                  |
+Event code size (-O2)                      | 66 bytes/event               |
+Event logging runtime                      | 4.3 ns                       |
+Palanteer code size - Context switch (-O2) | 2560 bytes                   |
+Palanteer code size - Control part (-O2)   | 40448 bytes                  |
+Palanteer code size - Total (-O2)          | 313344 bytes                 |
+===========================================================================
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some details on the test:
+ * `abcdefghij` and `i` are integers. <br/>
+ * The tested assertions are `plAssert(abcdefghij++)` and `plAssert(abcdefghij++, abcdefghij, i)`. <br/>
+ * The tested event logging is `plVar(abcdefghij)`.
+
+!!! note Synthesis
+    * The cost of a basic event logging is around 5 ns (very optimistic figure, probably due to the used small loop) for ~65 bytes of code size (on x64 instructions set)
+      * The few nanosecond time ensures that logging performances are accurate
+      * Note: it does not mean that the system is able to log 200 million event/s, the bottleneck is the event processing on server side (see next indicator).
+    * The debug compilation speed of at least ~900 event/s is acceptable even for an heavily instrumented file, especially compared to the usual C++ compilation speed.
+      * the timings with an optimized build are 4 times slower but are consistent with the global compilation slow down, nothing specific to `Palanteer`.
+    * The asserts and event logging code size and duration are roughly consistent across OSes.
+      * the core instrumentation code size is not
+
+
+**2) Another kind of run-time speed measurement is done via the launch of the provided C++ example program "`testprogram perf`" with connection to the viewer.** <br/>
+This speed measurement is closer to a real use case as it includes the event transmission, the event processing on the server side, and its real-time display by the viewer.
+
+The results for Linux (Debian 10 in a VirtualBox VM with gcc) are:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+> ./bin/testprogram perf
+Mode 'connected'
+Collection duration : 20.36 ms for 1000000 events
+Collection unit cost: 20 ns
+Processing duration : 383.57 ms (w/ transmission and server processing)
+Processing rate     : 2.607 million event/s
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The results for Windows 10 (with MSVC 2019) are:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+λ bin\testprogram.exe perf
+Mode 'connected'
+Collection duration : 26.74 ms for 1000000 events
+Collection unit cost: 27 ns
+Processing duration : 259.98 ms (w/ transmission and server processing)
+Processing rate     : 3.846 million event/s
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! note Synthesis
+    - The event logging in a "for loop" is around 25 ns in average
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+    for(int i=0; i&ltiterationQty; ++i) {
+        plBegin("TestLoop");
+        plData("Iteration", i);
+        plData("Still to go", iterationQty-i-1);
+        plEnd("TestLoop");
+    }
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    - We see that the bottleneck is clearly the server side, by a factor 10
+    - The event logging cost is roughly 30% higher on Windows than on Linux
+    - The full processing is 50% faster on Windows than on Linux, but this is probably due to the lack of CPU on Linux virtual machine (software GL renderer taking at least 1 CPU)
+
+!!! warning Important
+   In case of running out of instrumentation resources, namely free space in event collection buffer or dynamic string from the pre-allocated pool,
+   threads busy-wait until the collection thread recycles them. <br/>
+   A marker "`SATURATION`" is also inserted in the `Palanteer` collection thread to indicate the degradation of the logging quality. <br/>
+   This shall be fixed by increasing the available resources on the instrumentation side. <br/>
+
+### C++ memory usage
+
+`Palanteer` has many compile-time configuration variables to dimension the services. <br/>
+Some of them have minor effects, some of them can lead to a failed assertion when exceeding the maximum resource quantity. <br/>
+This may seem annoying but it is the price to pay to remove any interference with the observed program and give a full control on the memory footprint.
+
+!!!
+    In a desktop environment, the default values should let you have a smooth experience without tweaking them. <br/>
+    In an embdedded or memory constrained environment, the compile-time configuration variables will be precious.
+
+All the allocations are done at initialization time in `plInitAndStart`, except for the lookup which tracks the string hashes which can be resized if needed. <br/>
+The initial size of this lookup is configurable, so it is possible to prevent any reallocation if you have an estimation of the quantity of unique strings that the program will use. <br/>
+The exact unique string quantity during/after a run is available in the `plStats` structure.
+
+All allocations are freed when `plStopAndUninit` is called.
+
+The following table provides the effect of the configuration variables related to memory for the `Palanteer` services:
+| Parameter                               | Description                           | Saturation effect                 | Default value | Memory consumption                            | Memory usage with default values |
+| ---------                               | -------                               | ------                            | :-------:     | :----:                                        | :----:                           |
+| PL_IMPL_COLLECTION_BUFFER_BYTE_QTY      | Buffer size for event collection      | Busy wait                         | 5000000       | 2 * `Value`                                   | 10000 KB                         |
+| PL_IMPL_DYN_STRING_QTY                  | Pool size for dynamic string          | Busy wait                         | 1024          | `PL_DYN_STRING_MAX_SIZE` * `Value`            | 512 KB                           |
+| PL_DYN_STRING_MAX_SIZE                  | Max length of dynamic strings         | String truncation                 | 512           | (see above)                                   | -                                |
+| PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY  | Buffer size for command requests (rx) | Assertion failure at reception    | 8192          | 2 * `Value`                                   | 16 KB                            |
+| PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY | Buffer size for command response (tx) | Bad command status                | 8192          | 3 * `Value`                                   | 24 KB                            |
+| PL_IMPL_STRING_BUFFER_BYTE_QTY          | Buffer size for new strings (tx)      | Sending in multiple batches       | 8192          | 1 * `Value`                                   | 8 KB                             |
+| PL_IMPL_MAX_EXPECTED_STRING_QTY         | Initial size for unique string lookup | Reallocation                      | 4096          | 16 * first power of two above `Value`         | 64 KB                            |
+| PL_IMPL_MAX_CLI_QTY                     | Pool size for registered CLIs         | Assertion failure at registration | 128           | (64+16*`PL_IMPL_CLI_MAX_PARAM_QTY`) * `Value` | 24 KB                            |
+| PL_IMPL_CLI_MAX_PARAM_QTY               | Maximum parameter qty per CLI         | Assertion failure at registration | 8             | (see above)                                   | -                                |
+| **TOTAL**                               |                                       |                                   |               |                                               | 10638 KB                         |
+
+!!! warning
+    This table does not take into account:
+    * the `Palanteer` core code size (see [section above](#c++instrumentationcodesize,compilationspeedandrun-timespeed) for an estimation for x64 instructions set)
+    * the `Palanteer` core context (few KB)
+    * the static strings in the program under observation. Using the external string feature fully cuts out this cost.
+
+With the default values, the main cost is from far the event collection buffers. Their size allows a peak rate of ~100 K events for a collection period (around ~5 ms) so more than 15 million event/second as average. <br/>
+However, only the peak rate matters: if you have a burst of events within a few milliseconds which exceeds the buffer size, your observation will be damaged by some busy-waiting. <br/>
+If your event peak rate is smaller, the buffer size can be reduced.
+
+### Python instrumentation performance
+
+As for C++, a way to estimate the Python instrumentation run-time speed measurement can be done via the launch of the provided Python example program "`./python/testprogram/testprogram.py perf`" with connection to the viewer. <br/>
+This example program is very similar to the C++ one, as their purposes are the same: be a showcase and stimulate all instrumentation APIs. <br/>
+The main difference is the reduction of a factor 10 in the (artificial) computation loops. Time to completion cannot be compared. <br/>
+As for the C++ experiment, this one includes the event transmission, the event processing on the server side, and its real-time display by the viewer.
+
+The results for Linux (Debian 10) are:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+> > ./testprogram.py perf
+Collection duration : 723.55 ms for 1000000 events
+Collection unit cost: 724 ns
+Processing duration : 746.86 ms (w/ transmission and server processing)
+Processing rate     : 1.339 million event/s
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The results for Windows 10 (with MSVC 2019) are:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+λ .\testprogram.py perf
+Mode 'connected'
+Collection duration : 557.69 ms for 1000000 events
+Collection unit cost: 558 ns
+Processing duration : 579.26 ms (w/ transmission and server processing)
+Processing rate     : 1.726 million event/s
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! note Synthesis
+    - The event logging in a "for loop" is around 700 ns in average
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+    for i in range(loopQty):
+        plBegin("TestLoop")
+        plData("Iteration", i)
+        plData("Still to go", loopQty-i-1)
+        plEnd("TestLoop")
+    }
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    - We see that the bottleneck is the instrumentation side, for both OS
+      - Python is an interpreted language, and despite the fact that most of the logging task is done in the C extension library, it has a cost
+    - Windows results are ~30% faster than on Linux, this is probably due to the lack of CPU on Linux VM (software GL renderer taking at least 1 CPU)
+    - The logging rate of ~1.5 million event/s looks acceptable, but remember that it is program-bounded and the program shall do something else than logging...
+
+
+## Third party dependencies
+
+The instrumentation libraries have only very common dependencies which are installed with most OS:
+ - a C++11 compiler
+ - CPython 3.7+  with setuptools  (Python instrumentation only)
+
+The `Palanteer` viewer and scripting module have a bit more requirements (C++14 and only Linux 64 bits or Windows 10), but still very common. <br/>
+Its additional dependencies, listed below, are already snapshotted inside this repository so no particular action is required at installation time.
+
+
+| Dependency name                  | License type                | URL                                            | Used by           | Location in the project      |
+| ---------                        | -----------                 | ----                                           | ---               | --------                     |
+| Khronos OpenGL API and Extension | MIT                         | https://www.khronos.org/registry/OpenGL/api/GL | Viewer            | server/external/             |
+| Dear ImGui                       | MIT                         | https://github.com/ocornut/imgui               | Viewer            | server/external/imgui        |
+| stb_image                        | Public domain               | https://github.com/nothings/stb                | Viewer            | server/external/stb_image.h  |
+| Fonts 'Roboto-Medium.ttf'        | Apache License, Version 2.0 | https://fonts.google.com/specimen/Roboto       | Viewer            | server/viewer/vwFontData.cpp |
+| ZStandard                        | BSD                         | https://facebook.github.io/zstd                | Viewer, scripting | server/external/zstd         |
+| Markdeep                         | BSD                         | https://casual-effects.com/markdeep            | Documentation     | doc/                         |
+
+!!! NOTE No, the "top of tree" versions are not always the best to use... <br/>
+    Snapshotting dependencies means:
+      - easier installation and build, as these dependencies are already resolved without any user action
+      - compatibility and global functionalities are verified by the project maintainer
+      - more stability through time as no uncontrolled external change is injected in the project at random moments
+        - Using a recent version of a dependency may indeed fix some bugs in it but is also likely to introduce some new and nasty ones for the project.
+        - Not even mentioning changes on the APIs or its behavior...
+
+
+## Licenses
+
+`Palanteer` uses two different licenses, depending on the components and their inherent constraints:
+  1. Instrumentation libraries shall preserve the user's freedom to distribute their program in closed sources
+  1. Improvement on the server tooling side shall benefit to the community
+
+!!!
+    To remove any ambiguity, each folder contains the associated license and each file has a license header.
+
+The big lines are:
+
+  - `./c++`, `./python` and `./tools` are under the **MIT license**
+    - these folders contain the instrumentation libraries and helper tools
+    - This permissive license preserves developers's rights about distributing their software, even if delivered with instrumentation (modified or not).
+  - `./server/base` is also under the **MIT license**
+    - as an exception for server side, the code in this folder, if useful, can be reused in closed source projects.
+  - `./server/common`, `./server/viewer` and `./python/python_scripting` are under the **AGPL v3+ license**
+    - these parts shall benefit to the community (i.e. sources must be shared if a derivative is distributed) while free to use and modify
+    - "Affero" version of the GPL was naturally chosen to cover also the case of distribution over network
+
+!!! Tip
+    To be extra clear:
+      - when instrumenting a program with `Palanteer`, there is **no constraint to open the source code** of a program if distributed (instrumentations are under MIT license)
+      - on the other side, any modification or reuse of the server code (viewer or scripting module) is subjected to the AGPL v3+ license, if distributed
+
+
+<h1> @@ <a href="getting_started.md.html">Getting started</a> </h1>
+<h1> @@ <a href="base_concepts.md.html">Base concepts</a> </h1>
+<h1> @@ <a href="instrumentation_api_cpp.md.html">C++ Instrumentation API</a> </h1>
+<h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>
+<h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>
+<h1> @@ <a href="scripting_api.md.html">Scripting API</a> </h1>
+<h1> @@ <a href="more.md.html">More</a> </h1>
+
+
+<script>markdeepOptions = {tocStyle:'long', definitionStyle:'long'};</script>
+<link rel="stylesheet" href="palanteer.css">
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

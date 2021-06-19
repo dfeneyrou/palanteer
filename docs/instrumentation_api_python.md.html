@@ -1,0 +1,532 @@
+                   <meta charset="utf-8" emacsmode="-*- markdown -*-">
+       **Look into Palanteer and get an omniscient view of your program**
+            Improve software code quality - C++ and Python
+
+
+<h1> @@ <a href="index.html">Overview</a> </h1>
+<h1> @@ <a href="getting_started.md.html">Getting started</a> </h1>
+<h1> @@ <a href="base_concepts.md.html">Base concepts</a> </h1>
+<h1> @@ <a href="instrumentation_api_cpp.md.html">C++ Instrumentation API</a> </h1>
+<h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>
+<h1> @@ <a href="#">Python Instrumentation API</a> </h1>
+
+
+This chapter describes the Python instrumentation API from the module `palanteer`.
+
+## Initialization
+
+### Automatic instrumentation without code modification
+
+It is possible to use automatic instrumentation of unmodified python code, exactly as it is done for the `cProfile` module.
+
+The syntax is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+python -m palanteer [options] &lt;Python program&gt;
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It automatically instruments:
+  - the function entering/leaving (Python and C)
+  - the raised exceptions
+  - the garbage collector activations
+  - the memory allocations (OS calls)
+
+It does not instrument:
+ - the locks
+ - the values of variables
+
+The full usage is obtained with `python -m palanteer`:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+&gt; python3 -m palanteer
+Palanteer profiler usage:
+
+Either:
+
+ 1) With code instrumentation: insert a call to palanteer.plInitAndStart(app_name, ...) in your main function.
+     See Palanteer documentation for details.
+     Manual instrumentation can provide much more information (data, locks, ...) than just the automatic function profiling.
+
+ 2) With unmodified script:  'python -m palanteer [options] &lt;your script&gt;'
+     This syntax is similar to the cProfile usage. No script modification is required but only the function timings and exceptions are profiled.
+
+Options for case (2):
+ -s &lt;server IP address&gt; Set the server IP address (default is 127.0.0.1)
+ -p &lt;server TCP port&gt;   Set the server port       (default is 59059)
+ -f &lt;filename.pltraw&gt;   Save the profiling data into a file to be imported in the Palanteer viewer (default=remote connection)
+ -nf                    Do not automatically log the functions              (default=log functions)
+ -ne                    Do not automatically log the exceptions             (default=log exception)
+ -nm                    Do not log the memory allocations                   (default=log memory allocations)
+ -ng                    Do not automatically log the garbage collector runs (default=log gc)
+ -nc                    Do not automatically log the C functions            (default=both python and C functions)
+ -w                     Wait for server connection (Palanteer viewer or scripting module). Applicable only in case of remote connection.
+
+Note 1: in case of connection to the server and -w is not used and no server is reachable, profiling is simply skipped
+Note 2: on both Windows and Linux, context switch information is available only with root privileges (OS limitation)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plInitAndStart
+
+This function initializes and starts the Python instrumentation service.
+
+Only the name of the application is mandatory. It allows the viewer to group the records for the same application together. <br/>
+By default, the service is in the remote connection mode. If the `record_filename` is not empty, it switches to the
+file storage mode (no remote connection) with this file name. <br/>
+The expected extension is `.pltraw`, it is added if not present.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+def plInitAndStart(app_name,                                   # Name of the program (mandatory)
+                   record_filename = None,                     # Name of the record file. If not empty, the mode is "storing on file". Default is remote connection
+                   build_name      = None,                     # Build name (optional). Visible in the viewer as a nickname.
+                   server_address  = "127.0.0.1",              # Server IP address (server=viewer or scripting module)
+                   server_port     = 59059,                    # Server port
+                   do_wait_for_server_connection = False,      # If True, this call blocks until a remote connection is established
+                   with_functions  = True,                     # If True, function entering and leaving are automatically instrumented (Python and C)
+                   with_exceptions = True,                     # If True, exception are automatically instrumented (as a marker)
+                   with_memory     = True,                     # If True, the memory allocations/deallocations are logged
+                   with_gc         = True,                     # If True, garbage collection is automatically instrumented (as a lock)
+                   with_c_calls    = True                      # If True, the C calls are logged. Set it to False if builtins calls are too verbose
+                   )
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of call:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+plInitAndStart("Tetris", do_wait_for_server_connection=True)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In case of monitoring a program in production, it is recommended to:
+  - disable the automatic function instrumentation `with_functions=False` in order to remove most of the logging performance impact
+  - manually instrument the important scopes and data
+  - use scripting to implement or pipe into your monitoring tool
+
+Almost all memory allocations of the `Palanteer` services are done in this function. For details, refer to the section [memory usage](index.html#c++memoryusage).
+
+!!!
+    `plInitAndStart` is supposed to be called at most once per program execution, next calls are ignored. It may be called again after `plStopAndUninit`. <br/>
+    Once started, the event collection is always running until the service is stopped. <br/>
+    All resources are freed when calling the associated function `plStopAndUninit` below.
+
+!!! warning Important
+    The `with_c_calls` variable controls the automatic logging of functions implemented in C, which includes many intensively used builtin ones like `print`, list `append` etc... <br/>
+    If not really useful, it may be worth considering turning it off, to reduce the resource usage (CPU, network and record size).
+
+
+### plStopAndUninit
+
+This function stops and uninitializes the Python instrumentation service. It is typically called before exiting the program.
+
+  - It flushes to the server the last collected events, up to this call
+  - It properly stops the `Palanteer` threads
+  - It cleans the resources (i.e. threads and memory)
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+def plStopAndUninit()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    If not called explicitely before exiting the program (case of a crash, or simply not called at all), the service stopping is performed implicitely, unless the process is hard-killed.
+    This behavior ensures that all last events are properly recorded, which is critical in case of crash.
+
+
+## Structure logging
+
+### plDeclareThread
+
+A thread can be given a name, at any moment during the recording, so that:
+  - it is easier to recognize
+  - it has a persistent identifier which makes scripting more reliable
+
+The default name is "`Thread N`" with `N` the integer thread order of appearance (so may differ from run to run).
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+def plDeclareThread(threadName)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+plDeclareThread("Worker 1")
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Threads can be grouped by prefixing the thread name with a group name, separated with "/" (similar to UNIX pathname). <br/>
+Only one hierarchical level is accepted.
+
+Some example of thread grouping:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Important: Calls here are purely for explanation. plDeclareThread shall of course be called in its respective thread
+
+# Standalone thread, not in a group
+# (Called in a thread)
+plDeclareThread("Render")
+
+
+# The calls below implicitely define a group "Workers" which contains 3 threads
+
+# (Called at the start of another thread)
+plDeclareThread("Workers/Worker 1")
+
+# (Called at the start of yet another thread)
+plDeclareThread("Workers/Worker 2")
+
+# (Called at the start of yet another thread)
+plDeclareThread("Workers/Worker 3")
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plBegin and plEnd
+
+These two functions are used together, they define an explicit start and end of a scope. A scope is a timestamped chunk of a hierarchical level.
+
+The provided name of the scope shall be the same for both calls, so that any mismatch can be detected on the server side.
+
+!!! warning
+    This API shall be used with caution. <br/>
+    For instance, missing a `plEnd` call, typically in a multiple exit function, leads to a broken hierarchical data tree structure. <br/>
+    Also, interlaced scoped leads to mismatching "begin" and "end". <br/>
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Declares the start of a scope with the provided name
+plBegin(name)
+
+# Declares the end of a scope with the provided name
+# The name shall match the begin name, so mismatchs can be detected on viewer side and lead to warnings
+plEnd(name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some Pythonic structures are derived from these functions:
+
+
+**1) `plFunction` is a decorator which instruments the entering and leaving of the function**
+
+  - This is a safe way to manually instrument a selection of functions
+  - If automatic function instrumentation is enabled, it turns into a no-operation
+
+Example:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+@plFunction
+def fibonacci(root_number):
+  ...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**2) `plScope` is a context manager, to use with the `with` keyword**
+
+  - This is a safe way to manually instrument a part of a function
+  - It is best used when automatic function instrumentation is disabled
+    - Indeed, in this case the calls to the 3 APIs of the context manager (`__init__`, `__enter__` and `__leave__`) are visible
+
+Example:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+    with plScope("Temporary"):
+        ...
+
+    (continue the program)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+## Data logging
+
+The instrumentation in this chapter logs string or data of any numeric type inside the current scope.
+
+!!! warning Important
+    Such events **must** be located inside a scope, never at the tree root. <br/>
+    Indeed, they carry only the logged data and are not timestamped.
+
+Such events can be visualized in the viewer under several forms: text, curve or histogram. <br/>
+They can optionaly be associated to an `unit` by ending the event name with `##<unit>`:
+  * The unit is stripped from the name, it is not displayed
+  * The unit increases the semantic of the events and make is more useful for the users
+  * Only events with consistent units can be plotted together.
+  * "hexa" is a special and hardocded unit which displays integer in hexadecimal
+
+Ex: `"Duration##nanosecond"`,  `"pointer##hexa"`, `"Banana##fruit"`
+
+!!! note Reminder:
+    As only string hash are considered, the unit declaration is part of the unique identifier for an event.
+
+
+### plData
+
+This function logs a named numerical value.
+
+The type of the value can be any integral types plus float, double and string (processed as dynamic string).
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Logs a named string or numerical value
+plData(name, value)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python+
+a = 15
+c = "I am a string"
+
+plData("my value A", a)
+plData("Truncated PI", 3.14159265359)
+plData("Dynamic string", c)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### plMarker
+
+This function logs a marker in the form of a timestamped message associated to a category.
+
+A marker refers to an outstanding event that shall be highlighted and searchable. <br/>
+Markers also possess an user-defined attribute "category" for efficient filtering. <br/>
+
+!!! warning
+    To be effective, markers shall be used with moderation. All depends on your definition of "outstanding event". <br/>
+    Beware that too many of them might mask the truly important ones.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Add a marker with a string message
+plMarker(category, msg)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# String message
+plMarker("error", "Very weird but recoverable case occured")
+
+# Another message
+plMarker("input", "Key '%c' pressed" % c)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Markers are typically displayed so that they are easily visible. <br/>
+In the viewer:
+
+ - a dedicated marker window provides filtering capabilities both on threads and categories, so that it is easy to jump to the marker context
+ - an indicator is visible for each marker on top of the timeline for the associated thread
+
+
+
+## Lock logging
+
+The instrumentation in this chapter logs actions performed on locks (as a general term).
+
+The usage of locks in multithreaded environment can deeply modify the dynamic behavior. <br/>
+Visualizing them becomes critical in complex programs, that is why a specific diagram in the viewer helps identifying the bottlenecks across threads.
+
+The lock API is "low level" so that it adapts to many existing lock primitives (mutex, semaphores, Event...), at the price of some less automatic instrumentation work.
+
+!!!
+    The locking process has two different phases:
+     - waiting for the lock: the wait for lock is started, then ended with a positif or negative outcome
+     - using the lock: the lock is first taken, then released.
+
+### plLockWait
+
+The locking process usually starts with waiting for the lock. <br/>
+This function logs this first step.
+
+When the wait ends, `plLockState(...)` or `plLockScopeState(...)` **must** be called to set both:
+
+  - the end of the waiting phase
+  - the state of the lock: `true` if the lock is taken, or `false` if not.
+
+!!!
+    This "lock wait" information is crucial in a multithreaded program so it should be instrumented thoroughfully.
+
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Set the start of waiting for a lock
+plLockWait(lock_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage for a pthread mutex lock:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+plLockWait("Database access")          # Start waiting for the lock named "Database access"
+database_lock.acquire()
+plLockState("Database access", True);  # >>> Do not forget this call! <<<  Lock is taken (see next section)
+...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plLockState
+
+This function is involved in both phases of the locking process. <br/>
+Its main role is to set the state of the lock usage:
+
+  - `True`  state means the lock is taken by the thread
+  - `False` state means the lock is released (or not used) by the thread
+
+Its other and implicit role is to **mark the end of the waiting process** (if it was started previously), whatever the lock state value.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Set the lock state
+plLockState(lock_name, lockUseState);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! tip
+    `plLockState` **must** be called just after the end of the waiting phase, if any, to mark its end
+
+!!! tip
+    `plLockState` shall be placed just **before** "unlock" call, so that there is no race condition on the logging which inverse events chronology.
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+...
+# Lock is released
+plLockState("Database access", False); # Lock is released (log before the release call)
+database_lock.release()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plLockNotify
+
+This function logs a notification or a "post" on a lock. <br/>
+It has no direct effect on the lock state.
+
+It typically matches the behavior of a `threading.Event.set()` call, or a semaphore post.
+
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Log a lock notification
+plLockNotify(lock_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! tip
+    `plLockNotify` shall be placed just **before** "notification" call, so that there is no race condition on the logging which inverse events chronology.
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+wait_event = threading.Event()
+...
+
+if shall_wake_the_task:
+    plLockNotify("Task wait")            # Notify the "Task Wait" lock (linked to a condition variable)
+    wait_event.set(1)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+## CLIs
+
+"CLIs" (Command Line Interface) are functions inside the instrumented program that can be called remotely and with parameters.
+
+
+### plRegisterCli
+
+This function registers a CLI. <br/>
+It requires a [CLI handler](#clihandler), the name of the CLI, the [CLI parameter specification](base_concepts.md.html#cliparameterspecification) and a user description.
+
+The name of the command shall not contain spaces. The user description is purely for documentation purpose. 
+
+!!!
+    CLIs can be registered before the instrumentation service is initialized. <br/>
+    This is even recommended in order to remove any potential race condition about calling a not yet registered CLI.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+plRegisterCli(cli_handler,               # A function with a prototype compatible with the parameter specification
+              name,                      # The name of the command. No space allowed
+              param_specification,       # The specification string of the parameters
+              description                # The description of the command, for users
+              )
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of CLI registration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+def set_bounds_cli_handler(minValue, maxValue):
+    ...
+
+plRegisterCli(set_bounds_cli_handler, "config:setRange", "min=int max=int", "Sets the value bounds of the random generator");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### CLI handler
+
+A CLI handler is a function triggered remotely that interacts with the controlled program. <br/>
+It accepts typed parameters among integer, float or string and returns a status and a text.
+
+The prototype of the CLI handler matches the declared parameter specification when registered. <br/>
+The returned values shall be a tuple (status, text_answer):
+  - status is 0 for success, 1 for error
+  - text_answer is a string. In case of error status, it is advised to use text_answer to provide an explanation.
+
+
+An example of CLI handler named `config:setRange` declared with the parameter spec "`min=int max=int`" is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Handler (=implementation) of the example CLI
+def set_bounds_cliHandler(minValue, maxValue):
+    global globalMinValue, globalMaxValue
+    if minValue>maxValue:
+        # Not allowed case, the CLI execution has failed. The text answer contains some information about it
+        return 1, "Minimum value (%d) shall be lower than the maximum value (%d)" % (minValue, maxValue)
+
+    # Modify the state of the program
+    globalMinValue = minValue
+    globalMaxValue = maxValue
+    # CLI execution was successful. Text is empty as our CLI does not generate any output
+    return 0, ""
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+And a way to call it from a Python script with the `Palanteer` scripting module is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+palanteer_scripting.program_cli("config:setRange min=300 max=500")
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+## Troubleshootings
+
+**CMake installs the Python modules locally, just for my user. I want it to be for all users**
+
+Indeed, CMake installation is local so that there is no need for administrator privilege during standard build.
+
+To install it for all users, just do manually what CMake is doing but:
+  - as root / administrator
+  - without the "--user" flag at the end of the installation command
+
+For Linux, from the `Palanteer` root folder:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+cd python
+sudo python3 setup.py install
+cd ../server/scripting
+sudo python3 setup.py install
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For Windows, from the `Palanteer` root folder, in an "administrator console":
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+cd python
+python setup.py install
+cd ..\server\scripting
+python setup.py install
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Automatic logging really slows down my program, how can I improve this?**
+
+There is at least 2 things to try:
+ 1. Automatic instrumentation logs all builtin functions, usually implemented in C, like `print`, `list.append`, etc... <br/>
+    A tight loop using such functions during some time can stress the logging ressources (CPU and network). <br/>
+    If this information is not critical, disabling the C functions instrumentation can help, with `with_c_calls=False` in the call to `plInitAndStart`.
+ 1. To get a full control and very low overhead, just disable the automatic logging of functions with `with_functions=False` in the call to `plInitAndStart`.
+    Then manually instrument your program on the interesting locations with `plBegin`, `plEnd` and `@plFunction`.
+
+**I manually instrumented my program, how can I share it without forcing users to install Palanteer?**
+
+For this particular purpose, the small module `./tools/palanteer_stub.py` implements all APIs as a no-operation. <br/>
+All Palanteer module import shall be done this way with the `palanteer_stub.py` file accessible:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+try:
+    import palanteer
+except ModuleNotFoundError:
+    import palanteer_stub as palanteer  # Fallback with empty functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+or
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+try:
+    from palanteer import *
+except ModuleNotFoundError:
+    from palanteer_stub import *  # Fallback with empty functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If `Palanteer` is not installed, this imports empty functions as a fallback.
+
+
+<h1> @@ <a href="scripting_api.md.html">Scripting API</a> </h1>
+<h1> @@ <a href="more.md.html">More</a> </h1>
+
+
+<script>markdeepOptions = {tocStyle:'long', definitionStyle:'long'};</script>
+<link rel="stylesheet" href="palanteer.css">
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

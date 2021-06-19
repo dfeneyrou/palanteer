@@ -1,0 +1,444 @@
+                   <meta charset="utf-8" emacsmode="-*- markdown -*-">
+       **Look into Palanteer and get an omniscient view of your program**
+            Improve software code quality - C++ and Python
+
+
+<h1> @@ <a href="index.html">Overview</a> </h1>
+<h1> @@ <a href="getting_started.md.html">Getting started</a> </h1>
+<h1> @@ <a href="#">Base concepts</a> </h1>
+
+
+## C++ specific
+
+### Groups
+
+**Groups** provide the compile-time ability to keep or remove a selection of `Palanteer` directives. <br/>
+Their effect applies both on instrumentation and assertions, as if they were tagged for selection.
+
+A group is simply defined as a preprocessor constant starting with **`PL_GROUP_`** with the value 0 (disable) or 1 (enabled).
+
+Most `Palanteer` commands have an equivalent using groups.]
+Their prefix is then **`plg`** and their first parameter is the group name without the prefix.
+
+
+Example (supposing by default that the compilation flags USE_PL=1 and PL_NOEVENT and PL_NOASSERT are not set to 1):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Defines the group ITERATOR
+#define PL_GROUP_ITERATOR 1
+
+// This instrumentation is present in the code
+plData("Monster health", health);
+
+// This instrumentation is present in the code only if PL_GROUP_ITERATOR is 1
+plgData(ITERATOR, "Detailed monster health", health);
+
+
+// This assertion is present in the code
+plAssert(health>=0);
+
+// This assertion is present in the code only if PL_GROUP_ITERATOR is 1
+plgAssert(ITERATOR, health>=0);
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! warning
+    Once used in any `Palanteer` call, this constant **must be defined**. If not, the C++ preprocessor rants like hell...
+
+!!! Tip
+    A disabled group (value 0) means that the code is fully removed at compile-time and has a zero run-time cost.
+
+Several group configuration strategies are discussed [here](instrumentation_configuration_cpp.md.html#configurationstrategies)
+
+### Static and dynamic strings
+
+In `Palanteer` each string in the instrumentation is hashed.
+
+  * When the hashing is performed at compiled time, the string is called "static"
+    * For C++, the corresponding constraint is: "the C string is _constexpr_"
+  * When the hashing is performed at run time, the string is called "dynamic"
+    * Obviously with a run-time cost
+
+Static strings have almost the same run-time cost as a numerical value because only their hash is used. <br/>
+The delta is one hashtable query and the string content sending once to the server if the "external strings" feature is not used.
+
+The run-time differences between both types of strings are:
+
+  * Dynamic strings content is copied during the function call, static strings have just their pointer copied
+     * Because the content pointed by the static strings is persistent (read-only section)
+  * Dynamic strings are hashed at run time, static strings have pre-computed hash at compile time
+
+Some instrumentation functions have both a static and a dynamic string version (with suffix "Dyn").
+
+  * `plDeclareThread` and `plDeclareThreadDyn`
+  * `plFunction` and `plFunctionDyn`
+
+
+Unless with the explicit prefix "Dyn", the strings are expected to be static. The exception is `plData` which is a multi-type logging function which accepts numerical values and dynamic strings. Functions with parameters `name` and `value` expect `name` to be static.
+
+Some examples:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Text logging
+plText("Phase one reached"); // Static string
+
+// Text logging
+constexpr const char* myConstExprString = "I am a static string because constexpr";
+plText(myConstExprString); // OK, as myConstExprString is "constexpr"
+
+// Text logging
+const char* myConstString = "I am not a static string";
+plTextDyn (myConstString); // Dynamic string API required because not constexpr. "const" is not enough for compile time processing.
+
+// Data logging (numeric or string)
+plData("Status", myConstString); // plData always considers the value string as dynamic, so it is hashed at run-time.
+
+// Function scope logging
+plFunction();    // Works only for some recent compilers, see warning in plFunction API description
+plFunctionDyn(); // Always works but uses a dynamic string
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! error
+    Tens of preprocessor and compiler errors are triggers if a static string API is used instead of  a dynamic one. These errors usually start with:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+    palanteer.h: error: "string variable" is not a constant expression
+     | #define PL_STRINGHASH(s) plPriv::forceCompileTimeElseError_ < plPriv::fnv1a_(s,PL_FNV_HASH_OFFSET_) > ::compileTimeValue
+     ...
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    In that case, just switch to the "Dyn" variant.
+
+A noticeable point is that only the static strings can be obfuscated/removed by the "external strings" feature because of the compile-time processing. <br/>
+Always prefer static strings whenever you can.
+
+Some non-trivial use-cases can somehow be covered by static strings with some changes:
+
+  - Using an array of static strings with a run-time selection of the index: see next section about [plString_t](#plstring_t)
+  - Having a dump similar to printf: use a scope and lay the values inside
+    - indeed the formatting is not equivalent, but the semantic is.
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Target form
+printf("The monster with index %d has a health of %f %%\n", monsterIndex, monsterHealth);
+
+// Static string form
+{
+    plScope("Monster");
+    plData("index", monsterIndex);
+    plData("health##percent", monsterHealth);
+}
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plString_t
+
+`Palanteer` defines an helper struct `plString_t` which is an explicit association of a static string and a hash.<br/>
+When the "external string" feature is active, the string is stripped at compile time and only the hash remains.
+
+`plString_t` basically decorrelates the known-at-compile-time string declaration from its usage so that it is possible to benefit of the "external string" feature despite a dynamic choice.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Full definition of the plString_t helper
+struct plString_t {
+    plString_t(void) = default;
+    plString_t(const char* value_, plPriv::hashStr_t hash_) : value(value_), hash(hash_) {}
+    const char*       value; // May be null (case of external strings)
+    plPriv::hashStr_t hash;  // Zero means no hash precomputed
+};
+
+// Function (equivalent C++ prototype of the macro) that must be used to create a plString_t
+plString_t plMakeString(constexpr const char* string);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+`plString_t` shall always be constructed through `plMakeString` so that the string hash is properly computed. <br/>
+It can then be used in any `Palanteer` function where a dynamic string is expected but benefit from static string performances.
+
+!!! warning
+    Ideally, the static and dynamic string APIs should be one and unique, but it is not possible in C++ due to the limited `constexpr` discrimination for parameters (see details [here](#usageofmacrosinthec++instrumentationlibrary)). <br/>
+    For the same technical reason, the "Dyn" API variant is the only possible one to accept a `plString_t`.
+
+Example:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Array of static strings. Their hash is precomputed at compile-time.
+plString_t monsterNames[3] = { plMakeString("Orc"), plMakeString("Dragon"), plMakeString("Bunny") };
+
+// plData processes the plString_t as a static string because the string hash is already computed at compile-time.
+// If it were a simple "const char*", it would be processed as a dynamic string because not "constexpr".
+plData("monster name", monsterNames[monsterIdx]);
+
+// All dynamic logging function work with the behavior and performance of a static string when provided a plString_t
+plMarkerDyn("Killed", monsterNames[monsterIdx]);
+plScopeDyn(monsterNames[monsterIdx]);
+plDeclareThreadDyn(monsterNames[monsterIdx]);
+plLockWaitDyn(monsterNames[monsterIdx]);
+...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    `plString_t` can also be used outside of `Palanteer` instrumentation if you find some interest in compile-time hashed strings. <br/>
+    But be aware that in case the "external string" feature is enabled, the string content is not available (null `value` pointer)
+
+### Manual scopes
+
+Two different ways to create a scope, i.e. a start and end events defining a timed named zone, are described in the [instrumentation API reference for hierarchical structure](instrumentation_api_cpp.md.html#structurelogging):
+
+ - explicit end: with `plBegin(...)` to mark the start of the scope and `plEnd(...)` to mark its end.
+ - implicit end: with `plScope(...)`, which is equivalent to a `plBegin()` associated to an automatic `plEnd()` at the end of the C++ scope (RAII defer property).
+
+The automatic closing of the `plScope(...)` function makes it much safer to use as it enforces the hierarchical constraints:
+
+   - a `plScope(...)` is always closed
+   - a `plScope(...)` cannot create interlaced scopes
+
+The parameter `name` provided inside `plEnd(name)` is only used to detect a mismatch on server side. The viewer reports such errors which highlight a corruption of the instrumentation. <br/>
+The typical errors are:
+
+- closing or opening scopes "too much"
+  - breaks the hierarchical structure of the data. An indicator is some mismatching "start" and "end" events.
+- interlaced scopes
+  - example of interlacing error: `plBegin("A")` ==> `plBegin("B")` ==> `plEnd("A")` ==> `plEnd("B")` <br/>
+    The scope would be understood as `plBegin("A")` ==> `plBegin("B")` ==> `plEnd("B")` ==> `plEnd("A")`, and two errors (double mismatch) reported on server side.
+
+As a summary, `plBegin(...)` and `plEnd(...)` are sometimes convenient but be careful when using them instead of `plScope(...)`.
+
+!!! info
+    The rules are:
+
+      - If the displayed data structure reaches the maximum hierarchical level, just check if you did not forget some `plEnd(...)` calls. <br/>
+      - If the displayed data structure seems to miss some levels or stuck at the top level, just check that you do not have extra `plEnd(...)` calls. <br/>
+      - And in any case, do not let an instrumentation error without corrective action. Looking at them should prevent all issues.
+
+!!! warning
+    Providing an empty name as in `plEnd("")` is accepted for convenience and acts like a wildcard. <br/>
+    But it is more dangerous as no error is detected in case of mismatch.
+
+### Event collection mechanism
+
+Collecting events must be as light as possible. Indeed, the instrumentation shall not ruin the timing observations. <br/>
+That is why it respects these constraints:
+
+  - no memory allocation allowed
+    - they mess up the program memory observation, are CPU heavy, may flush part of the cache and have unpredictable timings
+  - only fast and simple processing
+    - basically storage
+  - lock-free
+    - use of atomic types
+    - no blocking unless buffer overflows, and in this case a mark shall be added in the record
+
+The implication is that the task to send these events to the server is performed in a dedicated `Palanteer/Transmission` thread (hence the multi-thread requirement). <br/>
+The used scheme is a double storage banks:
+
+  - one bank is currently filled by the instrumentation
+  - the other (already filled) is sent to the server then available for swapping
+
+Each bank is represented by a buffer of the size [`PL_IMPL_COLLECTION_BUFFER_BYTE_QTY`](instrumentation_configuration_cpp.md.html#pl_impl_collection_buffer_byte_qty). <br/>
+The collection thread checks regularly (~5 ms) if either:
+
+  * the current filled bank is filled at least at 1/8 of its capacity
+  * the current filled bank is non empty and the last sending was at least some time ago (value controled by the server)
+
+In this case, it swaps the banks atomically and process the previously filled bank.
+
+!!! Warning
+   If the collection buffer size is too small to receive all generated events during the ~5 ms harvesting period, the event logging command busy-waits until the next bank swap.<br/>
+   As the timing of the program is altered, a marker is forced inside the `Palanteer\Transmission` thread:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plMarker("SATURATION", "EVENT BUFFER IS FULL. PLEASE INCREASE ITS SIZE FOR CORRECT MEASUREMENTS");
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   If this marker is present, the value of [`PL_IMPL_COLLECTION_BUFFER_BYTE_QTY`](instrumentation_configuration_cpp.md.html#pl_impl_collection_buffer_byte_qty) shall be increased. <br/>
+   Note that the default value (1 MB) is dimensioned for an average of more than 3 million events per second, knowing that only the "peak rate" on these 5 ms matters.
+
+
+Some more information:
+
+  - `Palanteer` creates 2 threads
+    - `Palanteer\Transmission` collects event and send them to the server
+    - `Palanteer\Reception` receives commands from the server
+    - a third one `Palanteer/winTraceLogger` is created only on Windows if the OS context switch collection is enabled
+  - the group `PL_VERBOSE` (enabled by default) controls the event logging of the `Palanteer` threads
+  - the dynamic strings are preallocated and if the pool is depleted during a collection cycle, then the same process than the buffer overflow is applied: the thread busy-waits and an explicit marker is recorded.
+    - in this case, the value of [`PL_IMPL_DYN_STRING_QTY`](instrumentation_configuration_cpp.md.html#pl_impl_dyn_string_qty) shall be increased.
+
+
+
+## Python specific
+
+### Manual scopes
+
+In Python, all function entering or leaving is automatically instrumented by default.
+
+More scopes, i.e. a start and end events defining a timed named zone, can be manually added with `plBegin(&lt;name&gt;)` to mark the start of the scope and `plEnd(&lt;name&gt;)` to mark its end.
+
+The string parameter `name` provided inside `plEnd(&lt;name&gt;)` is only used to detect a mismatch on server side. The viewer reports such errors which highlight a corruption of the instrumentation. <br/>
+The typical errors are:
+
+- closing or opening scopes "too much"
+  - breaks the hierarchical structure of the data. An indicator is some mismatching "start" and "end" events.
+- interlaced scopes
+  - example of interlacing error: `plBegin("A")` ==> `plBegin("B")` ==> `plEnd("A")` ==> `plEnd("B")` <br/>
+    The scope would be understood as `plBegin("A")` ==> `plBegin("B")` ==> `plEnd("B")` ==> `plEnd("A")`, and two errors (double mismatch) reported on server side.
+
+!!! info
+    The rules are:
+
+      - If the displayed data structure reaches the maximum hierarchical level, just check if you did not forget some `plEnd(...)` calls. <br/>
+      - If the displayed data structure seems to miss some levels or stuck at the top level, just check that you do not have extra `plEnd(...)` calls. <br/>
+      - And in any case, do not let an instrumentation error without corrective action. Looking at them should prevent all issues.
+
+!!! warning
+    Providing an empty name as in `plEnd("")` is accepted for convenience and acts like a wildcard. <br/>
+    But it is more dangerous as no error is detected in case of mismatch.
+
+The Python language offers some ways to mitigate this risk (see [plBegin and plEnd](instrumentation_api_python.md.html#plbeginandplend) for template code):
+ - using the `with` statement, which is a RAII construct
+ - using a function decorator, in case automatic function instrumentation is disabled
+
+### Event collection mechanism
+
+The python instrumentation module wraps the C++ instrumentation library, the event collection mechanism is identical. <br/>
+Please refer to the [C++ event collection mechanism](#baseconcepts/c++specific/eventcollectionmechanism) for details.
+
+
+However, Python is a higher level and interpreted language which implies that:
+  - it requires less control on the hardware
+  - the maximum logging rate is lower than in C++
+  - more dynamic strings are used as the concept of "static string" does not exist in Python
+
+The inner C++ instrumentation library is configured once for all, taking these points into consideration. <br/>
+There is no configuration parameters for the Python instrumentation module.
+
+
+## Event logging
+
+### Unique strings and event kinds
+
+The design of `Palanteer` leverages redundancies, notably:
+  - strings whose identical content can be logged many times
+  - events which are positioned at the same place in the hierarchical logging tree.
+
+All strings are hashed as early as possible. This enables efficient string unicity check. <br/>
+Each unique string is assigned an integer ID, and is processed and stored only once.
+
+Each event is intrinsically associated to a "path" in the hierarchical logging tree, composed by the name of all "parent scope events", for a given thread. <br/>
+This association is what defines an "event kind", all its values can be viewed and manipulated as a whole.
+
+### Structured logging is preferred
+
+A typical log (taken from Linux /var/log/auth.log) looks like:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+May 30 00:21:51 laptop sudo: pam_unix(sudo:session): session opened for user root by (uid=0)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+While the message is human readable, it bundles several parts with different semantics:
+ - the date
+ - the machine name
+ - the executable
+ - a text message
+ - a user ID
+
+While simple, this log is sub-optimal in many ways:
+ - generating the log requires a string formatting call
+ - each time the same kind of event happens, a very similar but different string will be logged
+ - no easy manipulation can be done with it without parsing and decomposing it by semantic parts
+ - no easy association can be done in a serie of such logs
+
+The preferred approach in `Palanteer` is to log per semantic parts:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+{
+    plScope("session opened for user root");  // Timestamped event, its end is also logs at the end of the C++ scope
+    plData("machine", "laptop");
+    plData("executable", "sudo");
+    plData("by uid", 0);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ - The cost on the network is bit higher in this example (the example text log is 92 characters long, the structured log is 5*24=120 bytes)
+ - The CPU cost is much lower (~5*20ns) as no string allocation (all static strings) nor formatting call are required
+ - All string contents are sent once, only their ID is sent the next times
+ - All 4 fields can be directly plotted, have an histogram, be used as a filter, etc...
+
+!!!
+    In C++, `plMarkerDyn` exceptionally accepts a printf-like syntax, both for convenience and because a marker is supposed to be scarce
+
+
+## Command Line Interface
+
+CLIs are remotely executable functions which accept typed parameters. <br/>
+Their typical usage, via Python scripts, is remote configuration, data injection or any stimulation of a program.
+
+Specifying a CLI just requires the handler (=called function) and 3 strings:
+  - the command name (no space allowed)
+  - the parameter specification (see below)
+  - a description, read by users
+
+The following subsections describe the specification of the CLI parameters (used inside the instrumented program), and the CLI command itself (used inside a script).
+
+
+### CLI parameter specification
+
+The CLI parameter specification is a string which fully defines the input parameters of a CLI. <br/>
+It contains the list of named parameters with their type and their optional default value.
+
+This specification is a space separated concatenation of `&lt;parameter name&gt;=&lt;type&gt;`. <br/>
+The type is among `integer`, `float` or `string`, optionally followed by a default parameter inside double brackets as `[[&lt;default value&gt;]]`.
+
+Examples of parameter specification:
+ * "`first=int second_param=float third=string`"
+ * "`first=int second_param=float[[-3.14159265359]] third=string[[default string, and we can use space]]`"
+ * ""    (empty)
+ * "`msg=string`"
+
+The syntax and content of the CLI parameter specification is verified when the CLI is registered. <br/>
+Any misusage triggers a failed assertion with explanation.
+
+
+### CLI command
+
+The CLI command is a request string (in a script) which contains a CLI name followed by parameter values (if any) and corresponds to an intend of remote function execution.
+
+The parameters values are a space separated concatenation of `&lt;parameter name&gt;=&lt;value&gt;`
+
+  * the parameter order does not matter
+  * the parameter name can be partial as long as it is not ambiguous
+    * ex: `mi` is ok for the parameter spec "`min=int max=int`" but `m` is not
+  * `value` shall be compatible with the declared type in the CLI parameter specification
+  * parameters without a default value are mandatory, they must have a provided value in the CLI command
+  * `string` values cannot contain a space (so are a "word") unless inside a double bracket just after the equal sign
+    * ex: `param=apple` and `param=[[many fruits]]`
+
+!!! note Rational of the string syntax
+    The direct syntax is matching the enumeration case. Supporting a space-containing string introduces the question of the separator. <br/>
+    One usage of such string is forwarding external CLI commands (not `Palanteer` one) to the program, and quotes signs (simple or double) may be used in that case. <br/>
+    The double bracket were chosen as a a trade-off, as they have a low occurence probability in such context, and are human readable.
+
+Valid examples of CLI commands, for the CLI:
+  - named "`my::command`"
+  - declared with the parameter spec "`first=int second_param=float[[-3.14159265359]] third=string[[default string, and we can use space]]`"
+
+are:
+  * "`my::command f=14`"
+  * "`my::command second=5.3 f=14`"
+  * "`my::command fi=1 third=cherry`"
+  * "`my::command f=14 t=[[apple, banana and cherry]] s=5`"
+
+These examples are invalid:
+  * "`my::comm f=14`" because the CLI name must be complete (hashed...)
+  * "`my::command sec=5.3`" because the mandatory parameter `first` has no value
+  * "`my::command second_pa=5.3 f=banana`" because the parameter `first` has a value of the wrong type
+  * "`my::command f=1 th=cherry and banana`" because the parameter `third` takes the value `cherry` and the `and banana` messes up the syntax. Double brackets should have been used.
+
+!!!
+    CLIs commands and more generally `Palanteer` Python scripts are agnostic to the language used by the instrumented program.
+
+!!! warning
+    When a CLI command is received by an instrumented program, the CLI handler is called only after checking the command syntax against the parameter specification. <br/>
+    Any bad syntax in the request returns to the script a generic error status with an explanatory text message.
+
+
+<h1> @@ <a href="instrumentation_api_cpp.md.html">C++ Instrumentation API</a> </h1>
+<h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>
+<h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>
+<h1> @@ <a href="scripting_api.md.html">Scripting API</a> </h1>
+<h1> @@ <a href="more.md.html">More</a> </h1>
+
+
+<script>markdeepOptions = {tocStyle:'long', definitionStyle:'long'};</script>
+<link rel="stylesheet" href="palanteer.css">
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

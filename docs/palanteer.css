@@ -1,0 +1,209 @@
+
+body {
+    font-weight: 400;
+    font-size: 16px;
+    font-family: Arial,Helvetica,sans-serif;
+    text-align: left;
+    line-height: 170%;
+    -webkit-font-smoothing: unset;
+}
+
+/* reset heading/link fonts to that of body */
+.md a,
+.md div.title, contents, .md .tocHeader,
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6,
+.md .nonumberh1, .md .nonumberh2, .md .nonumberh3, .md .nonumberh4, .md .nonumberh5, .md .nonumberh6,
+.md .shortTOC, .md .mediumTOC, .md .longTOC {
+    font-family: inherit;
+}
+
+.md div.title, .md div.subtitle {
+    position: absolute;
+    right: 0px;
+    text-align: right;
+    color: white;
+    z-index: 10;
+    margin: 0px;
+    padding-right: 30px;
+    font-weight: 900;
+}
+
+.md div.title {
+    text-align: right;
+    position: absolute;
+    left: -350px;
+    top: 0px;
+    height: 85px;
+    padding-top: 20px;
+    font-size: 21px;
+    border-bottom: 8px solid #555;
+    box-shadow: 0px 0px 5px rgba(0,0,0,0.75);
+    background-color:  #202124;
+    background-image: url('images/palanteer-logo.png');
+    background-repeat: no-repeat;
+    background-position: top left;
+    background-size: contain;
+}
+
+.md .imagecaption, .md div.listingcaption {
+    display: inline;
+}
+
+.md div.subtitle {
+    top: 60px;
+}
+
+.md .tocHeader {
+    display:none;
+}
+
+.md .longTOC .level3 {
+    font-weight: 300;
+    margin-bottom: -30px;
+}
+
+
+.md h1 {
+    display: none;
+}
+
+.md h2 {
+    font-weight: bold;
+    font-size: 150%;
+    font-family: Roboto,sans-serif;
+    padding-bottom: 25px;
+    border-bottom: 1px solid #000;
+    margin-bottom: 25px;
+    margin-left:-20px;
+    margin-right:-20px;
+    padding-left:20px;
+    padding-top:25px;
+}
+
+.md h3 {
+    color: rgb(0, 72, 49);
+    font-size: 120%;
+    border-bottom: 1px solid #cf8313;
+}
+
+.md h4, .md h5, .md h6 {
+    font-size: 120%;
+}
+
+.md table.table th {
+    background: #f7d7a8;
+    color: black;
+}
+
+
+.md code {
+    background: unset;
+}
+
+
+body {
+    position: absolute;
+    left: 350px;
+    right:0px;
+    margin: 0px;
+    padding: 0px;
+    max-width: unset;
+    padding-right: 25px;
+}
+
+
+.md div.afterTitles {
+    height: 115px;
+}
+
+
+.md .admonition {
+border-radius: unset;
+position: relative;
+margin-left: -10px;
+border-left: 4px solid rgb(118, 185, 0);
+padding-left: 68px;
+background: unset !important;
+}
+
+.md .admonition-title {
+border: unset !important;
+margin-left: -35px;
+margin-bottom: -15px;
+}
+
+.md .admonition.warn, .md .admonition.warning {
+border-left: 4px solid rgb(255, 165, 0);
+}
+
+.md .admonition.warn::before, .md .admonition.warning::before {
+display: none;
+}
+
+.md .admonition.warn .admonition-title, .md .admonition.warning .admonition-title {
+border-bottom: 1px solid rgba(68,138,255,1);
+}
+
+.md .admonition.tip {
+border: 1px solid rgba(68,138,255,1);
+border-left: 30px solid rgba(68,138,255,1);
+background: #202020;
+}
+.md .admonition.tip .admonition-title {
+border-bottom: 1px solid rgba(68,138,255,1);
+}
+
+.md .admonition.error {
+border: 1px solid rgba(255,23,68,1);
+border-left: 30px solid rgba(255,23,68,1);
+background: #202020;
+}
+
+.md .admonition.error .admonition-title {
+border-bottom: 1px solid rgba(255,23,68,1);
+}
+
+.md a:link, .md a:visited, .md a:link code, .md a:visited code {
+color: #cf8313;
+text-decoration: underline;
+}
+
+.md a:hover, .md a:hover code {
+color: #cf8313;
+}
+
+@media screen {
+    .md .longTOC {
+        display: block;
+        white-space: nowrap;
+        width: 320px;
+        border-right: 1px solid #777;
+        overflow-y: auto;
+        font-family: inherit;
+        position: fixed;
+        left: 0px;
+        top: 115px;
+        bottom:0px;
+        margin: 0px;
+        padding: 0px;
+        padding-left:10px;
+        padding-top: -120px;
+    }
+
+    .scrolled .md .longTOC {
+        position: fixed;
+        top: 0px;
+    }
+
+    /* No numbering of headings */
+    .md h1:before, .md h2:before, .md h3:before, .md h4:before, .md h5:before, .md h6:before { content: none; }
+    .md .tocNumber { display: none; }
+
+    .md .longTOC a, .md .longTOC a:hover, .md .longTOC code {
+        text-decoration: none;
+        color: #000;
+        font-size: 12px;
+        font-family: sans-serif;
+    }
+
+}

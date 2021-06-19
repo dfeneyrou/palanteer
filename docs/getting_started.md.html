@@ -1,0 +1,354 @@
+                   <meta charset="utf-8" emacsmode="-*- markdown -*-">
+       **Look into Palanteer and get an omniscient view of your program**
+            Improve software code quality - C++ and Python
+
+
+<h1> @@ <a href="index.html">Overview</a> </h1>
+<h1> @@ <a href="#">Getting started</a> </h1>
+
+
+To get started on a standard desktop, ensure that the following components are installed:
+
+  - A C++ 14 (or above) compiler
+     - Linux: `gcc6.1+` or `clang3.3+`
+     - Windows: an installation of the Visual Studio compiler 2017+, and `vcvarsall.bat` called beforehand
+  - `CMake`
+     - On Windows, it is included in MSVC distribution
+     - Not required for a C++ program (the instrumentation library is just a C++ header)
+  - Python 3.7+
+     - CPython version only, due to the C extension modules
+     - Required for the Python instrumentation and the scripting module only
+
+## Quick install
+
+**1) Build all components**
+
+  1. Clone the GIT repository, if not already done
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+git clone https://github.com/dfeneyrou/palanteer
+cd palanteer
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  1. Build all components (viewer, C++ test program example, Python instrumentation package, Python scripting module)
+    - On Linux:
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      Output: `./bin/palanter` (viewer), `./bin/testprogram` (example program) and the installation of the two Python packages, for the user (no need for root rights)
+    - On Windows:
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+('vcvarsall.bat' or equivalent shall be called beforehand)
+mkdir build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -G "NMake Makefiles"
+nmake
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      Output: `bin\palanter.exe` (viewer), `bin\testprogram.exe` (example program) and the installation of the two Python packages, for the user (no need for admistrator rights)
+
+## Quick  demo
+
+  1. Build all components, as described in the section above
+  1. Launch the viewer
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+./bin/palanteer&    (Linux)
+  or
+bin\palanteer.exe  (Windows)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    The catalog of records is of course empty and no views are present. Let's fix that!
+  1. Launch the C++ test program
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+./bin/testprogram collect    (Linux)
+  or
+bin\testprogram.exe collect  (Windows)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Alternatively, the C++ test program can be replaced by the Python test program (their behavior are similar):
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+../python/testprogram/testprogram.py collect  (Linux)
+  or
+..\python\testprogram\testprogram.py collect  (Windows)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Launched with defaults settings, it connects to the viewer through sockets and do some tremendously interesting computations (hum...) for a few seconds. <br/>
+    During the execution, the `Palanteer` viewer shows the collected information *live* while storing the record. <br/>
+    Once the test program execution is finished, the record is accessible *offline* at any time from the viewer. Records are stored per application and their list can be managed inside the viewer.
+    ![](images/live_recording.gif)
+  1. Start inspecting the record <br/>
+     - Add a timeline: in the menu bar, select `Views->New timeline`
+     - Read the small help: in the menu bar, select `Help->Get started`
+     - The main navigation items to remember are:
+       - Zoom with `ctrl-Mouse wheel`  (or `ctrl-up/down arrow keys`)
+       - Move with `right button drag` (or `arrow keys`)
+       - Open a contextual menu (try on scopes and thread bars) with `click right`
+       - Hit "`H`" for help on the current view
+       - Hit "`F`" to toggle the full display on the current view
+  1. You are already an expert!
+  1. Here is an alternative experiment:
+     - launch again the testprogram (C++ or Python) with the additional "-f" option. It then uses the `file storage` mode.
+        - The viewer is not required, it should not react at all.
+        - A file `example_record.pltraw` is created
+     - In the viewer, import this file with the menu bar `File->Import`. It replays the raw data from the file and creates a second stored record from it.
+  1. If you want to go a bit further:
+    - Have a look and play with the options of the test program (usage is displayed when launched without arguments)
+    - Run the test program with privileged rights (root or administrator) to see the core usage information.
+
+
+## Quick C++ program instrumentation
+
+**1) "Install" the C++ instrumentation library in your program**
+
+  1. Copy the file `c++/palanteer.h` inside your sources so that it is accessible.
+
+**2) Start, stop, and some instrumentation**
+
+  1. As most single header libraries, it needs to be "implemented" once, just by adding `#define PL_IMPLEMENTATION 1` before the include in one of your files:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPLEMENTATION 1
+#include palanteer.h"
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  1. Initialize it to start the logging. <br/>
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plInitAndStart("my program name");
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     From this point, memory allocations and context switches (if enough privileges) will be automatically tracked, even without manual instrumentation.
+  1. Instrument the parts of the code that you want to observe
+     - As a start, try to mark some scope starts using `plScope("a name here")`. Scopes will be closed automatically at the end of the C++ scope.
+     - Inside a scope (important), log some variable values with `plVar(variable name 1, variable name 2, ...)` or named data with `plData("data name", value)`
+  1. Before exiting the program, deactivate the service <br/>
+     This flushes properly the end of the recording.
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plStopAndUninit();
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**3) Update your build system**
+
+  1. Add the compilation flag `USE_PL=1` into your build script for all files, and allow multi-threading
+    - By default, the library is fully disabled (no code)
+    - Multi-threading is required by `Palanteer` to send data to the server in its own thread.
+  1. That is it! the window to see inside your program is open!
+
+
+!!! Tip
+    The example program `testprogram` covers many instrumentation topics. <br/>
+    Looking at its documented source code and its behavior in front of the viewer, is definitely a good quick starter.
+
+
+## Quick Python program instrumentation
+
+The quickest way to profile an existing and unmodified Python program is to:
+  - Launch the viewer (see [Quick Install](#quickinstall))
+  - Launch the program, as with `cProfile` but with the `palanteer` module:
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+ > python3 -m palanteer &lt;existing Python program&gt;
+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  The automatic instrumentation covers function enter/leave, exceptions, garbage collector runs and memory allocations (OS calls). <br/>
+  Context switches are also logged if run with enough privileges.
+
+The other way is to instrument manually (additionally to automatic instrumentation or not):
+  1. Import the `palanteer` module:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+import palanteer  # Keep the namespace
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    or rather import the few instrumentation functions inside your scope, as they are prefixed with `pl`:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+from palanteer import *
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  1. Initialize it to start the logging. <br/>
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+plInitAndStart("my program name")  # Add ", with_functions=False" to disable the automatic functions enter/leave logging
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     From this point, the automatic logging is started, if activated (it is the case with previous example initialization).
+  1. Instrument the parts of the code that you want to observe
+     - As a start, try to mark some scope starts using `plBegin("a name here")` and `plEnd("a name here")` (do not forget to "end" each "begin").
+     - Inside a scope (important), log some named data with `plData("data name", value)`
+  1. Before exiting the program, deactivate the service <br/>
+     This flushes properly the end of the recording.
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+plStopAndUninit()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  1. That is it! the window to see inside your program is open!
+
+!!!
+    In order to share a program without any hard dependency on `Palanteer`, it is rather recommended to include it this way:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+    try:
+        import palanteer
+    except ModuleNotFoundError:
+        import palanteer_stub as palanteer  # Fallback with empty functions
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    with the helper file `palanteer_stub.py` accessible in your program (it is located in `./tools`).
+
+
+!!! Tip
+    The example program `./python/testprogram/testprogram.py` covers many instrumentation topics. <br/>
+    Looking at its documented source code and its behavior in front of the viewer, is definitely a good quick starter.
+
+## Quick C++ external string configuration
+
+The external string feature strips all static strings from the instrumentation and assertions at compile time, so that:
+
+  * the instrumentation is obfuscated
+  * the binary size is reduced (`text` or `.rodata` section)
+
+
+**1) Activate the feature by adding the compilation flag PL_EXTERNAL_STRINGS=1**
+
+On Linux, you can verify the absence of such static strings with:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+(Remove any debug symbol)
+strip ./bin/testprogram
+
+(Display all 4+ length displayable text string)
+strings ./bin/testprogram
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**2) Generate the lookup *hash->strings* from your sources.**
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+./tools/extStringCppParser.py ./c++/testprogram/testProgram.cpp > testProgramLookup.txt
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This lookup is text based, one entry per line, formatted as shown in the example below:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+@@458F1F00DF1C00B1@@Too big command received
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**3a) Register the lookup into the viewer for this program name**
+
+In the record catalog, the contextual menu on the program name proposes to "update the external string lookup". <br/>
+Select the generated lookup file, it will be copied internally and used to decode any record using the external string feature. <br/>
+If no lookup is provided or a string is not present inside the lookup, only the string hash will be shown instead of the text content (ex: `@@458F1F00DF1C00B1@@`)
+
+**3b) Register this lookup through the scripting python module**
+
+Scripts do not require the content of strings to work properly, as they internally use the hash of the strings instead.<br/>
+Registering a string lookup is useful mainly when debugging scripts, as non obfuscated strings are helpful in this case. An alternative is to use a non-external-string program during this phase.
+
+This registration is done through the [set_external_strings](scripting_api.md.html#set_external_strings) scripting API.
+
+## Quick remote scripting
+
+The remote control is done in Python via the `Palanteer` scripting module. <br/>
+In conjunction with the instrumented program, it enables dynamic thread control, remote command execution and observation of any events.
+
+**1) Follow the [quick install](#quickinstall) to build the `Palanteer` scripting Python module**
+
+**2) Have your instrumented program ready**
+
+Without manual instrumentation (case of a unmodified Python script), the only possibility is to observe some automatically instrumented events, without any control on the program. <br/>
+CLIs, freeze points, variable content logging... are what makes scripting reliable and powerful...
+
+**3) Write the python script**
+
+  1. Import the `palanteer_scripting` module and [initialize](scripting_api.md.html#initialize_scripting) it
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+import palanteer_scripting
+
+palanteer_scripting.initialize_scripting()  # To do once, anywhere before the first call to Palanteer API
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    If the `import` fails, double-check the `Palanteer` installation step.
+  1. [Launch](scripting_api.md.html#process_launch) your program
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+palanteer_scripting.process_launch("myProgram.exe", [ &lt;parameters...&gt; ])
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  1. Interact with it<br/>
+     * Define some [events of interest](scripting_api.md.html#data_configure_events) through event specs:
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Define your event/lock/marker capture specifications
+my_selection = palanteer_scripting.EvtSpec(thread="MyThread", events=["first event", "top event/**/child event", ...])
+# Apply a selection of the event specifications
+palanteer_scripting.data_configure_events(my_selection)
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     * [Receive](scripting_api.md.html#data_collect_events) the corresponding events:
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Just an example
+while palanteer_scripting.process_is_running():
+  events = palanteer_scripting.data_collect_events(timeout_sec=1)  # Batch reception
+  for e in events:
+     ...  # Do something with them
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     * [Freeze/unfreeze](scripting_api.md.html#program_set_freeze_mode) threads at some instrumented freeze points:
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+palanteer_scripting.program_set_freeze_mode(True)
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     * [Call](scripting_api.md.html#program_cli) some [CLI](base_concepts.md.html#commandlineinterface) declared inside the program
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+palanteer_scripting.program_cli("config:set_mode mode=init phase=14")
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  1. Loop on 3. (interact with the program), or [stop](scripting_api.md.html#process_stop) it
+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+palanteer_scripting.process_stop()
+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  1. Loop on 2. (new launch) if desired
+  1. Do some [cleaning](scripting_api.md.html#uninitialize_scripting) before exit
+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+palanteer_scripting.uninitialize_scripting()
+     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     Note that launched programs which are still running are killed automatically at library uninitialization time or script exit.
+
+
+## Repository structure
+
+***********************************************************************************************************
+*   📂 (Palanteer root)
+*   |
+*   +-- 📂 c++                      (C++ instrumentation folder)
+*   |   |
+*   |   +-- 📄 palanteer.h          (C++ single-header instrumentation library)
+*   |   |
+*   |   +-- 📂 testprogram
+*   |   |   |
+*   |   |   +-- 📄 testProgram.cpp  (C++ example program for the demo and also internal testing)
+*   |   |   |
+*   |   |   +-- 📄 testPart.cpp     (second part of the example program)
+*   |   |
+*   |   +-- 📂 test                 (test suite for the C++ instrumentation library)
+*   |
+*   +-- 📂 python                   (Python instrumentation folder)
+*   |   |
+*   |   +-- 📂 palanteer            (Python instrumentation module)
+*   |   |
+*   |   +-- 📂 testprogram
+*   |       |
+*   |       +-- 📄 testProgram.py   (Python example program for the demo and also internal testing)
+*   |
+*   +-- 📂 cmake
+*   |
+*   +-- 📂 doc                      (this documentation)
+*   |
+*   +-- 📂 server                   (code for the viewer and the scripting module)
+*   |   |
+*   |   +-- 📂 external             (snapshot of dependencies: Dear Imgui, ZSTD, stb_image.h)
+*   |   |
+*   |   +-- 📂 base                 (platform - MIT License)
+*   |   |
+*   |   +-- 📂 common               (common code between the viewer and the scripting module - AGPLv3+)
+*   |   |
+*   |   +-- 📂 scripting            (Python scripting module - AGPLv3+)
+*   |   |
+*   |   '-- 📂 viewer               (Palanteer viewer        - AGPLv3+)
+*   |
+*   +-- 📂 tools
+*       |
+*       +-- 📄 palanteer_stub.py       (stub Python instrumentation module to fallback on empty functions)
+*       |
+*       +-- 📄 extStringCppParser.py   (tool to create a lookup for the C++ external string feature)
+*       |
+*       +-- 📄 extStringDecoder.py     (simple tool to decode a string from its hash)
+*       |
+*       +-- 📄 testframework.py        (test framework used in internal tests)
+*       |
+*       +-- 📄 todo.py                 (standalone tool to manage todo's as described in this doc)
+***********************************************************************************************************
+[Structure of the `Palanteer` GIT repository.]
+
+
+<h1> @@ <a href="base_concepts.md.html">Base concepts</a> </h1>
+<h1> @@ <a href="instrumentation_api_cpp.md.html">C++ Instrumentation API</a> </h1>
+<h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>
+<h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>
+<h1> @@ <a href="scripting_api.md.html">Scripting API</a> </h1>
+<h1> @@ <a href="more.md.html">More</a> </h1>
+
+
+<script>markdeepOptions = {tocStyle:'long', definitionStyle:'long'};</script>
+<link rel="stylesheet" href="palanteer.css">
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

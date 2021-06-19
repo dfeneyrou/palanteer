@@ -1,0 +1,1578 @@
+// Palanteer viewer
+// Copyright (C) 2021, Damien Feneyrou <dfeneyrou@gmail.com>
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as
+// published by the Free Software Foundation, either version 3 of the
+// License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+// This file implements some helpers for the viewer and some common GUI parts
+
+// System
+#include <algorithm>
+#include <math.h>
+#include <inttypes.h>
+
+// Internal
+#include "cmRecord.h"
+#include "vwConst.h"
+#include "vwMain.h"
+#include "vwConfig.h"
+
+
+
+// Display helpers
+// ===============
+
+int
+vwMain::getId(void)
+{
+    if(_idPool.empty()) _idPool.push_back(_idMax++);
+    int id = _idPool.back();
+    _idPool.pop_back();
+    return id;
+}
+
+
+void
+vwMain::releaseId(int id)
+{
+#if 0
+    for(int id2 : _idPool) plAssert(id2!=id);
+#endif
+    _idPool.push_back(id);
+}
+
+
+// Nice formatters are not thread-safe, but ok as we display only in one thread
+const char*
+vwMain::getNiceDate(const bsDate& date, const bsDate& now) const
+{
+    static char outBuf[32];
+    static const char* months[13] = { "NULL", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    if(date.year==now.year && date.month==now.month && date.day==now.day) {
+        snprintf(outBuf, sizeof(outBuf), "Today %02d:%02d:%02d", date.hour, date.minute, date.second);
+    } else {
+        snprintf(outBuf, sizeof(outBuf), "%s %02d %02d:%02d:%02d", months[(date.month>0 && date.month<=12)?date.month:0], date.day, date.hour, date.minute, date.second);
+    }
+    return outBuf;
+}
+
+
+const char*
+vwMain::getNiceTime(s64 ns, s64 tickNs, int bank) const
+{
+    static char outBuf1[64];
+    static char outBuf2[64];
+    char* outBuf = (bank==0)? outBuf1 : outBuf2;
+    int   offset = sprintf(outBuf, "%llds", ns/1000000000LL);
+    if(tickNs<60000000000LL) offset += sprintf(outBuf+offset, ":%03lldms", (ns/1000000LL)%1000); // Below 1 mn, always display at least ms
+    if(tickNs<1000000LL)     offset += sprintf(outBuf+offset, ":%03lldµs", (ns/1000LL)%1000);
+    if(tickNs<1000LL)        sprintf(outBuf+offset, ":%03" PRId64 "ns", (ns%1000));
+    return outBuf;
+}
+
+
+const char*
+vwMain::getNiceDuration(s64 ns, s64 displayRangeNs, int bank) const
+{
+    static char outBuf1[32];
+    static char outBuf2[32];
+    char* outBuf = (bank==0)? outBuf1 : outBuf2;
+    if(displayRangeNs<=0) displayRangeNs = ns;
+    if     (displayRangeNs<1000      ) snprintf(outBuf, sizeof(outBuf1), "%" PRId64 " ns", ns);
+    else if(displayRangeNs<1000000   ) snprintf(outBuf, sizeof(outBuf1), "%.2f µs", 0.001*ns);
+    else if(displayRangeNs<1000000000) snprintf(outBuf, sizeof(outBuf1), "%.2f ms", 0.000001*ns);
+    else                               snprintf(outBuf, sizeof(outBuf1), "%.2f s",  0.000000001*ns);
+    return outBuf;
+}
+
+
+const char*
+vwMain::getNiceByteSize(s64 byteSize) const
+{
+    static char outBuf[32];
+    if     (byteSize<1000      ) snprintf(outBuf, sizeof(outBuf), "%" PRId64 " B", byteSize);
+    else if(byteSize<1000000   ) snprintf(outBuf, sizeof(outBuf), "%.2f KB", 0.001*byteSize);
+    else if(byteSize<1000000000) snprintf(outBuf, sizeof(outBuf), "%.2f MB", 0.000001*byteSize);
+    else                         snprintf(outBuf, sizeof(outBuf), "%.2f GB", 0.000000001*byteSize);
+    return outBuf;
+}
+
+
+const char*
+vwMain::getNiceBigPositiveNumber(u64 number, int bank) const
+{
+    static char outBuf1[32];
+    static char outBuf2[32];
+    char* outBuf = (bank==0)? outBuf1 : outBuf2;
+    u64 divider = 1000000000000000000LL;
+    while(divider>1 && (number/divider)==0) divider /= 1000;
+    bool displayStarted = false;
+    int offset = 0;
+    while(1) {
+        int d = number/divider;
+        offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, displayStarted?" %03d":"%d", d);
+        if(divider==1) break;
+        number -= d*divider;
+        divider /= 1000;
+        displayStarted = true;
+    }
+    return outBuf;
+}
+
+
+// Get the value as string
+const char*
+vwMain::getValueAsChar(int flags, double value, double displayRange, bool isHexa, int bank) const
+{
+    static char valueStr1[128];
+    static char valueStr2[128];
+    char* valueStr = (bank==0)? valueStr1 : valueStr2;
+
+    // Case scope or lock use
+    if((flags&PL_FLAG_SCOPE_BEGIN) || (flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOCK_ACQUIRED) {
+        return getNiceDuration((s64)value, (s64)displayRange, bank);
+    }
+    // Case string
+    else if((flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_DATA_STRING) return _record->getString((int)bsRound(value)).value.toChar();
+    // Case value
+    else {
+#define CONVERT_VALUE_INT(formatStr, castStr)   snprintf(valueStr, sizeof(valueStr1), formatStr, (castStr)bsRound(value)); return valueStr;
+#define CONVERT_VALUE_FLOAT(formatStr, castStr) snprintf(valueStr, sizeof(valueStr1), formatStr, (castStr)value); return valueStr;
+        switch(flags&PL_FLAG_TYPE_MASK) {
+        case PL_FLAG_TYPE_DATA_S32:    CONVERT_VALUE_INT(isHexa?"%X":"%d",  int); break;
+        case PL_FLAG_TYPE_DATA_U32:    CONVERT_VALUE_INT(isHexa?"%X":"%u",  u32); break;
+        case PL_FLAG_TYPE_DATA_S64:    CONVERT_VALUE_INT(isHexa?"%lX":"%ld", s64); break;
+        case PL_FLAG_TYPE_DATA_U64:    CONVERT_VALUE_INT(isHexa?"%lX":"%lu", u64); break;
+        case PL_FLAG_TYPE_DATA_FLOAT:  CONVERT_VALUE_FLOAT("%f",   float); break;
+        case PL_FLAG_TYPE_DATA_DOUBLE: CONVERT_VALUE_FLOAT("%lf", double); break;
+        case PL_FLAG_TYPE_MARKER:        return _record->getString((int)value).value.toChar(); break;
+        case PL_FLAG_TYPE_LOCK_NOTIFIED: return _record->getString(_record->threads[(int)value].nameIdx).value.toChar(); break;
+        default: plAssert(0, "bug...", flags);
+        }
+    }
+    return 0;
+};
+
+
+const char*
+vwMain::getValueAsChar(const cmRecord::Evt& e) const
+{
+    static char valueStr[128];
+    int  flags  = e.flags;
+    bool isHexa = _record->getString(e.nameIdx).isHexa;
+
+    if(flags&PL_FLAG_SCOPE_BEGIN) {
+        return getNiceDuration(e.vS64);
+    } else {
+        switch(flags&PL_FLAG_TYPE_MASK) {
+        case PL_FLAG_TYPE_DATA_S32:    snprintf(valueStr, sizeof(valueStr), isHexa?"%X":"%d",   e.vInt); break;
+        case PL_FLAG_TYPE_DATA_U32:    snprintf(valueStr, sizeof(valueStr), isHexa?"%X":"%u",   e.vU32); break;
+        case PL_FLAG_TYPE_DATA_S64:    snprintf(valueStr, sizeof(valueStr), isHexa?"%lX":"%ld", e.vS64); break;
+        case PL_FLAG_TYPE_DATA_U64:    snprintf(valueStr, sizeof(valueStr), isHexa?"%lX":"%lu", e.vU64); break;
+        case PL_FLAG_TYPE_DATA_FLOAT:  snprintf(valueStr, sizeof(valueStr), "%f",   e.vFloat);    break;
+        case PL_FLAG_TYPE_DATA_DOUBLE: snprintf(valueStr, sizeof(valueStr), "%lf",  e.vDouble);   break;
+        case PL_FLAG_TYPE_DATA_STRING:   return _record->getString(e.vStringIdx ).value.toChar(); break;
+        case PL_FLAG_TYPE_MARKER:        return _record->getString(e.filenameIdx).value.toChar(); break;
+        case PL_FLAG_TYPE_LOCK_NOTIFIED: return _record->getString(_record->threads[e.threadId].nameIdx).value.toChar(); break;
+        default: plAssert(0, "bug...", flags); break;
+        }
+    }
+    return valueStr;
+}
+
+
+const char*
+vwMain::getUnitFromFlags(int flags) const
+{
+    int eType = (flags&PL_FLAG_TYPE_MASK);
+    if     (flags&PL_FLAG_SCOPE_BEGIN)         return "Duration";
+    else if(eType==PL_FLAG_TYPE_DATA_STRING)   return "<Enum>";
+    else if(eType==PL_FLAG_TYPE_MARKER)        return "<Marker>";
+    else if(eType==PL_FLAG_TYPE_LOCK_ACQUIRED) return "<Lock>";
+    else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) return "<Lock notified>";
+    return "";
+}
+
+
+
+// Global record precomputations
+// =============================
+
+void
+vwMain::precomputeRecordDisplay(void)
+{
+    // Is cache up to date?
+    if(!_record || (!_liveRecordUpdated && ImGui::GetFontSize()==_lastFontSize)) return;
+
+    // Update the full thread name list
+    if(_liveRecordUpdated) {
+        _fullThreadNames.clear();
+        _fullThreadNames.reserve(_record->threads.size());
+        for(const auto& t : _record->threads) {
+            if(t.groupNameIdx>=0) _fullThreadNames.push_back(_record->getString(t.groupNameIdx).value + "/" + _record->getString(t.nameIdx).value);
+            else                  _fullThreadNames.push_back(_record->getString(t.nameIdx).value);
+        }
+    }
+
+    // Update the timeline header width
+    _timelineHeaderWidth = 100.; // Minimum value
+    for(const auto& t : _record->threads) {
+        if(t.groupNameIdx>=0) {
+            _timelineHeaderWidth = bsMax(_timelineHeaderWidth, ImGui::CalcTextSize(_record->getString(t.groupNameIdx).value.toChar()).x);
+        }
+        _timelineHeaderWidth = bsMax(_timelineHeaderWidth, ImGui::CalcTextSize(_record->getString(t.nameIdx).value.toChar()).x);
+    }
+    _timelineHeaderWidth += 2.*ImGui::GetTextLineHeightWithSpacing(); // For the triangle and a margin
+
+    // Animate the live record visible time range
+    if(_liveRecordUpdated) {
+        constexpr s64 fixedRecordLengthBeforeMoveNs = 5000000000LL;
+        const double recordDurationNs = _record->durationNs;
+#define LOOP_LIVE_RANGE(array)                                          \
+        for(auto& t : array) {                                          \
+            if(recordDurationNs<=fixedRecordLengthBeforeMoveNs) {       \
+                t.setView(0, recordDurationNs, true);                   \
+                t.checkTimeBounds(recordDurationNs);                    \
+            }                                                           \
+            else if(t.isTouchingEnd) {                                  \
+                s64 r = (t.timeRangeNs<=1.)? fixedRecordLengthBeforeMoveNs : t.timeRangeNs; \
+                t.setView(recordDurationNs-r, r, true);                 \
+                t.checkTimeBounds(recordDurationNs);                    \
+            }                                                           \
+        }
+
+        LOOP_LIVE_RANGE(_timelines);
+        LOOP_LIVE_RANGE(_memTimelines);
+        LOOP_LIVE_RANGE(_plots);
+    }
+
+    // Up to date
+    _lastFontSize      = ImGui::GetFontSize();
+}
+
+
+// Time range based common methods
+// ===============================
+
+void
+vwMain::TimeRangeBase::setView(double newStartTimeNs, double newTimeRangeNs, bool noTransition)
+{
+    if(animTimeUs>0 && animStartTimeNs2==newStartTimeNs && animTimeRangeNs2==newTimeRangeNs) return; // Already set
+    animStartTimeNs1 = startTimeNs; animStartTimeNs2 = newStartTimeNs;
+    animTimeRangeNs1 = timeRangeNs; animTimeRangeNs2 = newTimeRangeNs;
+    bsUs_t currentTime = bsGetClockUs();
+    animTimeUs = (animTimeUs==0)? currentTime: currentTime-bsMin((bsUs_t)(0.5*vwConst::ANIM_DURATION_US), currentTime-animTimeUs);
+    if(noTransition) animTimeUs -= vwConst::ANIM_DURATION_US; // So the animation time is already over
+    isCacheDirty  = true;
+}
+
+
+void
+vwMain::TimeRangeBase::ensureThreadVisibility(int threadId)
+{
+    viewThreadId = threadId;
+}
+
+
+void
+vwMain::TimeRangeBase::checkTimeBounds(double recordDurationNs)
+{
+    if(startTimeNs<0.)                           { startTimeNs = 0.; isCacheDirty = true; }
+    if(startTimeNs+timeRangeNs>recordDurationNs) { startTimeNs = recordDurationNs-timeRangeNs; isCacheDirty = true; }
+    if(startTimeNs<0.)                           { startTimeNs = 0.; timeRangeNs = recordDurationNs; isCacheDirty = true; }
+    isTouchingEnd = (startTimeNs+timeRangeNs>=recordDurationNs);
+}
+
+
+void
+vwMain::TimeRangeBase::updateAnimation(void)
+{
+    if(animTimeUs<=0) return;
+    bsUs_t currentTimeUs = bsGetClockUs();
+    double ratio = sqrt(bsMin((double)(currentTimeUs-animTimeUs)/vwConst::ANIM_DURATION_US, 1.)); // Sqrt for more reactive start
+    startTimeNs = ratio*animStartTimeNs2+(1.-ratio)*animStartTimeNs1;
+    timeRangeNs = ratio*animTimeRangeNs2+(1.-ratio)*animTimeRangeNs1;
+    if(ratio==1.) animTimeUs = 0;
+    isCacheDirty = true;
+}
+
+
+
+// Synchronisation helpers
+// =======================
+
+void
+vwMain::getSynchronizedRange(int syncMode, double& startTimeNs, double& timeRangeNs)
+{
+#define LOOP_GET_RANGE(array)                   \
+    for(auto& t : array) {                      \
+        if(t.syncMode!=syncMode) continue;      \
+        startTimeNs = t.getStartTimeNs();       \
+        timeRangeNs = t.getTimeRangeNs();       \
+        return;                                 \
+    }
+
+    // Set default
+    startTimeNs = 0.;
+    timeRangeNs = _record->durationNs;
+    // Find the first group matching range
+    LOOP_GET_RANGE(_timelines);
+    LOOP_GET_RANGE(_memTimelines);
+    LOOP_GET_RANGE(_plots);
+}
+
+
+void
+vwMain::synchronizeNewRange(int syncMode, double startTimeNs, double timeRangeNs)
+{
+    if(syncMode<=0) return; // Source is not synchronized
+#define LOOP_SET_RANGE(array)                   \
+    for(auto& t : array) {                      \
+        if(t.syncMode!=syncMode) continue;      \
+        t.setView(startTimeNs, timeRangeNs);    \
+    }
+
+    LOOP_SET_RANGE(_timelines);
+    LOOP_SET_RANGE(_memTimelines);
+    LOOP_SET_RANGE(_plots);
+}
+
+
+void
+vwMain::ensureThreadVisibility(int syncMode, int threadId)
+{
+    if(syncMode<=0) return; // Source is not synchronized
+#define LOOP_VISIBILITY(array)                  \
+    for(auto& t : array) {                      \
+        if(t.syncMode!=syncMode) continue;      \
+        t.ensureThreadVisibility(threadId);     \
+    }
+
+    LOOP_VISIBILITY(_timelines);
+    LOOP_VISIBILITY(_memTimelines);
+}
+
+
+void
+vwMain::synchronizeText(int syncMode, int threadId, int level, int lIdx, s64 timeNs, u32 idToIgnore)
+{
+    if(syncMode<=0) return; // Source is not synchronized
+
+    // Text windows
+    for(auto& tw : _texts) {
+        if(tw.syncMode==syncMode && tw.threadId==threadId) {
+            tw.setStartPosition(level, lIdx, idToIgnore);
+            tw.didUserChangedScrollPosExt = true;
+        }
+    }
+
+    // Marker windows
+    for(auto& mw : _markers) {
+        if(mw.syncMode==syncMode) {
+            mw.setStartPosition(timeNs, idToIgnore);
+            mw.didUserChangedScrollPosExt = true;
+        }
+    }
+
+    // Search window
+    if(_search.syncMode==syncMode) {
+        _search.setStartPosition(timeNs, idToIgnore);
+        _search.didUserChangedScrollPosExt = true;
+    }
+}
+
+
+void
+vwMain::synchronizeThreadLayout(void) // Invalidate the cache
+{
+    for(auto& t : _timelines)    t.isCacheDirty = true;
+    for(auto& t : _memTimelines) t.isCacheDirty = true;
+}
+
+
+// Contextual menu helpers
+// =======================
+
+void
+vwMain::prepareGraphContextualMenu(int elemIdx, s64 startTimeNs, s64 timeRangeNs, bool addAllNames, bool withRemoval)
+{
+    // Build the menu if not done already
+    if(!_plotMenuItems.empty()) return;
+
+    _plotMenuNewPlotUnits.clear();
+    _plotMenuNewPlotCount.clear();
+    _plotMenuWithRemoval = withRemoval;
+    _plotMenuNamesWidth = 0.;
+    _plotMenuAddAllNames = addAllNames;
+    _plotMenuHasScopeChildren = false;
+
+    // Get plot and its unit
+    if(elemIdx<0) return;
+    cmRecord::Elem& elem  = _record->elems[elemIdx];
+    bsString unit = _record->getString(elem.nameIdx).unit;
+    if(unit.empty()) unit = getUnitFromFlags(elem.flags);
+    _plotMenuIsPartOfHStruct = elem.isPartOfHStruct;
+
+    // Get the graph name
+    char name[256];
+    if(unit.empty()) snprintf(name, sizeof(name), "%s",      _record->getString(elem.nameIdx).value.toChar());
+    else             snprintf(name, sizeof(name), "%s (%s)", _record->getString(elem.nameIdx).value.toChar(), unit.toChar());
+
+    // Get all the matching existing plot windows, which do not already contain the elemIdx
+    bsVec<int> matchingPwIdxs;
+    for(int pwIdx=0; pwIdx<_plots.size(); ++pwIdx) {
+        if(_plots[pwIdx].unit!=unit) continue;
+        bool isPresent = false;
+        for(const vwMain::PlotCurve& c : _plots[pwIdx].curves) if(c.elemIdx==elemIdx) isPresent = true;
+        if(!isPresent) matchingPwIdxs.push_back(pwIdx);
+    }
+
+    // Add to the ctx menu
+    _plotMenuThreadUniqueHash = _record->threads[elem.threadId].threadUniqueHash;
+    _plotMenuItems.push_back( { name, unit, elemIdx, elem.nameIdx, elem.flags, matchingPwIdxs, startTimeNs, timeRangeNs } );
+}
+
+
+bool
+vwMain::prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64 startTimeNs, s64 timeRangeNs,
+                                   bool withChildren, bool withRemoval)
+{
+    // Build the menu if not done already
+    if(!_plotMenuItems.empty()) return true;
+
+    _plotMenuNewPlotUnits.clear();
+    _plotMenuNewPlotCount.clear();
+    _plotMenuWithRemoval = withRemoval;
+    _plotMenuNamesWidth = 0.;
+    _plotMenuAddAllNames = true;
+    _plotMenuHasScopeChildren = false;
+    _plotMenuIsPartOfHStruct = true;
+
+    // Get parent
+    bsVec<cmRecordIteratorHierarchy::Parent> parents;
+    cmRecordIteratorHierarchy it(_record, threadId, nestingLevel, lIdx);
+    it.getParents(parents);
+    plAssert(!parents.empty(), "At least current item is expected");
+
+    // Compute scope hashpath in reverse order
+    _plotMenuThreadUniqueHash = _record->threads[threadId].threadUniqueHash;
+    u64 hashPath = bsHashStep(cmConst::SCOPE_NAMEIDX);
+    for(int i=parents.size()-1; i>=0; --i) {
+        hashPath = bsHashStep(_record->getString(parents[i].evt.nameIdx).hash, hashPath);
+    }
+
+    // Get children if it is a scope
+    _workDataChildren.clear();
+    _workLIdxChildren.clear();
+    if(withChildren && (parents[0].evt.flags&PL_FLAG_SCOPE_BEGIN)) {
+        cmRecordIteratorScope itc(_record, threadId, nestingLevel, lIdx);
+        itc.getChildren(parents[0].evt.linkLIdx, lIdx, false, true, true, _workDataChildren, _workLIdxChildren);
+        _plotMenuHasScopeChildren = itc.wasAScopeChildSeen();
+    }
+
+    auto addPlotMenuItem =
+        [this, startTimeNs, timeRangeNs](const cmRecord::Evt& e, u64 itemHashPath) -> bool {
+            // Get the unit
+            bsString unit = _record->getString(e.nameIdx).unit;
+            if(unit.empty()) unit = getUnitFromFlags(e.flags);
+
+            // Get name and path
+            char name[256];
+            if(unit.empty()) snprintf(name, sizeof(name), "%s",      _record->getString(e.nameIdx).value.toChar());
+            else             snprintf(name, sizeof(name), "%s (%s)", _record->getString(e.nameIdx).value.toChar(), unit.toChar());
+            int* elemIdx = _record->elemPathToId.find(itemHashPath, e.nameIdx);
+            if(!elemIdx || !_record->elems[*elemIdx].isPartOfHStruct) return false;
+
+            // Get all the matching existing plot windows, which do not already contain the elemIdx
+            bsVec<int> existingPlotWindowIndices;
+            for(int plotWindowIdx=0; plotWindowIdx<_plots.size(); ++ plotWindowIdx) {
+                if(_plots[plotWindowIdx].unit!=unit) continue;
+                bool isPresent = false;
+                for(const vwMain::PlotCurve& c : _plots[plotWindowIdx].curves) { if(c.elemIdx==*elemIdx) isPresent = true; }
+                if(!isPresent) existingPlotWindowIndices.push_back(plotWindowIdx);
+            }
+            // Add
+            _plotMenuItems.push_back( { name, unit, *elemIdx, e.nameIdx, e.flags, existingPlotWindowIndices, startTimeNs, timeRangeNs } );
+            _plotMenuNamesWidth = bsMax(_plotMenuNamesWidth, (double)ImGui::CalcTextSize(name).x);
+            return true;
+        };
+
+    // Add the hovered item
+    _plotMenuItems.reserve(1+_workDataChildren.size());
+    u64 itemHashPath = bsHashStep(parents[0].evt.flags, hashPath);
+    itemHashPath     = bsHashStep(_record->threads[threadId].threadHash, itemHashPath);    // Finish the hash with the thread part
+    if(!addPlotMenuItem(parents[0].evt, itemHashPath)) return false; // Root item shall be plotable
+
+    // Add the item children to the potential plot list
+    _plotMenuNamesWidth = 0.; // For children only
+    bsVec<u64> plotUniqueHashes; // In order to remove duplicates
+    for(const cmRecord::Evt& evt : _workDataChildren) {
+        // Skip scopes (only flat ones), markers and lock notifications (because the ones inside the hierarchical tree are not suitable for plot/histo)
+        if(evt.flags&PL_FLAG_SCOPE_MASK) continue;
+        if((evt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_MARKER)        continue;
+        if((evt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOCK_NOTIFIED) continue;
+        // Compute the path
+        u64  childHashPath = bsHashStep(_record->getString(evt.nameIdx).hash, hashPath);
+        childHashPath      = bsHashStep(evt.flags, childHashPath);
+        childHashPath      = bsHashStep(_record->threads[threadId].threadHash, childHashPath);    // Finish the hash with the thread part
+        // Already present?
+        bool isAlreadyPresent = false;
+        for(u64 h : plotUniqueHashes) if(h==childHashPath) { isAlreadyPresent = true; break; }
+        if(isAlreadyPresent) continue;
+
+        // Add the item
+        addPlotMenuItem(evt, childHashPath);
+        plotUniqueHashes.push_back(childHashPath);
+    }
+
+    return true;
+}
+
+
+bool
+vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double headerWidth, double comboWidth)
+{
+    if(comboWidth<=0.) comboWidth = ImGui::CalcTextSize("New plot #OOOOO").x;
+    const double spacing = ImGui::GetStyle().ItemSpacing.x;
+    char tmpStr[64];
+    bool rootPlotSelected     = false;
+    bool innerFieldsSelected  = false;
+    bool innerFieldsDisplayed = false;
+    // Display the list of plottable items
+    for(int i=0; i<_plotMenuItems.size(); ++i) {
+        auto& pmi = _plotMenuItems[i];
+
+        // Structured menu
+        if(i==1) {
+            if(!ImGui::BeginMenu("Plot inner fields")) break; // No need to display inner fields
+            innerFieldsDisplayed = true;
+        }
+        ImGui::PushID(i);
+
+        // Display the item names
+        if(i==0) {
+            ImGui::Text("%s", rootText);
+            ImGui::SameLine((headerWidth>0.)? headerWidth : ImGui::GetWindowContentRegionMax().x-comboWidth-spacing);
+        } else {
+            ImGui::Text("%s", pmi.name.toChar());
+            ImGui::SameLine(2.*spacing+_plotMenuNamesWidth);
+        }
+
+        // Build the choices of the combo box for this plot, depending on its unit
+        ImGui::SetNextItemWidth(comboWidth);
+        float cursorX = ImGui::GetCursorPosX();
+        if(ImGui::BeginCombo("", pmi.comboSelectionString.toChar(), 0)) {
+            // None
+            bool isSelected = (pmi.comboSelectionExistingIdx==-1 && pmi.comboSelectionNewIdx==-1);
+            if(ImGui::Selectable("", isSelected)) {
+                if(pmi.comboSelectionNewIdx>=0) _plotMenuNewPlotCount[pmi.comboSelectionNewIdx] -= 1;
+                pmi.comboSelectionExistingIdx = pmi.comboSelectionNewIdx = -1;
+                pmi.comboSelectionRemoval = false;
+                pmi.comboSelectionString.clear();
+            }
+            if(isSelected) ImGui::SetItemDefaultFocus();
+            // List of existing plots
+            for(int j=0; j<pmi.existingPlotWindowIndices.size(); ++j) {
+                int pwi = pmi.existingPlotWindowIndices[j];
+                const vwMain::PlotWindow& pw = _plots[pwi];
+                if(pw.unit!=pmi.unit) continue;
+                isSelected = (pmi.comboSelectionExistingIdx==j);
+                snprintf(tmpStr, sizeof(tmpStr), "Plot #%d", pw.uniqueId);
+                if(ImGui::Selectable(tmpStr, isSelected)) {
+                    if(pmi.comboSelectionNewIdx>=0) _plotMenuNewPlotCount[pmi.comboSelectionNewIdx] -= 1;
+                    pmi.comboSelectionNewIdx      = -1;
+                    pmi.comboSelectionExistingIdx = j;
+                    pmi.comboSelectionRemoval     = false;
+                    pmi.comboSelectionString      = tmpStr;
+                    if(i==0) rootPlotSelected = true;
+                }
+                if(isSelected) ImGui::SetItemDefaultFocus();
+            }
+            // List of new plots
+            bool doAllowCreate = true;
+            for(int j=0; j<_plotMenuNewPlotUnits.size(); ++j) {
+                if(_plotMenuNewPlotUnits[j]!=pmi.unit) continue;
+                if(_plotMenuNewPlotCount[j]==0)        continue;
+                isSelected = (pmi.comboSelectionNewIdx==j);
+                snprintf(tmpStr, sizeof(tmpStr), "New plot (%c)", 'A'+bsMin(j, 25));
+                if(ImGui::Selectable(tmpStr, isSelected)) {
+                    if(pmi.comboSelectionNewIdx>=0) _plotMenuNewPlotCount[pmi.comboSelectionNewIdx] -= 1;
+                    _plotMenuNewPlotCount[j] += 1;
+                    pmi.comboSelectionNewIdx      = j;
+                    pmi.comboSelectionExistingIdx = -1;
+                    pmi.comboSelectionRemoval     = false;
+                    pmi.comboSelectionString      = tmpStr;
+                    if(i==0) rootPlotSelected = true;
+                }
+                if(isSelected) {
+                    ImGui::SetItemDefaultFocus();
+                    if(_plotMenuNewPlotCount[j]<=1) doAllowCreate = false; // Already an independent one...
+                }
+            }
+            // Create a new independent plot
+            if(doAllowCreate && ImGui::Selectable("New plot", false)) {
+                // Get the new index, reusing empty ones if any
+                int newIdx = _plotMenuNewPlotUnits.size();
+                for(int k=0; k<_plotMenuNewPlotCount.size(); ++k) {
+                    if(_plotMenuNewPlotCount[k]==0) { newIdx = k; break; }
+                }
+                if(newIdx==_plotMenuNewPlotUnits.size()) {
+                    _plotMenuNewPlotUnits.push_back(pmi.unit);
+                    _plotMenuNewPlotCount.push_back(0);
+                }
+                _plotMenuNewPlotCount[newIdx] += 1;
+                snprintf(tmpStr, sizeof(tmpStr), "New plot (%c)", 'A'+bsMin(newIdx, 25));
+                pmi.comboSelectionNewIdx      = newIdx;
+                pmi.comboSelectionExistingIdx = -1;
+                pmi.comboSelectionRemoval     = false;
+                pmi.comboSelectionString      = tmpStr;
+                if(i==0) rootPlotSelected = true;
+            }
+            // Remove the plot
+            if(_plotMenuWithRemoval && ImGui::Selectable("Remove", pmi.comboSelectionRemoval)) {
+                if(pmi.comboSelectionNewIdx>=0) _plotMenuNewPlotCount[pmi.comboSelectionNewIdx] -= 1;
+                pmi.comboSelectionNewIdx      = -1;
+                pmi.comboSelectionExistingIdx = -1;
+                pmi.comboSelectionRemoval     = true;
+                pmi.comboSelectionString      = "Remove";
+                if(i==0) rootPlotSelected = true;
+            }
+
+            ImGui::EndCombo();
+        } // End of plot combo selection
+
+        ImGui::SameLine(cursorX+comboWidth+spacing); // Make position independent of the choice plot checkbox/combobox
+        ImGui::NewLine();
+        ImGui::PopID();
+
+    }
+
+    // Ends the inner field sub menu
+    if(innerFieldsDisplayed) {
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize("Apply").x-2.*spacing);
+        innerFieldsSelected = ImGui::Button("Apply##Plot");
+        ImGui::EndMenu();
+    }
+
+    // Apply the choices
+    if(innerFieldsSelected || rootPlotSelected) {
+        // Some exclusive cleaning of the "other" selection
+        plAssert(innerFieldsSelected^rootPlotSelected);
+        for(int i=rootPlotSelected?1:0; i<(rootPlotSelected?_plotMenuItems.size():1); ++i) {
+            auto& pmi = _plotMenuItems[i];
+            if(pmi.comboSelectionNewIdx>=0) _plotMenuNewPlotCount[pmi.comboSelectionNewIdx] -= 1;
+            pmi.comboSelectionNewIdx      = -1;
+            pmi.comboSelectionExistingIdx = -1;
+            pmi.comboSelectionRemoval     = false;
+        }
+
+        // Create the non empty new plot windows
+        bsVec<int> realIdxLkup(_plotMenuNewPlotCount.size());
+        for(int j=0; j<_plotMenuNewPlotCount.size(); ++j) {
+            if(_plotMenuNewPlotCount[j]==0) { realIdxLkup[j] = -1; continue; }
+            realIdxLkup[j] = _plots.size();
+            _plots.push_back( { } );
+            auto& pw       = _plots.back();
+            pw.uniqueId    = getId();
+            pw.unit        = _plotMenuNewPlotUnits[j];
+            pw.startTimeNs = (double)_plotMenuItems[0].startTimeNs;
+            pw.timeRangeNs = (double)_plotMenuItems[0].timeRangeNs;
+            setFullScreenView(-1);
+        }
+
+        // Loop on potential plots
+        u64 threadUniqueHash = _record->threads[threadId].threadUniqueHash;
+        for(auto& pmi : _plotMenuItems) {
+            // Case insertion in existing plot window
+            if(pmi.comboSelectionExistingIdx>=0) {
+                plAssert(pmi.comboSelectionNewIdx==-1 && !pmi.comboSelectionRemoval);
+                int plotWindowIdx = pmi.existingPlotWindowIndices[pmi.comboSelectionExistingIdx];
+                plAssert(plotWindowIdx<_plots.size());
+                _plots[plotWindowIdx].isCacheDirty = true;
+                _plots[plotWindowIdx].valueMin = +1e300; // Resets the displayed scale
+                _plots[plotWindowIdx].valueMax = -1e300;
+                if(_plotMenuAddAllNames) {
+                    for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
+                        const cmRecord::Elem& elem = _record->elems[elemIdx];
+                        if((bool)elem.isPartOfHStruct==_plotMenuIsPartOfHStruct && elem.threadId==threadId && elem.nameIdx==pmi.nameIdx && elem.flags==pmi.flags) {
+                            bool isPresent = false;  // Need to check if already present due to the "all names"
+                            for(const vwMain::PlotCurve& c : _plots[plotWindowIdx].curves) if(c.elemIdx==elemIdx) isPresent = true;
+                            if(!isPresent) _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.hashPath, elemIdx, true } );
+                        }
+                    }
+                }
+                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].hashPath, pmi.elemIdx, true } );
+            }
+            // Case creation of a new plot window
+            else if(pmi.comboSelectionNewIdx>=0) {
+                plAssert(!pmi.comboSelectionRemoval);
+                int plotWindowIdx = realIdxLkup[pmi.comboSelectionNewIdx];
+                plAssert(plotWindowIdx>=0);
+                plAssert(plotWindowIdx<_plots.size());
+                if(_plotMenuAddAllNames) {
+                    for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
+                        const cmRecord::Elem& elem = _record->elems[elemIdx];
+                        if((bool)elem.isPartOfHStruct==_plotMenuIsPartOfHStruct && elem.threadId==threadId && elem.nameIdx==pmi.nameIdx && elem.flags==pmi.flags) {
+                            _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.hashPath, elemIdx, true } );
+                        }
+                    }
+                }
+                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].hashPath, pmi.elemIdx, true } );
+            }
+        }
+        plMarker("user", "Add plot(s)");
+        return false; // Closes the window
+    } // End of case of adding plots
+
+    // Do not close the window
+    return true;
+}
+
+
+bool
+vwMain::displayHistoContextualMenu(double headerWidth, double comboWidth)
+{
+    bool isFullRange = (!_plotMenuItems.empty() && _plotMenuItems[0].startTimeNs==0 && _plotMenuItems[0].timeRangeNs==_record->durationNs);
+    if(comboWidth<=0.) comboWidth = ImGui::CalcTextSize("New plot #OOOOO").x;
+    const double spacing = ImGui::GetStyle().ItemSpacing.x;
+    bool rootHistoSelected    = false;
+    bool innerFieldsSelected  = false;
+    bool innerFieldsDisplayed = false;
+    ImGui::PushID("HistoMenu");
+
+    // Display the list of plottable items
+    for(int i=0; i<_plotMenuItems.size(); ++i) {
+        auto& pmi = _plotMenuItems[i];
+
+        // Structured menu
+        if(i==1) {
+            if(!ImGui::BeginMenu("Histo of inner fields")) break; // No need to display inner fields
+            innerFieldsDisplayed = true;
+        }
+        ImGui::PushID(0x700000+i);
+
+        // Display the item names
+        if(i==0) {
+            ImGui::Text("Histogram");
+            ImGui::SameLine((headerWidth>0.)? headerWidth : ImGui::GetWindowContentRegionMax().x-comboWidth-spacing);
+        } else {
+            ImGui::Text("%s", pmi.name.toChar());
+            ImGui::SameLine(2.*spacing+_plotMenuNamesWidth);
+        }
+
+        ImGui::SetNextItemWidth(comboWidth);
+        float cursorX = ImGui::GetCursorPosX();
+        if(ImGui::BeginCombo("", pmi.comboHistoSelectionString.toChar(), 0)) {
+            // Empty
+            if(ImGui::Selectable("", false)) {
+                pmi.comboHistoSelectionString.clear();
+                pmi.comboHistoSelectionIdx = -1;
+            }
+            // Full range
+            bool isSelected = (pmi.comboHistoSelectionIdx==0);
+            if(ImGui::Selectable("Full record", isSelected)) {
+                pmi.comboHistoSelectionString = "Full record";
+                pmi.comboHistoSelectionIdx = 0;
+                if(i==0) rootHistoSelected = true;
+            }
+            if(isSelected) ImGui::SetItemDefaultFocus();
+            // Visible range (only if not full range)
+            if(!isFullRange) {
+                isSelected = (pmi.comboHistoSelectionIdx==1);
+                if(ImGui::Selectable("Only visible", isSelected)) {
+                    pmi.comboHistoSelectionString = "Only visible";
+                    pmi.comboHistoSelectionIdx = 1;
+                    if(i==0) rootHistoSelected = true;
+                }
+                if(isSelected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        } // End of histogram combo selection
+
+        ImGui::SameLine(cursorX+comboWidth+spacing); // Make position independent of the choice plot checkbox/combobox
+        ImGui::NewLine();
+        ImGui::PopID();
+    }
+
+    // Ends the inner field sub menu
+    if(innerFieldsDisplayed) {
+        ImGui::Separator();
+        ImGui::Spacing();
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize("Apply").x-2.*spacing);
+        innerFieldsSelected = ImGui::Button("Apply##Histo");
+        ImGui::EndMenu();
+    }
+
+    // Apply the choices
+    if(innerFieldsSelected || rootHistoSelected) {
+        // Some exclusive cleaning of the "other" selection
+        plAssert(innerFieldsSelected^rootHistoSelected);
+        for(int i=rootHistoSelected?1:0; i<(rootHistoSelected?_plotMenuItems.size():1); ++i) {
+            _plotMenuItems[i].comboHistoSelectionIdx = -1;
+        }
+
+        // Create new histograms
+        for(auto& pmi : _plotMenuItems) {
+            if     (pmi.comboHistoSelectionIdx==0) addHistogram(getId(), _plotMenuThreadUniqueHash, _record->elems[pmi.elemIdx].hashPath, 0, _record->durationNs);
+            else if(pmi.comboHistoSelectionIdx==1) addHistogram(getId(), _plotMenuThreadUniqueHash, _record->elems[pmi.elemIdx].hashPath, pmi.startTimeNs, pmi.timeRangeNs);
+        }
+    }
+
+    // Return
+    ImGui::PopID();
+    return !(innerFieldsSelected || rootHistoSelected); // False (= close window) if "apply" called
+}
+
+
+void
+vwMain::displayColorSelectMenu(const char* title, const int colorIdx, std::function<void(int)>& setter)
+{
+    static int initialColorIdx = -1;
+    const bsVec<ImVec4>& palette = getConfig().getColorPalette();
+    constexpr ImGuiColorEditFlags colorButtonFlags = (ImGuiColorEditFlags_NoAlpha   | ImGuiColorEditFlags_NoPicker |
+                                                      ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoDragDrop);
+
+    // Menu entry
+    ImGui::BeginGroup();
+    ImGui::Selectable(title, false, ImGuiSelectableFlags_DontClosePopups); ImGui::SameLine(0., 20.);
+    ImGui::ColorButton("##color", palette[colorIdx], colorButtonFlags,
+                       ImVec2(ImGui::GetTextLineHeight(), ImGui::GetTextLineHeight()));
+    ImGui::EndGroup();
+    if(ImGui::IsItemHovered() && ImGui::IsMouseReleased(0)) {
+        ImGui::OpenPopup("Color palette");
+        initialColorIdx = colorIdx;
+    }
+
+    // Popup
+    if(ImGui::BeginPopup("Color palette", ImGuiWindowFlags_AlwaysAutoResize)) {
+        // Current color
+        ImGui::BeginGroup();
+        ImGui::ColorButton("##color", palette[initialColorIdx], colorButtonFlags); ImGui::SameLine(); ImGui::Text("Current");
+        ImGui::EndGroup();
+        if(ImGui::IsItemHovered() && ImGui::IsMouseReleased(0)) ImGui::CloseCurrentPopup();
+        // Palette
+        ImGui::Text("Select a color:");
+        bool hoveredColor = false;
+        for(int j=0; j<palette.size(); ++j) {
+            ImGui::PushID(j);
+            if(j&7) ImGui::SameLine(0.0, ImGui::GetStyle().ItemSpacing.y);
+            if(ImGui::ColorButton("##color", palette[j], colorButtonFlags, ImVec2(20, 20))) {
+                setter(j);
+                initialColorIdx = -1;
+                plMarker("user", "Change one color");
+                ImGui::CloseCurrentPopup();
+            }
+            else if(ImGui::IsItemHovered()) {
+                setter(j);
+                hoveredColor = true;
+            }
+            ImGui::PopID();
+        }
+        // Cancel hovered color
+        if(!hoveredColor && initialColorIdx>=0) {
+            setter(initialColorIdx);
+        }
+        ImGui::EndPopup(); // End of "Color thread palette"
+    }
+    else {
+        initialColorIdx = -1;
+    }
+}
+
+
+
+// Display helpers
+// ===============
+
+// Formatted help message display. Limited but simple and enough for the need.
+// Line starting with '-' is a bullet
+// Line starting with '##' is a section title. If on the first line, it is centered.
+// A line equal to "===" is an horizontal separator
+// A chunk of line between two '#' is color highlighted
+// A '|' in a line means a column separator (1 max per line). First column has a consistent width for the full text.
+void
+vwMain::displayHelpText(const char* helpStr)
+{
+    // First pass: identify columns and compute the width of the 1st column
+    const char* s = helpStr;
+    float columnWidth = 0;
+    while(*s) {
+        // Find the line
+        const char* endS = s;
+        while(*endS!=0 && *endS!='|' && *endS!='\n') ++endS;
+        if(*endS==0) break;
+        if(*endS=='|') columnWidth = bsMax(columnWidth, ImGui::CalcTextSize(s, endS).x);
+        s = endS+1;
+    }
+    if(columnWidth>0.) columnWidth += ImGui::CalcTextSize("OOO").x; // Add some margin, especially for bullet
+
+    // Second pass: real display
+    s = helpStr;
+    bool isFirstLine = true;
+    while(*s) {
+        // Find the line
+        const char* endS = s;
+        while(*endS!=0 && *endS!='\n') ++endS;
+        if(*endS==0) break;
+
+        // Get the type of line
+        bool isTitle  = (*s=='#') && (*(s+1)=='#');
+        bool isBullet = (*s=='-');
+        if(isTitle ) s += 2;
+        if(isBullet) s += 1;
+
+        // Display
+        if(isTitle) {
+            ImGui::Spacing();
+            if(isFirstLine) {
+                bsString title(s, endS);
+                float startX = 0.5*(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize(title.toChar()).x);
+                ImGui::SetCursorPosX(startX);
+                ImGui::TextColored(vwConst::gold, "%s", title.toChar());
+            }
+            else {
+                ImGui::TextColored(vwConst::gold, "%.*s", (int)(endS-s), s);
+            }
+            ImGui::Spacing();
+        }
+        // Empty line
+        else if(endS==s) ImGui::NewLine();
+        // Horizontal separator
+        else if((int)(endS-s)==3 && s[0]=='=' && s[1]=='=' && s[2]=='=') ImGui::Separator();
+        // Standard text
+        else {
+            // Find the column separator
+            const char* endSC = s;
+            while(endSC<endS && *endSC!='|') ++endSC;
+
+            for(int col=0; col<2; ++col) {
+                // 2 columnns = 2 chunks to display
+                const char* s3    = (col==0)?     s : endSC+1;
+                const char* endS3 = (col==0)? endSC : endS;
+                if(s3>=endS3) break;
+
+                bool isFirstWord = true;
+                bool isUnderHighlight = false;
+                while(s3<endS3) {
+                    // Find the highlight marker
+                    const char* endS2 = s3;
+                    while(endS2<endS3 && *endS2!='#') ++endS2;
+                    if(isFirstWord && col==0 && isBullet) { ImGui::BulletText("%.*s", (int)(endS2-s3), s3); isFirstWord = false; }
+                    else if(s3<endS2) {
+                        if(!(isFirstWord && col==0)) ImGui::SameLine();
+                        if(isFirstWord && col==1)    ImGui::SetCursorPosX(columnWidth);
+                        if(isUnderHighlight)         ImGui::TextColored(vwConst::cyan, "%.*s", (int)(endS2-s3), s3);
+                        else                         ImGui::Text("%.*s", (int)(endS2-s3), s3);
+                        isFirstWord = false;
+                    }
+                    isUnderHighlight = !isUnderHighlight;
+                    s3 = endS2 + 1;
+                } // End of loop on chunks to display
+            } // End of loop on columns
+        } // End of standard text display
+
+        // Next line
+        isFirstLine = false;
+        s = endS+1;
+    }
+}
+
+
+void
+vwMain::openHelpTooltip(int uniqueId, const char* tooltipId)
+{
+    ImGui::OpenPopup(tooltipId);
+    _uniqueIdHelp = uniqueId;
+}
+
+
+void
+vwMain::displayHelpTooltip(int uniqueId, const char* tooltipId, const char* helpStr)
+{
+    if(ImGui::BeginPopup(tooltipId, ImGuiWindowFlags_AlwaysAutoResize)) {
+        displayHelpText(helpStr);
+        if(_uniqueIdHelp!=uniqueId && !ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(KC_H)) {
+            ImGui::CloseCurrentPopup();
+        }
+        _uniqueIdHelp = -1;
+        ImGui::EndPopup();
+    }
+    else if(_uniqueIdHelp==uniqueId) _uniqueIdHelp = -1;  // Help closed externally
+}
+
+
+void
+vwMain::displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& dataChildren, const cmRecord::Evt& evt, s64 durationNs)
+{
+    // First pass to collect elems on children
+    char  tmpStr[128];
+    u32   allocQty=0, allocSize=0, deallocQty=0, deallocSize=0;
+    int   dataQty     = 0;
+    int   childrenQty = 0;
+    s64   timeInChildrenNs   = 0;
+    s64   lastChildStartTime = 0;
+    struct ChildElems {
+        u32 nameIdx;
+        int qty;
+        s64 timeSpentNs;
+    };
+    bsVec<ChildElems> childrenElems;
+    bool isTruncated = (dataChildren.size()>=cmConst::CHILDREN_MAX);
+    for(const auto& d : dataChildren) {
+        if(d.flags&PL_FLAG_SCOPE_BEGIN) { // Store the date of a child scope
+            lastChildStartTime = d.vS64;
+            continue;
+        }
+        if(d.flags&PL_FLAG_SCOPE_END && lastChildStartTime!=0) { // End of a child scope: store it
+            timeInChildrenNs += d.vS64-lastChildStartTime;
+            ++childrenQty;
+            int i=0;
+            for(;i<childrenElems.size(); ++i) {
+                ChildElems& ci = childrenElems[i];
+                if(d.nameIdx==ci.nameIdx) {
+                    ci.timeSpentNs += d.vS64-lastChildStartTime;
+                    ++ci.qty;
+                    break;
+                }
+            }
+            if(i==childrenElems.size()) childrenElems.push_back( { d.nameIdx, 1, d.vS64-lastChildStartTime } );
+            lastChildStartTime = 0;
+            continue;
+        }
+        // Case memory: update stats
+        int dType = d.flags&PL_FLAG_TYPE_MASK;
+        if(dType==PL_FLAG_TYPE_ALLOC) {
+            allocQty  += d.getMemCallQty();
+            allocSize += d.getMemByteQty();
+            continue;
+        }
+        if(dType==PL_FLAG_TYPE_DEALLOC) {
+            deallocQty  += d.getMemCallQty();
+            deallocSize += d.getMemByteQty();
+            continue;
+        }
+        // Case non scope elem
+        if(dType>=PL_FLAG_TYPE_DATA_QTY && dType!=PL_FLAG_TYPE_MARKER) continue;
+        ++dataQty;
+    }
+
+    // Tooltip
+    ImGui::BeginTooltip();
+    ImGui::TextColored(vwConst::gold, "%s", titleStr);
+    if(evt.lineNbr>0) {
+        ImGui::Text("At line"); ImGui::SameLine();
+        ImGui::TextColored(vwConst::grey, "%d", evt.lineNbr); ImGui::SameLine();
+        ImGui::Text("in file"); ImGui::SameLine();
+    } else {
+        ImGui::Text("In"); ImGui::SameLine();
+    }
+    ImGui::TextColored(vwConst::grey, "%s", _record->getString(evt.filenameIdx).value.toChar());
+    int eType = evt.flags&PL_FLAG_TYPE_MASK;
+    if(eType==PL_FLAG_TYPE_DATA_TIMESTAMP || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) {
+        ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", getNiceTime(evt.vS64, 0));
+    }
+    if(isTruncated) {
+        ImGui::TextColored(vwConst::red, "(Truncated data, too much children)");
+    }
+    if(allocQty>0 || deallocQty>0) ImGui::Separator();
+    if(allocQty) {
+        ImGui::TextColored(vwConst::grey, "+%s", getNiceBigPositiveNumber(allocSize)); ImGui::SameLine();
+        ImGui::Text("bytes in"); ImGui::SameLine();
+        ImGui::TextColored(vwConst::grey, "%s", getNiceBigPositiveNumber(allocQty)); ImGui::SameLine();
+        ImGui::Text("alloc calls");
+    }
+    if(deallocQty) {
+        ImGui::TextColored(vwConst::grey, "-%s", getNiceBigPositiveNumber(deallocSize)); ImGui::SameLine();
+        ImGui::Text("bytes in"); ImGui::SameLine();
+        ImGui::TextColored(vwConst::grey, "%s", getNiceBigPositiveNumber(deallocQty)); ImGui::SameLine();
+        ImGui::Text("dealloc calls");
+    }
+    if(!childrenElems.empty()) {
+        std::sort(childrenElems.begin(), childrenElems.end(), [](const ChildElems& a, const ChildElems& b)->bool { return a.timeSpentNs>b.timeSpentNs; });
+        ImGui::Separator();
+        ImGui::TextColored(vwConst::grey, "%.1f%%", 100.*(double)timeInChildrenNs/(double)durationNs); ImGui::SameLine();
+        ImGui::Text("time spent in"); ImGui::SameLine();
+        ImGui::TextColored(vwConst::grey, "%s", getNiceBigPositiveNumber(childrenQty)); ImGui::SameLine();
+        ImGui::Text("child%s", (childrenQty>1)? "ren" : "");
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3., style.CellPadding.y));
+        if(ImGui::BeginTable("##table1", 2, ImGuiTableFlags_SizingFixedFit)) {
+            float barWidth = ImGui::CalcTextSize("1000.00 ns (100.0 %%)").x;
+            for(const ChildElems& ci : childrenElems) {
+                ImGui::TableNextColumn();
+                ImGui::Text("%s",_record->getString(ci.nameIdx).value.toChar());
+                if(ci.qty>1) {
+                    ImGui::SameLine();
+                    ImGui::TextColored(vwConst::grey, "(%dx)", ci.qty);
+                }
+                ImGui::TableNextColumn();
+                double ratio = (double)ci.timeSpentNs/(double)durationNs;
+                snprintf(tmpStr, sizeof(tmpStr), "%s (%.1f %%)", getNiceDuration(ci.timeSpentNs), 100.*ratio);
+                ImGui::ProgressBar(ratio, ImVec2(barWidth,ImGui::GetTextLineHeight()), tmpStr);
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopStyleVar();
+    }
+
+    // Second pass to display
+    if(dataQty) {
+        constexpr int maxDataQty = 25;
+        ImGui::Separator();
+        ImGuiStyle& style = ImGui::GetStyle();
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3., style.CellPadding.y));
+        if(ImGui::BeginTable("##table2", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
+            int dataCount = 0;
+            for(const auto& d : dataChildren) {
+                if(d.flags&PL_FLAG_SCOPE_MASK) continue;
+                int dType = d.flags&PL_FLAG_TYPE_MASK;
+                if(dType>=PL_FLAG_TYPE_DATA_QTY && dType!=PL_FLAG_TYPE_MARKER) continue;
+                ImGui::TableNextColumn();
+                if((++dataCount)==maxDataQty-4) { // Line limit reached?
+                    ImGui::Text(". . . "); ImGui::TableNextColumn();
+                    break;
+                }
+                else ImGui::Text("%s%s", (dType==PL_FLAG_TYPE_MARKER)?"<Marker> ":"", _record->getString(d.nameIdx).value.toChar());
+                ImGui::TableNextColumn();
+                if(dType!=PL_FLAG_TYPE_DATA_NONE) ImGui::TextColored(vwConst::grey, "%s", getValueAsChar(d));
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopStyleVar();
+    }
+
+    ImGui::EndTooltip();
+}
+
+
+void
+vwMain::computeTickScales(const double valueRange, const int targetTickQty, double& scaleMajorTick, double& scaleMinorTick)
+{
+    // Compute the tick period
+    scaleMajorTick = pow(10., int(log10(valueRange))-1);
+    scaleMinorTick = scaleMajorTick;
+    for(int i=0; i<5; ++i) {
+        int tickQty = valueRange/scaleMajorTick;
+        if(tickQty<targetTickQty) break;
+        scaleMinorTick = scaleMajorTick;
+        scaleMajorTick *= (i&1)? 2. : 5.;
+    }
+}
+
+
+void
+vwMain::drawSynchroGroupCombo(double comboWidth, int* syncModePtr)
+{
+    ImGui::PushItemWidth(comboWidth);
+    if(ImGui::Combo("##Synchro", syncModePtr, "Isolated\0Group 1\0Group 2\0\0")) {
+        plMarker("user", "Change synchro group");
+    }
+    ImGui::PopItemWidth();
+    if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) {
+        ImGui::SetTooltip("Defines how window time ranges are synchronized.\nWindows can be 'isolated' or belong to group 1 or 2");
+    }
+}
+
+
+bool
+vwMain::manageVisorAndRangeSelectionAndBarDrag(TimeRangeBase& trb,
+                                                bool isWindowHovered, double mouseX, double mouseY, double winX, double winY, double winWidth, double winHeight,
+                                                bool isBarHovered, double rbWidth, double rbStartPix, double rbEndPix)
+{
+    const double nsToPix = winWidth/trb.timeRangeNs;
+    // Drag with middle button
+    if(isWindowHovered && ImGui::IsMouseDragging(1)) {
+        // Update the selected range
+        trb.rangeSelStartNs = trb.getStartTimeNs() + (mouseX-winX-ImGui::GetMouseDragDelta(1).x)/nsToPix;
+        trb.rangeSelEndNs   = trb.getStartTimeNs() + (mouseX-winX)/nsToPix;
+
+        // Cancel case
+        if(trb.rangeSelStartNs>=trb.rangeSelEndNs) {
+            trb.rangeSelStartNs = 0.;
+            trb.rangeSelEndNs = 0.;
+        }
+
+        // Drag on-going: display the selection box with transparency and range
+        else {
+            char tmpStr[128];
+            double x1 = winX+nsToPix*(trb.rangeSelStartNs-trb.getStartTimeNs());
+            double x2 = winX+nsToPix*(trb.rangeSelEndNs-trb.getStartTimeNs());
+            constexpr double arrowSize = 4.;
+            // White background
+            DRAWLIST->AddRectFilled(ImVec2(x1, winY), ImVec2(x2, winY+winHeight), IM_COL32(255,255,255,128));
+            // Range line
+            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x2, mouseY), vwConst::uBlack, 2.);
+            // Arrows
+            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.);
+            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.);
+            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.);
+            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.);
+            // Text
+            snprintf(tmpStr, sizeof(tmpStr), "{ %s }", getNiceDuration(trb.rangeSelEndNs-trb.rangeSelStartNs));
+            ImVec2 tb = ImGui::CalcTextSize(tmpStr);
+            double x3 = 0.5*(x1+x2-tb.x);
+            if(x3<x1)      DRAWLIST->AddRectFilled(ImVec2(x3, mouseY-tb.y-5), ImVec2(x1,      mouseY-5), IM_COL32(255,255,255,128));
+            if(x3+tb.x>x2) DRAWLIST->AddRectFilled(ImVec2(x2, mouseY-tb.y-5), ImVec2(x3+tb.x, mouseY-5), IM_COL32(255,255,255,128));
+            DRAWLIST->AddText(ImVec2(x3, mouseY-tb.y-5), vwConst::uBlack, tmpStr);
+        }
+    }
+
+    // Drag ended: set the selected range view
+    else if(isWindowHovered && trb.rangeSelEndNs>0.) {
+        trb.rangeSelStartNs = bsMax(0., trb.rangeSelStartNs);
+        trb.setView(trb.rangeSelStartNs, bsMax(trb.rangeSelEndNs-trb.rangeSelStartNs, 1000.), true);
+        trb.rangeSelStartNs = trb.rangeSelEndNs = 0.;
+        return  true;
+    }
+
+    // No range selection, then draw the vertical visor
+    else {
+        double x = winX + (_mouseTimeNs-trb.startTimeNs)*nsToPix;
+        DRAWLIST->AddLine(ImVec2(x, winY), ImVec2(x, winY+winHeight), vwConst::uYellow, 1.0);
+    }
+
+    // Manage the view navigation through the timeline top bar
+    if(trb.dragMode==BAR || (isBarHovered && !ImGui::GetIO().KeyCtrl && trb.ctxDraggedId<0 && trb.dragMode==NONE)) {
+        if(ImGui::IsMouseDragging(2)) {
+            if(bsAbs(ImGui::GetMouseDragDelta(2).x)>1.) {
+                trb.setView(trb.getStartTimeNs()+_record->durationNs*ImGui::GetMouseDragDelta(2).x/winWidth, trb.getTimeRangeNs());
+                ImGui::ResetMouseDragDelta(2);
+                trb.dragMode = BAR;
+                return true;
+            }
+        }
+        // Else just set the middle screen time if clicked outside of the bar
+        else if(ImGui::IsMouseDown(0) && mouseX<winX+rbWidth && (mouseX<rbStartPix || mouseX>rbEndPix)) {
+            trb.setView(_record->durationNs*(mouseX-winX)/rbWidth-0.5*trb.getTimeRangeNs(), trb.getTimeRangeNs());
+            trb.dragMode = BAR;
+            return true;
+        }
+        else trb.dragMode = NONE;
+    }
+    else if(trb.dragMode==BAR) trb.dragMode = NONE;
+
+    return false;
+}
+
+
+void
+vwMain::drawTimeRuler(double winX, double winY, double winWidth, double rulerHeight, double startTimeNs, double timeRangeNs,
+                       int& syncMode, double& rbWidth, double& rbStartPix, double& rbEndPix)
+{
+    const double MIN_TICK_WIDTH_PIX    = 10.*getConfig().getFontSize(); // Correspond to a typical date display
+    constexpr double MIN_VIEWBAR_WIDTH_PIX = 10;
+    const double fontYSpacing     = 0.5*ImGui::GetStyle().ItemSpacing.y;
+    const double textPixMargin    = 3.*fontYSpacing;
+    const bool   isWindowHovered  = ImGui::IsWindowHovered();
+    const double rbHeight         = ImGui::GetTextLineHeightWithSpacing();
+    const double rbInnerBarOffset = 4.;
+    const double comboWidth       = ImGui::CalcTextSize("Isolated XXX").x;
+    const double recordDurationNs = _record->durationNs;
+    if(timeRangeNs<=0.) timeRangeNs = bsMax(recordDurationNs, 1.);
+    const double nsToPix          = winWidth/timeRangeNs;
+
+    // Visible range bar
+    rbWidth      = winWidth-comboWidth;
+    double toPix = (rbWidth-3)/recordDurationNs;
+    double viewBarWidthPix = bsMax(MIN_VIEWBAR_WIDTH_PIX, toPix*timeRangeNs);
+    rbStartPix   = winX + bsMax(toPix*(startTimeNs+0.5*timeRangeNs) - 0.5*viewBarWidthPix, 0.);
+    rbEndPix     = winX + bsMin(toPix*(startTimeNs+0.5*timeRangeNs) + 0.5*viewBarWidthPix, rbWidth);
+    DRAWLIST->AddRectFilled(ImVec2(winX, winY), ImVec2(winX+winWidth, winY+rbHeight), vwConst::uGrey);
+    DRAWLIST->AddRectFilled(ImVec2(rbStartPix, winY+rbInnerBarOffset), ImVec2(rbEndPix  , winY+rbHeight-rbInnerBarOffset), vwConst::uGrey128);
+
+    // Mark active ranges (text & memory)
+    for(auto& tw: _texts) {
+        ImColor colorThread = getConfig().getThreadColor(tw.threadId);
+        colorThread.Value.w = 0.5; // Make the bar slightly transparent to handle overlaps
+        double x1 = winX+rbWidth*tw.firstTimeNs/recordDurationNs;
+        double x2 = bsMax(x1+2., winX+rbWidth*tw.lastTimeNs/recordDurationNs);
+        DRAWLIST->AddRectFilled(ImVec2(x1, winY+6), ImVec2(x2, winY+rbHeight-6), colorThread);
+    }
+    for(auto& mw: _memTimelines) {
+        if(mw.allocBlockThreadId<0) continue;
+        ImColor colorThread = getConfig().getThreadColor(mw.allocBlockThreadId);
+        colorThread.Value.w = 0.5; // Make the bar slightly transparent to handle overlaps
+        double x1 = winX+rbWidth*mw.allocBlockStartTimeNs/recordDurationNs;
+        double x2 = bsMax(x1+2., winX+rbWidth*mw.allocBlockEndTimeNs/recordDurationNs);
+        DRAWLIST->AddRectFilled(ImVec2(x1, winY+6), ImVec2(x2, winY+rbHeight-6), colorThread);
+    }
+
+    // Draw background
+    double rulerY = winY+rbHeight;
+    DRAWLIST->AddRectFilled(ImVec2(winX, rulerY), ImVec2(winX+winWidth, rulerY+rulerHeight), vwConst::uBlack);
+
+    // Compute the tick period
+    double scaleMajorTick, scaleMinorTick;
+    computeTickScales(timeRangeNs, bsMinMax(winWidth/MIN_TICK_WIDTH_PIX, 1., 10.), scaleMajorTick, scaleMinorTick);
+
+    // Draw the minor ticks
+    double pixTick = -nsToPix*fmod(startTimeNs, scaleMajorTick);
+    while(pixTick<winWidth) {
+        DRAWLIST->AddLine(ImVec2(winX+pixTick, rulerY+rulerHeight-7), ImVec2(winX+pixTick, rulerY+rulerHeight), vwConst::uWhite);
+        pixTick += nsToPix*scaleMinorTick;
+    }
+
+    // Draw the major ticks
+    s64 timeTick = scaleMajorTick*floor(startTimeNs/scaleMajorTick);
+    pixTick = nsToPix*(timeTick-startTimeNs);
+    while(pixTick<winWidth) {
+        DRAWLIST->AddLine(ImVec2(winX+pixTick, rulerY), ImVec2(winX+pixTick, rulerY+rulerHeight), vwConst::uWhite, 2.0);
+        DRAWLIST->AddText(ImVec2(winX+pixTick+textPixMargin, rulerY+fontYSpacing), vwConst::uWhite, getNiceTime(timeTick, scaleMajorTick));
+        pixTick  += nsToPix*scaleMajorTick;
+        timeTick += scaleMajorTick;
+    }
+
+    // Draw the rule outside
+    DRAWLIST->AddRect(ImVec2(winX, winY), ImVec2(winX+winWidth, rulerY+rulerHeight), vwConst::uGrey64, 0., ImDrawCornerFlags_All, 2.);
+
+    // Draw the tooltip showing the range if hovered, else the current time
+    if(isWindowHovered) {
+        ImGui::SetTooltip("Range { %s } %s -> %s", getNiceDuration(timeRangeNs),
+                          getNiceTime(startTimeNs, timeRangeNs, 0), getNiceTime(startTimeNs+timeRangeNs, timeRangeNs, 1));
+    } else {
+        char tmpStr[128];
+        snprintf(tmpStr, sizeof(tmpStr),  "%s", getNiceTime(_mouseTimeNs, 0.02*scaleMajorTick)); // x50 precision for the time
+        DRAWLIST->AddText(ImVec2(winX+nsToPix*(_mouseTimeNs-startTimeNs)-0.5*ImGui::CalcTextSize(tmpStr).x,
+                                 winY+0.5*rbInnerBarOffset), vwConst::uBlack, tmpStr);
+    }
+
+    // Synchronization groups
+    ImGui::SetCursorPos(ImVec2(winWidth-comboWidth, 0));
+    drawSynchroGroupCombo(comboWidth, &syncMode);
+}
+
+
+double
+vwMain::getTimelineHeaderHeight(bool withGroupHeader, bool withThreadHeader)
+{
+    return ((withGroupHeader? 1.6 : 0.)+(withThreadHeader? 1.3 : 0.))*ImGui::GetTextLineHeightWithSpacing();
+}
+
+
+bool
+vwMain::displayTimelineHeader(double yHeader, double yThreadAfterTimeline, int threadId, bool doDrawGroup, bool isDrag,
+                               bool& isThreadHovered, bool& isGroupHovered)
+{
+    // Constants
+    constexpr double vBandWidth   = 10;
+    constexpr ImU32  groupColor   = IM_COL32(30, 64, 96, 255);
+    constexpr ImU32  groupHColor  = IM_COL32(30, 64, 96, 128);
+    constexpr ImU32  threadColor  = IM_COL32(30, 64, 64, 255);
+    constexpr ImU32  threadHColor = IM_COL32(30, 64, 64, 128);
+    constexpr ImU32  whiteHColor = IM_COL32(255, 255, 255, 128);
+    const double fontHeight = ImGui::GetTextLineHeightWithSpacing();
+    const double tgSide = 0.8*fontHeight;
+    const double ttSide = 0.6*fontHeight;
+    const double groupTitleHeight  = 1.6*fontHeight;
+    const double threadTitleHeight = 1.3*fontHeight;
+    const bool   isWindowHovered   = ImGui::IsWindowHovered();
+    const double mouseX = ImGui::GetMousePos().x;
+    const double mouseY = ImGui::GetMousePos().y;
+    const double winX   = ImGui::GetWindowPos().x;
+    const double fontSpacing       = 0.5*ImGui::GetStyle().ItemSpacing.y;
+    const double threadTitleMargin = 1.*fontSpacing;
+    const double textPixMargin     = 2.*fontSpacing;
+    bool isConfigChanged = false;
+
+    // Get elems from the threadId
+    const char* threadName = 0;
+    const char* groupName  = 0;
+    int groupNameIdx = -1;
+    if(threadId>=0 && threadId<cmConst::MAX_THREAD_QTY) {
+        threadName   = _record->getString(_record->threads[threadId].nameIdx).value.toChar();
+        groupNameIdx = _record->threads[threadId].groupNameIdx;
+        if(groupNameIdx>=0) groupName  = _record->getString(groupNameIdx).value.toChar();
+    }
+    else if(threadId==vwConst::LOCKS_THREADID)      threadName = "Locks";
+    else if(threadId==vwConst::CORE_USAGE_THREADID) threadName = "Cores";
+    float threadNameWidth = ImGui::CalcTextSize(threadName).x;
+
+    bool isGroupExpanded = !doDrawGroup || getConfig().getGroupExpanded(groupNameIdx);
+    bool isThreadTransparent = false;
+    isThreadHovered = isGroupHovered = isDrag;
+    if(!isDrag && isWindowHovered && mouseX>=winX && mouseX<=winX+_timelineHeaderWidth && mouseY>=yHeader) {
+        isGroupHovered  = doDrawGroup && mouseY<=yHeader+groupTitleHeight;
+        isThreadHovered = isGroupExpanded && ((!doDrawGroup && mouseY<yHeader+threadTitleHeight) ||
+                                             (doDrawGroup && mouseY>yHeader+groupTitleHeight && mouseY<=yHeader+groupTitleHeight+threadTitleHeight));
+        isThreadTransparent = isThreadHovered && mouseX<winX+_timelineHeaderWidth-ttSide-threadTitleMargin-threadNameWidth-10;
+    }
+
+    // Draw the group header
+    // =====================
+    if(doDrawGroup) {
+        // Background bar
+        DRAWLIST->AddRectFilled(ImVec2(winX+threadTitleMargin, yHeader+2.*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+groupTitleHeight),
+                                isDrag? groupHColor:groupColor);
+        if(isDrag) { // Highlight the dragging with a white border
+            DRAWLIST->AddRect(ImVec2(winX+threadTitleMargin, yHeader+2.*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+groupTitleHeight),
+                              vwConst::uWhite, 0., ImDrawCornerFlags_All, 2.);
+        }
+
+        // Expansion state triangle
+        double tX = winX+2*threadTitleMargin, tY = yHeader+0.5*(groupTitleHeight-0.8*fontHeight)+fontSpacing;
+        if(isGroupExpanded) {
+            DRAWLIST->AddTriangleFilled(ImVec2(tX, tY), ImVec2(tX+tgSide, tY), ImVec2(tX+0.5*tgSide, tY+0.707*tgSide),
+                                        isDrag? whiteHColor:vwConst::uWhite);
+        }  else {
+            double tdX = 0.293*tgSide, tdY = 0.2*tgSide;
+            DRAWLIST->AddTriangleFilled(ImVec2(tX+tdX, tY-tdY), ImVec2(tX+tgSide, tY+0.5*tgSide-tdY), ImVec2(tX+tdX, tY+tgSide-tdY),
+                                        isDrag? whiteHColor:vwConst::uWhite);
+        }
+
+        // Text
+        plAssert(groupName);
+        DRAWLIST->AddText(ImVec2(tX+tgSide+2.*textPixMargin, yHeader+0.5*(groupTitleHeight-fontHeight)+fontSpacing),
+                          isDrag? whiteHColor:vwConst::uWhite, groupName);
+
+        // Triangle interaction
+        yHeader += groupTitleHeight;
+        if(isGroupHovered && !isDrag && !ImGui::GetIO().KeyCtrl && mouseX<=tX+fontHeight+2.*textPixMargin+ImGui::CalcTextSize(groupName).x &&
+           mouseY<=yHeader+groupTitleHeight && ImGui::IsMouseReleased(0)) {
+            getConfig().setGroupExpanded(groupNameIdx, !isGroupExpanded);
+            isConfigChanged = true;
+        }
+    }
+    if(!isGroupExpanded || (isDrag && doDrawGroup)) return isConfigChanged;
+
+    // Draw the thread header
+    // ======================
+    bool   isThreadVisible = getConfig().getThreadExpanded(threadId);
+    double tX = winX+_timelineHeaderWidth-ttSide-threadTitleMargin, tY = yHeader+0.5*(groupTitleHeight-fontHeight)+fontSpacing;
+    if(!isThreadTransparent) {
+        // Background bar
+        double xStart = winX+threadTitleMargin+(groupName? 4*threadTitleMargin+vBandWidth : 0);
+        DRAWLIST->AddRectFilled(ImVec2(xStart, yHeader+2.*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+threadTitleHeight),
+                                isThreadHovered? threadHColor : threadColor);
+        if(isDrag) { // Highlight the dragging
+            DRAWLIST->AddRect(ImVec2(xStart, yHeader+2.*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+threadTitleHeight),
+                              vwConst::uWhite, 0., ImDrawCornerFlags_All, 2.);
+        }
+
+        // Expansion state triangle
+        if(isThreadVisible) {
+            DRAWLIST->AddTriangleFilled(ImVec2(tX, tY), ImVec2(tX+ttSide, tY), ImVec2(tX+0.5*ttSide, tY+0.707*ttSide),
+                                        isThreadHovered? whiteHColor:vwConst::uWhite);
+        } else {
+            double tdX = 0.293*ttSide, tdY = 0.2*ttSide;
+            DRAWLIST->AddTriangleFilled(ImVec2(tX+tdX, tY-tdY), ImVec2(tX+ttSide, tY+0.5*ttSide-tdY), ImVec2(tX+tdX, tY+ttSide-tdY),
+                                        isThreadHovered? whiteHColor:vwConst::uWhite);
+        }
+
+        // Text
+        DRAWLIST->AddText(ImVec2(tX-threadNameWidth-10, yHeader+0.5*(threadTitleHeight-fontHeight)+fontSpacing),
+                          isThreadHovered? whiteHColor:vwConst::uWhite, threadName);
+
+        // Draw the vertical bar
+        if(!isDrag && groupName) {
+            DRAWLIST->AddRectFilled(ImVec2(winX+3*threadTitleMargin, yHeader), ImVec2(winX+3*threadTitleMargin+vBandWidth, yThreadAfterTimeline),
+                                    isThreadHovered? groupHColor:groupColor);
+        }
+    }
+
+    // Triangle interaction
+    if(isThreadHovered && !isDrag && !ImGui::GetIO().KeyCtrl && mouseX>=tX-threadNameWidth-10 && mouseX<=tX+fontHeight && mouseY>=yHeader &&
+       mouseY<=yHeader+fontHeight && ImGui::IsMouseReleased(0)) {
+        getConfig().setThreadExpanded(threadId, !isThreadVisible);
+        isConfigChanged = true;
+    }
+
+    return isConfigChanged;
+}
+
+
+void
+vwMain::displayTimelineHeaderPopup(TimeRangeBase& trb, int tId, bool openAsGroup)
+{
+    ImGui::PushID(tId);
+    ImGui::PushID("thread context menu");
+    if(trb.ctxDoOpenContextMenu) {
+        ImGui::OpenPopup(openAsGroup? "Group menu":"Thread menu");
+        trb.ctxDoOpenContextMenu = false;
+    }
+
+    // Check that we are drawing a thread or group menu
+    bool isMenuAThread    = true;
+    bool areWeDrawingMenu = ImGui::BeginPopup("Thread menu", ImGuiWindowFlags_AlwaysAutoResize);
+    if(!areWeDrawingMenu) {
+        areWeDrawingMenu = ImGui::BeginPopup("Group menu", ImGuiWindowFlags_AlwaysAutoResize);
+        isMenuAThread    = false;
+    }
+    if(!areWeDrawingMenu) { ImGui::PopID(); ImGui::PopID(); return; }
+
+    // Part of the menu only for threads, not group
+    if(isMenuAThread && tId<cmConst::MAX_THREAD_QTY) {
+        // Draw the popup menu
+        ImGui::TextColored(vwConst::grey, "%s", _record->getString(_record->threads[tId].nameIdx).value.toChar());
+        ImGui::Separator();
+
+        // Text menu
+        if(ImGui::MenuItem("View as text")) { addText(getId(), tId); ImGui::CloseCurrentPopup(); }
+
+        // Profiling menu
+#define ADD_PROFILE(kind, startNs_, durationNs_) { addProfileRange(getId(), vwMain::kind, tId, 0, (s64)startNs_, (s64)durationNs_); ImGui::CloseCurrentPopup(); }
+        bool isFullRange = (trb.startTimeNs==0 && trb.timeRangeNs==_record->durationNs);
+        if(isFullRange) {
+            if(ImGui::MenuItem("Profile timings")) ADD_PROFILE(TIMINGS, 0, _record->durationNs);
+        }
+        else {
+            if(ImGui::BeginMenu("Profile timings")) {
+                if(ImGui::MenuItem("Full thread"   )) ADD_PROFILE(TIMINGS, 0, _record->durationNs);
+                if(ImGui::MenuItem("Visible region")) ADD_PROFILE(TIMINGS, trb.getStartTimeNs(), trb.getTimeRangeNs());
+                ImGui::EndMenu();
+            }
+        }
+
+        // Memory menu
+        if(_record->threads[tId].memEventQty>0) {
+            if(isFullRange) {
+                if(ImGui::MenuItem("Profile allocated memory")) ADD_PROFILE(MEMORY,       0, _record->durationNs);
+                if(ImGui::MenuItem("Profile allocated calls" )) ADD_PROFILE(MEMORY_CALLS, 0, _record->durationNs);
+            }
+            else {
+                if(ImGui::BeginMenu("Profile allocated memory"))  {
+                    if(ImGui::MenuItem("Full thread"   )) ADD_PROFILE(MEMORY, 0, _record->durationNs);
+                    if(ImGui::MenuItem("Visible region")) ADD_PROFILE(MEMORY, trb.getStartTimeNs(), trb.getTimeRangeNs());
+                    ImGui::EndMenu();
+                }
+                if(ImGui::BeginMenu("Profile allocated calls"))  {
+                    if(ImGui::MenuItem("Full thread"   )) ADD_PROFILE(MEMORY_CALLS, 0, _record->durationNs);
+                    if(ImGui::MenuItem("Visible region")) ADD_PROFILE(MEMORY_CALLS, trb.getStartTimeNs(), trb.getTimeRangeNs());
+                    ImGui::EndMenu();
+                }
+            }
+        }
+        ImGui::Separator();
+
+        // Thread color menu
+        std::function<void(int)> threadSetColor = [tId, this] (int colorIdx) { getConfig().setThreadColorIdx(tId, colorIdx); };
+        displayColorSelectMenu("Thread color", getConfig().getThreadColorIdx(tId), threadSetColor);
+        ImGui::Separator();
+    } // End of menu part specific to threads
+
+    if(ImGui::MenuItem("Expand all"))   {
+        getConfig().setAllExpanded(true);
+        synchronizeThreadLayout();
+        ImGui::CloseCurrentPopup();
+    }
+    if(ImGui::MenuItem("Collapse all")) {
+        getConfig().setAllExpanded(false);
+        synchronizeThreadLayout();
+        ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup(); // End of "Thread menu"
+    ImGui::PopID();
+    ImGui::PopID();
+}

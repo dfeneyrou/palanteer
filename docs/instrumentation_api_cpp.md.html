@@ -1,0 +1,976 @@
+                   <meta charset="utf-8" emacsmode="-*- markdown -*-">
+       **Look into Palanteer and get an omniscient view of your program**
+            Improve software code quality - C++ and Python
+
+
+<h1> @@ <a href="index.html">Overview</a> </h1>
+<h1> @@ <a href="getting_started.md.html">Getting started</a> </h1>
+<h1> @@ <a href="base_concepts.md.html">Base concepts</a> </h1>
+<h1> @@ <a href="#">C++ Instrumentation API</a> </h1>
+
+
+This chapter describes the C++ API of the `Palanteer` instrumentation library. 
+
+## Initialization
+
+The service shall be initialized once, before any usage of event logging. <br/>
+Server address and filename values shall be configured before the initialization function `plInitAndStart`.
+
+| Control API                         | Description                                                  |
+| ---------                           | -----------                                                  |
+| [plSetFilename](#plsetfilename)     | Sets the record file path when in "file storage" mode        |
+| [plSetServer](#plsetserver)         | Sets the server IP address and port when in "connected" mode |
+| [plInitAndStart](#plinitandstart)   | Initializes and starts the service                           |
+| [plStopAndUninit](#plstopanduninit) | Stops and uninitializes the event logging service            |
+| [plGetStats](#plgetstats)           | Returns statistics about the collection process              |
+
+
+### plSetFilename
+
+This function sets the record file path when in "file storage" mode.
+The path is copied, and its maximum size is 256 bytes.
+
+To be taken into account, it shall be called before `plInitAndStart` function.
+
+The default value is "record.pltraw".
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Sets the record file path when in "file storage" mode
+void plSetFilename(const char* filename);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plSetServer
+
+This function sets the server IP address and port when in "connected" mode (TCP socket).
+
+It shall be called before `plInitAndStart` function to be taken into account.
+
+The default value is "127.0.0.1" (IPv4 localhost) on port 59059.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Sets the server IP address and port when in "connected mode"
+void plSetServer(const char* serverAddr, int serverPort);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plInitAndStart
+
+This function initializes and starts the `Palanteer` service. It takes up to 3 parameters:
+
+ - the **name** of the application (mandatory)
+   - ex: "Pacman", "Space invaders"
+ - the event **logging mode**: `PL_MODE_CONNECTED`, `PL_MODE_STORE_IN_FILE` and `PL_MODE_INACTIVE`
+ - a **boolean state** if the program shall wait or not for the connection to the server
+
+The three modes of the event logging are:
+  - `PL_MODE_CONNECTED` (default): connect to the server to enable remote recording and program control.
+    - If `waitForServerConnection` is `true,` the initialization waits indefinitely for the established connection.
+    - If `waitForServerConnection` is `false` (default), one connection to the server is tried. If it fails, the mode falls back to `PL_MODE_INACTIVE`.
+    - The used parameters are the server and port values, configured with [`plSetServer`](#plsetserver)
+  - `PL_MODE_STORE_IN_FILE`: the raw record is directly written in a file without any external connection.
+    - The "raw record" data is in fact the data that would have been sent to the server.
+    - In this mode, the remote control is inactive (no server...)
+    - The used parameter is the storage filename, configured with [`plSetFilename`](#plsetfilename).
+  - `PL_MODE_INACTIVE`: event collection and remote control are inactive, even if the `Palanteer` code is present
+
+On top of these parameters, its behavior depends also on the configuration of the compilation flags:
+ - If `USE_PL` is not equal to 1, the function `plInitAndStart` does nothing at all. <br/>
+ - If `USE_PL` is 1, the behavior of this initialization function is:
+   - if `PL_IMPL_CATCH_SIGNALS` is 1, it installs the signal handlers
+   - if `PL_IMPL_STACKTRACE` is 1, it initializes the symbol decoder in case of crash (Windows only)
+   - if the `mode` is set to `PL_MODE_INACTIVE` at run-time or both `PL_NOEVENT` and `PL_NOCONTROL` are set to 1 (compile-time disabling), the function returns here.
+   - if `PL_NOEVENT` is not 1, the transmission thread is created and the context switches are initialized if enabled (compile time switch and enough run-time privilege)
+   - if `PL_NOCONTROL` is not 1, the command reception thread is created.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+enum plMode { PL_MODE_CONNECTED, PL_MODE_STORE_IN_FILE, PL_MODE_INACTIVE};
+
+// Initializes and starts the events and remote control services
+void plInitAndStart(const char* appName, plMode mode=PL_MODE_CONNECTED, bool waitForServerConnection=false);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Details on the created threads are shared in the [collection mechanism](base_concepts.md.html#baseconcepts/c++specific/eventcollectionmechanism) section. <br/>
+
+Almost all memory allocations of the `Palanteer` services are done in this function. For details, refer to the section [memory usage](index.html#c++memoryusage).
+
+!!!
+    `plInitAndStart` is supposed to be called at most once per program execution. It may be called again after `plStopAndUninit`. <br/>
+    Once started, the event collection is always running until the service is stopped. <br/>
+    All resources are freed when calling the associated function `plStopAndUninit` below.
+
+
+### plStopAndUninit
+
+This function stops and uninitializes the `Palanteer` service. It is typically called before exiting the program.
+
+  - It flushes to the server the last collected events, up to the call
+    - the last events are often critical for a debugging investigation
+  - It properly stops the `Palanteer` threads
+  - It cleans the resources (i.e. threads and memory)
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Stops and de-initialized the Palanteer service
+void plStopAndUninit();
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plGetStats
+
+This function returns statistics about the collection process.
+
+It can be called at any time.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Collection statistic structure
+struct plStats {
+    uint32_t collectBufferSizeByteQty;     // Configured collection buffer size
+    uint32_t collectBufferMaxUsageByteQty; // Maximum used size in the collection buffer
+    uint32_t collectDynStringQty;          // Configured dynamic string qty
+    uint32_t collectDynStringMaxUsageQty;  // Maximum used dynamic string qty
+    uint32_t sentBufferQty;                // Buffer qty sent to the server
+    uint32_t sentByteQty;                  // Byte qty sent to the server
+    uint32_t sentEventQty;                 // Event qty sent to server
+    uint32_t sentStringQty;                // Unique string qty sent to server
+};
+
+// Get the collection statistics
+plStats plGetStats(void);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Refer to the [double storage bank mechanism](base_concepts.md.html#baseconcepts/c++specific/eventcollectionmechanism) description for more details.
+
+
+## Structure logging
+
+The instrumentation in this chapter logs structural elements to form the hierarchy of the collected data. <br/>
+The timings are contained in this structure.
+
+| Structure API                         | Description                                                          | Group variant | Dyn. string variant |
+| ---------                             | -----------                                                          | :---:         | :----:              |
+| [plDeclareThread](#pldeclarethread)   | Declares a thread                                                    |               | X                   |
+| [plScope](#plscope)                   | Declares a scope (a named time range with optional children)         | X             | X                   |
+| [plFunction](#plfunction)             | Declares a scope with the current function name                      | X             | X                   |
+| [plBegin and plEnd](#plbeginandplend) | Declares manually the start and the end of a scope (with moderation) | X             |                     |
+
+
+### plDeclareThread
+
+A thread can be given a name, at any moment during the recording, so that:
+  - it is easier to recognize
+  - it has a persistent identifier which makes scripting more reliable
+
+The default name is "`Thread N`" with `N` the integer thread order of appearance (so may differ from run to run).
+
+The declaration has a dynamic string variant:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Thread declaration with a static string name
+void plDeclareThread(threadName);
+
+// Thread declaration with a dynamic string name
+void plDeclareThreadDyn(threadName);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Example 1
+plDeclareThread("Worker 1");
+
+// Example 2
+const char name[128];
+snprintf(name, 128, "Worker %d", workerIdx);
+plDeclareThreadDyn(name);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Threads can be grouped by prefixing the thread name with a group name, separated with "/" (similar to UNIX pathname). <br/>
+Only one hierarchical level is accepted.
+
+Some example of thread grouping:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Important: Calls here are purely for explanation. plDeclareThread shall of course be called in its respective thread
+
+// Standalone thread, not in a group
+// (Called in a thread)
+plDeclareThread("Render");
+
+
+// The calls below implicitely define a group "Workers" which contains 3 threads
+
+// (Called at the start of another thread)
+plDeclareThread("Workers/Worker 1");
+
+// (Called at the start of yet another thread)
+plDeclareThread("Workers/Worker 2");
+
+// (Called at the start of yet another thread)
+plDeclareThread("Workers/Worker 3");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plScope
+
+This function defines a scope with the provided name.
+
+A "scope" is a named time range with a start and an end, which can contains children (scopes or data).
+
+ * The start of the scope is the call of this function `plScope`
+ * The end of the scope corresponds to the end of the scope in the language
+
+!!! Tip
+    Using scopes prevents from doing instrumentation mistakes. <br/>
+    Indeed, scopes are automatically closed and cannot be interlaced (RAII behavior). This is not the case with the functions [`plBegin`](#plbeginandplend) and [`plEnd`](#plbeginandplend) described below in this chapter.
+
+It has both group and dynamic variants.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Declares a scope with the provided name as static string
+void plScope(const char* name);
+
+// If the group is enabled, declares a scope with the provided name as static string
+void plgScope(const char* group, const char* name);
+
+// Declares a scope with the provided name as dynamic string
+void plScopeDyn(const char* name);
+
+// If the group is enabled, declares a scope with the provided name as dynamic string
+void plgScopeDyn(const char* group, const char* name);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plFunction
+
+This function automatically declares a scope with the current function name. <br/>
+It is equivalent to
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plScope(__FUNCTION__);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The start of the scope is the function call, its end is the one of the language scope.
+
+It has both group and dynamic variants.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Declares a scope with the current function name as static string (check your compiler for support, see note below)
+void plFunction(void);
+
+// If the group is enabled, declares a scope with the current function name as static string
+void plgFunction(const char* group);
+
+// Declares a scope with the current function name as dynamic string
+void plFunctionDyn(void);
+
+// If the group is enabled, declares a scope with the current function name as dynamic string
+void plgFunctionDyn(const char* group);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! error Important consequences of `plFunction` using the preprocessor constant `__FUNCTION__`
+    GCC considers `__FUNCTION__` as `constexpr` only since version 9.1. Before it, the more costly `plFunctionDyn()` shall be used. <br/>
+    Only GCC>=9.1 and CLANG>=3.6 can use the simpler `plFunction()` to mark the scope of a function. <br/>
+    If the preprocessor rants verbosely on such command, this is probably the issue. <br/>
+    In case of 'too old' compiler or for portability reasons, it is then recommended to use instead `plScope("&lt;function name&gt;")` where you manually insert the function name yourself.
+
+
+### plBegin and plEnd
+
+These two functions are used together, they define an explicit start and end of a scope.
+
+The provided name of the scope shall be the same for both functions, so that any mismatch can be detected on the server side.
+
+!!! warning
+    This API shall be used with caution. <br/>
+    For instance, missing a `plEnd` call, typically in a multiple exit function, leads to a broken hierarchical data tree structure. <br/>
+    Also, interlaced scoped leads to mismatching "begin" and "end". <br/>
+    Prefer [`plScope`](#plscope) whenever possible (see also [Manual scope](base_concepts.md.html#baseconcepts/c++specific/manualscopes)).
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Declares the start of a scope with the provided name as static strings
+void plBegin(const char* name);
+
+// Declares the end of a scope with the provided name as static strings
+// The name shall match the begin name, so mismatchs can be detected on viewer side and lead to warnings
+void plEnd(const char* name);
+
+// If the group is enabled, declares the start of a scope with the provided name as static strings
+void plgBegin(const char* group, const char* name);
+
+// If the group is enabled, declares the end of a scope with the provided name as static strings
+void plgEnd(const char* group, const char* name);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+## Data logging
+
+The instrumentation in this chapter logs string or data of any numeric type inside the current scope.
+
+!!! warning Important
+    Such events **must** be located inside a scope, never at the tree root. <br/>
+    Indeed, they carry only the logged data and are not timestamped. 
+
+Such events can be visualized in the viewer under several forms: text, curve or histogram. <br/>
+They can optionaly be associated to an `unit` by ending the event name with `##<unit>`:
+  * The unit is stripped from the name, it is not displayed
+  * The unit increases the semantic of the events and make is more useful for the users
+  * Only events with consistent units can be plotted together.
+  * "hexa" is a special and hardocded unit which displays integer in hexadecimal
+
+Ex: `"Duration##nanosecond"`,  `"pointer##hexa"`, `"Banana##fruit"`
+
+!!! note Reminder:
+    As only string hash are considered, the unit declaration is part of the unique identifier for an event.
+
+
+| Data logging API      | Description                 | Group variant | Dyn. string variant |
+|-----------------------|-----------------------------|:-------------:|:-------------------:|
+| [plData](#pldata)     | Log a named numerical value | X             | (always dynamic)    |
+| [plText](#pltext)     | Log a text message          | X             | (always static)     |
+| [plVar](#plvar)       | Log one or more variable    | X             | n/a                 |
+| [plMarker](#plmarker) | Log a marker                | X             | X                   |
+
+
+### plData
+
+This function logs a named value.
+
+The type of the value can be any integral types plus float, double and string (processed as dynamic string).
+
+!!! warning
+    A string value is processed as a dynamic string. <br/>
+    To log a static string value, use `plMakeString(<string>)` as a value, to compute the hash at compile time. <br/>
+    The alternative is to use the `plText` function in the next section, which does exactly that.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Logs a value
+void plData(const char* name, <type> value);
+
+// If the group is enabled, logs a value
+void plgData(const char* group, const char* name, <type> value);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+int a = 15;
+uint64_t b = 314159265359LL;
+const char* c = "I am a dynamic string because not constexpr"; // Or just "char*"
+
+// Various value logging
+plData("my value A", a);
+plData("Truncated PI", 3.14159265359);
+plData("Big PI", b);
+plData("Dynamic string", c);
+
+// Group variant
+plgData(MY_DETAIL, "my value A", a); // PL_GROUP_MY_DETAIL must be defined with value 0 or 1
+
+// Logging of a static string, with the help of plMakeString
+plData("Status", plMakeString("Low run time ressource with such static string"));
+
+// Another dynamic string message
+const char* states[3] = { "Good automata state", "Average automata state", "Bad automata state" };
+plData("State", states[i]);
+
+// Compared to previous example, using plString_t reverts back to the static string performance and behavior
+// Only the string selection is dynamic, the strings are processed and hashed at compile time.
+plString_t static_states[3] = { plMakeString("Good automata state"), plMakeString("Average automata state"), plMakeString("Bad automata state") };
+plData("State", static_states[i]);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plText
+
+This function logs a named static string message. <br/>
+It is a convenience function which calls `plData` with the `plMakeString` static string helper.
+
+It has a group variant.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Logs a static string message
+void plText(const char* name, const char* msg);
+
+// If the group is enabled, logs a static string message
+void plgText(const char* group, const char* name, const char* msg);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! error
+    A hell of preprocessor and compiler errors are triggered if a non static string is passed as a value. These errors usually start with:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+    palanteer.h: error: "string variable" is not a constant expression
+    | #define PL_STRINGHASH(s) plPriv::forceCompileTimeElseError_ < plPriv::fnv1a_(s,PL_FNV_HASH_OFFSET_) > ::compileTimeValue
+    ... (then a lot more)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    In that case, just switch to the `plData` function.
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Static string message
+plText("Stage", "Reaching a critical point");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plVar
+
+This function is a convenience to log the content of one or more variables under their respective variable name.
+
+The type of the variable can be any integral types plus float, double and string (processed as dynamic string).
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Logs the value of variables under the name of the variables
+void plVar(variable1, variable2 ...);
+
+// If the group is enabled, logs the value of variables under the name of the variables
+void plgVar(const char* group, variable1, variable2 ...);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Between 1 and 10 variables or expressions are accepted.
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+unsigned short myFirstVariable = 1000;
+const char*    aStringVariable = "I am a string";
+
+// Logged variables
+plVar(myFirstVariable, aStringVariable);
+// Group version
+plgVar(MY_DETAIL, myFirstVariable, aStringVariable); // PL_GROUP_MY_DETAIL must be defined beforehand with value 0 or 1
+
+
+// Longer (strictly) equivalent logging:
+plVar(myFirstVariable);
+plVar(aStringVariable);
+plgVar(MY_DETAIL, myFirstVariable);
+plgVar(MY_DETAIL, aStringVariable);
+
+// Even longer (strictly) equivalent logging:
+plData("myFirstVariable", myFirstVariable);
+plData("aStringVariable", aStringVariable);
+plgData(MY_DETAIL, "myFirstVariable", myFirstVariable);
+plgData(MY_DETAIL, "aStringVariable", aStringVariable);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Note that `plVar` works with any expression:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// "i" will be incremented by one as expected. However, not recommended *at all*, as "i++" is not called when Palanteer is disabled
+plVar(i++);
+// Any expression is ok
+plVar(state[i], htons(i), atan(i*3.14159/17.));
+
+// The two previous calls are strictly equivalent to:
+plData("i++", i++);
+plData("state[i]", state[i]);
+plData("htons[i]", htons[i]);
+plData("atan(i*3.14159/17.)", atan(i*3.14159/17.));
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### plMarker
+
+This function logs a marker in the form of a timestamped message associated to a category.
+
+A marker refers to an outstanding event that shall be highlighted and searchable. <br/>
+Markers also possess an user-defined attribute "category" for efficient filtering. <br/>
+
+!!! warning
+    To be effective, markers shall be used with moderation. All depends on your definition of "outstanding event". <br/>
+    Beware that too many of them might mask the truly important ones.
+
+It has both group and dynamic variants (the category is always a static string).
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Add a marker with a static string message
+void plMarker(const char* category, const char* msg);
+
+// If the group is enabled, add a marker with a static string message
+void plgMarker(const char* group, const char* category, const char* msg);
+
+// Add a marker with a dynamic string message
+void plMarkerDyn(const char* category, const char* msg, ...);
+
+// If the group is enabled, add a marker with a dynamic string message
+void plgMarkerDyn(const char* group, const char* category, const char* msg, ...);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Static string message
+plMarker("error", "Very weird but recoverable case occured");
+
+// Another static string message
+plMarker("input", "Key pressed");
+
+// Dynamic string message (pressedKeyChar is supposed to be a 'char')
+char tmpStr[32];
+snprintf(tmpStr, sizeof(tmpStr), "Key '%c' pressed", pressedKeyChar);
+plMarkerDyn("input", tmpStr);
+
+// Easier way to do the lines above (printf syntax is allowed because plMarker usage shall be scarce)
+plMarkerDyn("input", "Key '%c' pressed", pressedKeyChar);
+
+// If the group is enabled, this adds a marker with a static string message
+plgMarker(MY_DETAIL, "phase", "End of a computation"); // PL_GROUP_MY_DETAIL must be defined with value 0 or 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Markers are typically displayed so that they are easily visible. <br/>
+In the viewer:
+
+ - a dedicated marker window provides filtering capabilities both on threads and categories, so that it is easy to jump to the marker context
+ - an indicator is visible for each marker on top of the timeline for the associated thread
+
+!!!
+    The `printf` syntax is accepted because `plMarkerDyn` shall be used scarcely. <br/>
+    Structured logging (scope with data inside) is still the preferred way to go:
+      - more efficient logging due to the usage of static strings (dynamic strings are slightly heavier)
+      - more efficient network/storage thanks to the string content re-use
+      - ability to manipulate the numeric data
+
+
+## Lock logging
+
+The instrumentation in this chapter logs actions performed on locks (as a general term).
+
+The usage of locks in multithreaded environment can deeply modify the dynamic behavior. <br/>
+Visualizing them becomes critical in complex programs, that is why a specific diagram in the viewer helps identifying the bottlenecks across threads.
+
+| Lock logging API                      | Description                                         | Group variant | Dyn. string variant |
+| ---------                             | -----------                                         | :---:         | :----:              |
+| [plLockWait](#pllockwait)             | Log a start of waiting on a lock                    | X             | X                   |
+| [plLockState](#pllockstate)           | Log a state of the lock (taken or not)              | X             | X                   |
+| [plLockScopeState](#pllockscopestate) | Log a state of the lock with an automatic unlocking | X             | X                   |
+| [plLockNotify](#pllocknotify)         | Log a lock notification or post                     | X             | X                   |
+
+The lock API is "low level" so that it adapts to many existing lock primitives (mutex, semaphores, std::unique_lock, condition variables...), at the price of some less automatic instrumentation work. <br/>
+This instrumentation becomes much lighter if the program uses an OS abstraction layer, as only this layer needs to be instrumented.
+
+Some examples of instrumentation of several usual primitives are shown [after the description of the lock API](#examplesoflockinstrumentation)
+
+!!!
+    The locking process has two different phases:
+     - waiting for the lock: the wait for lock is started, then ended with a positif or negative outcome
+     - using the lock: the lock is first taken, then released.
+
+### plLockWait
+
+The locking process usually starts with waiting for the lock. <br/>
+This function logs this first step.
+
+When the wait ends, `plLockState(...)` or `plLockScopeState(...)` **must** be called to set both:
+
+  - the end of the waiting phase
+  - the state of the lock: `true` if the lock is taken, or `false` if not.
+
+!!!
+    This "lock wait" information is crucial in a multithreaded program so it should be instrumented thoroughfully.
+
+This function has both group and dynamic variants.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Set the start of waiting for a lock
+void plLockWait(const char* name);
+
+// If the group is enabled, set the start of waiting for a lock
+void plgLockWait(const char* group, const char* name);
+
+// Set the start of waiting for a lock which has a dynamic name
+void plLockWaitDyn(const char* name);
+
+// If the group is enabled, set the start of waiting for a lock which has a dynamic name
+void plgLockWaitDyn(const char* group, const char* name);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage for a pthread mutex lock:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plLockWait("Database access");        // Start waiting for the lock named "Database access"
+pthread_mutex_lock(&_mutexDb);
+plLockState("Database access", true); // >>> Do not forget this call! <<<  Lock is taken (see next section)
+...
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plLockState
+
+This function is involved in both phases of the locking process. <br/>
+Its main role is to set the state of the lock usage:
+
+  - `true`  state means the lock is taken by the thread
+  - `false` state means the lock is released (or not used) by the thread
+
+Its other and implicit role is to **mark the end of the waiting process** (if it was started previously), whatever the lock state value.
+
+This function has both group and dynamic variants.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Set the lock state
+void plLockState(const char* name, bool lockUseState);
+
+// If the group is enabled, set the lock state
+void plgLockState(const char* group, const char* name, bool lockUseState);
+
+// Set the lock state when the lock has a dynamic name
+void plLockStateDyn(const char* name, bool lockUseState);
+
+// If the group is enabled, set the lock state when the lock has a dynamic name
+void plgLockStateDyn(const char* group, const char* name, bool lockUseState);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! tip
+    `plLockState` **must** be called just after the end of the waiting phase, if any, to mark its end
+
+!!! tip
+    `plLockState` shall be placed just **before** "unlock" call, so that there is no race condition on the logging which inverse events chronology.
+
+Example of usage for a pthread mutex unlock:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+...
+// Lock is released
+plLockState("Database access", false); // Lock is released (log before the release call)
+pthread_mutex_unlock(&_mutexDb);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plLockScopeState
+
+This function is required when the "unlock" is triggered by RAII (i.e. automatically at the end of the language scope). <br/>
+It is a concatenation of an immediate `plLockState` call to set the lock state typically after a lock wait and an automatic call to `plLockState(false)` (aka unlock) at the end of the language scope.
+
+It typically matches the behavior of `std::unique_lock` (and variants).
+
+This function has both group and dynamic variants.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Set the lock state and automatically unlocks at the end of the scope
+void plLockScopeState(const char* name, bool lockUseState);
+
+// If the group is enabled, set the lock state and automatically unlocks at the end of the scope
+void plgLockScopeState(const char* group, const char* name, bool lockUseState);
+
+// Set the lock state when the lock has a dynamic name and automatically unlocks at the end of the scope
+void plLockScopeStateDyn(const char* name, bool lockUseState);
+
+// If the group is enabled, set the lock state when the lock has a dynamic name and automatically unlocks at the end of the scope
+void plgLockScopeStateDyn(const char* group, const char* name, bool lockUseState);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage for `std::unique_lock` (or `std::lock_guard` here):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+{
+    plLockWait("Resource");  // Start waiting for the lock "Resource"
+    std::unique_lock<std::mutex> lk(globalCriticalResourceMutex, std::try_to_lock);
+    plLockScopeState("Resource", lk.owns_lock()); // Stop the wait and set the state of the lock
+    ...
+} // If previously taken, the "unlock" state is automatically logged here at the end of the scope
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plLockNotify
+
+This function logs a notification or a "post" on a lock. <br/>
+It has no direct effect on the lock state.
+
+It typically matches the behavior of a condition_variable `notify_one()` call, or a semaphore post.
+
+This function has both group and dynamic variants.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Log a lock notification
+void plLockNotify(const char* name);
+
+// If the group is enabled, log a lock notification
+void plgLockNotify(const char* group, const char* name);
+
+// Log a lock notification when the lock has a dynamic name
+void plLockNotifyDyn(const char* name);
+
+// If the group is enabled, log a lock notification when the lock has a dynamic name
+void plgLockNotifyDyn(const char* group, const char* name);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! tip
+    `plLockNotify` shall be placed just **before** "notification" call, so that there is no race condition on the logging which inverse events chronology.
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+std::string lockName("Task wait");
+
+if(shallWakeTheTask) {
+    plLockNotifyDyn(lockName.c_str()); // Notify the "Task Wait" lock (linked to a condition variable)
+    taskWaitConditionVariable.notify_one();
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### Examples of lock instrumentation
+
+Example with pthread mutex:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+pthread_mutex_t resultsLock;
+pthread_mutex_init(&resultsLock, NULL); // Ok, we should check the returned value...
+
+plLockWait("Result");                        // Start of the lock wait
+if(pthread_mutex_lock(&resultsLock)!=0) {
+    plLockState("Result", false);            // End of the lock wait and lock not taken
+    return;
+}
+plLockState("Result", true);                 // End of the lock wait and lock taken
+
+...
+
+plLockState("Result", false);                // End of the lock usage, lock released
+pthread_mutex_unlock(&_resultsLock);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example with pthread semaphore:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+sem_t sem;
+sem_init(&sem, 0, 1);
+
+// Thread 1 (displayer client)
+while(1) {
+    plLockWait("Wake");           // Start of the lock wait
+    sem_wait(&sem);
+    plLockState("Wake", false);   // End of the lock wait and no lock taken (only the wait matters for this semaphore)
+
+    // Do something
+    printf("Some work\n");
+}
+
+
+// Thread 2 (controller)
+while(1) {
+    plLockNotify("Wake");         // Send a notification for the lock. It shall indirectly stop the semaphore wait phase
+    sem_post(&sem);
+
+    // Wait a bit
+    useconds_t r = random() % 100;
+    usleep(r);
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example with std::mutex:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+std::mutex database_mutex;
+std::map<std::string, std::string> databse;
+
+void addUrl(const std::string& url, const std::string& result)
+{
+    plLockWait("Database");                            // Start waiting for the lock "Database"
+    std::lock_guard<std::mutex> guard(database_mutex);
+    plLockScopeState("Database", true);                // End of the lock wait and lock taken each time by design
+    database[url] = result;
+} // Automatic log of the unlock because we used plLockScopeState()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example with std::condition_variable:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+std::mutex mtx;             // mutex for critical section
+std::condition_variable cv; // condition variable for critical section
+bool doWakeUp = false;
+
+// Thread 1 (displayer client)
+while(1) {
+
+    plLockWait("Wake");                             // Start of the scoped lock wait
+                                                    // Note: sometimes, tracking the wait is not interesting. This line can then be omitted.
+    std::unique_lock<std::mutex> lk(mtx);           // Locking the mutex of the condition variable
+                                                    // The mutex is taken here, but this is not the end of the "condition variable waiting phase"
+    cv.wait(lk, [&doWakeUp] { return doWakeUp; });  // Waiting until the condition is true
+    plLockScopeState("Wake", true);                 // Lock always taken by design (with automatic RAII unlock)
+
+    // Do something
+    printf("Some work\n");
+
+    // Reset the wake up
+    doWakeUp = false;
+
+} // Automatic log of the unlock because we used plLockScopeState()
+
+
+// Thread 2 (controller)
+while(1) {
+
+    // Wait a bit
+    useconds_t r = random() % 100;
+    usleep(r);
+
+    // Make the wake up condition true
+    std::unique_lock<std::mutex> lk(mtx);
+    doWakeUp = true;
+    plLockNotify("Wake");                          // Send a notification for the lock, which shall indirectly break the condition variable waiting phase
+    cv.notify_one();
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+## CLIs
+
+"CLIs" (Command Line Interface) are functions inside the instrumented program that can be called remotely and with parameters.
+
+These functions, also named "CLI handlers", are called from the `Palanteer` reception thread.
+
+!!! warning
+    When the compilation flag `PL_NOCONTROL` is set to 1, the `Palanteer` reception thread is not created and the CLI functionality is absent.
+
+### plRegisterCli
+
+This function registers a CLI. <br/>
+It requires a [CLI handler](#clihandler), the name of the CLI, the [CLI parameter specification](base_concepts.md.html#cliparameterspecification) and a user description.
+
+The name of the command shall not contain spaces. The user description is purely for documentation purpose. These two strings **must** be static and are affected by the "external string" features. <br/>
+The parameter specification must also be a static string, but it is never obfuscated because its content is used internally to validate the command syntax.
+
+!!!
+    CLIs can be registered before `Palanteer` is initialized. <br/>
+    This is even recommended in order to remove any potential race condition about calling a not yet registered CLI.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+void plRegisterCli(plCliHandler_t cliHandler, const char* name, const char* param_specification, const char* description);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of CLI registration is (see [Remote control](index.html#remotecontrol) for full example):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plRegisterCli(setBoundsCliHandler, "config:setRange", "min=int max=int", "Sets the value bounds of the random generator");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### CLI handler
+
+A CLI handler is a function triggered remotely that interacts with the controlled program. <br/>
+It accepts typed parameters among integer, float or string and returns a status and a text.
+
+The communication with `Palanteer` is done through a "communication helper" object. Its prototype is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+typedef void (*plCliHandler_t)(plCliIo& cio);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This "communication" object has two roles:
+  * Provide the input parameters via typed accessors
+    * These parameters are already checked for consistency versus the [CLI parameter specification](base_concepts.md.html#cliparameterspecification)
+    * Using the wrong accessor type is a bug and leads to an assertion failure.
+  * Format the command output, namely the binary success state and the text response
+    * Initial response is empty and texts provided by `addToResponse` are concatenated.
+    * A call to `setErrorState` indicate an execution failure (non cancellable)
+       * Previous text response is cleared
+       * Some text can be provided directly in the call. Subsequent calls to `addToResponse` add up.
+
+Its full prototype is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+class plCliIo {
+public:
+    // Input accessors
+    int64_t     getParamInt   (int paramIdx) const;
+    double      getParamFloat (int paramIdx) const;
+    const char* getParamString(int paramIdx) const;
+
+    // Output formatting
+    void setErrorState(const char* format=0, ...); // Set the error state and take some optional text
+    bool addToResponse(const char* format, ...);   // Returns false if the response buffer is full
+    void clearResponse(void);                      // Resets the response buffer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of CLI handler extracted from [Remote control](index.html#remotecontrol) and declared with the parameter spec "`min=int max=int`" is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Handler (=implementation) of the example CLI
+void setBoundsCliHandler(plCliIo& cio)  // 'cio' is a communication helper present in each handler call
+{
+    int minValue = cio.getParamInt(0); // Get the 2 CLI parameters as integers
+    int maxValue = cio.getParamInt(1);
+    if(minValue>maxValue) {
+        // CLI execution has failed. The text answer contains some information about it
+        cio.setErrorState("Minimum value (%d) shall be lower than the maximum value (%d)\n", minValue, maxValue);
+        return;
+    }
+
+    // Modify the state of the program
+    globalMinValue = minValue;
+    globalMaxValue = maxValue;
+    // CLI execution was successful (no call to cio.setErrorState())
+}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+And a way to call it from a Python program with the `Palanteer` scripting module is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+palanteer.program_cli("config:setRange min=300 max=500")
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+## Troubleshootings
+
+**I get a lot of preprocessor errors...**
+
+The usage of cascaded macros in `Palanteer`, only practical way to do some introspection in C++, has the bad effect of creating a cascade of errors... <br/>
+Try to isolate the faulty line from your sources, and check:
+ - that the group is indeed defined, if you use groups
+ - that the string is really static, if you use an API which requires a static string
+ - that the logged variable is indeed one of the loggable type (i.e. C-string or a numerical value)
+
+<br/>
+**I use clang with ASAN and the memory allocations are not logged...**
+
+Overloading `new` and `delete` operators in clang with ASAN does not work, this is a known issue in clang (see clang bugzilla https://bugs.llvm.org/show_bug.cgi?id=19660 ).
+
+<br/>
+**I have some unexpected crash in the instrumentation library**
+
+Ensure that the non-implementation configuration flags are consistent in all files (`PL_EXTERNAL_STRINGS`, `PL_DYN_STRING_MAX_SIZE`, ...). <br/>
+This can really lead to undefined behaviors.
+
+<br/>
+**I logged some data but the viewer reports it as an instrumentation error**
+
+Data events (text, numerical value) are not timestamped. <br/>
+Outside a time scope, which means only at the root level of the tree, they cannot be associated to any dated element (the knowledge that they are after the last one and before the next one is not used). <br/>
+The fix is to move them inside a scope, or create a scope to hold them.
+
+Note that markers and lock notifications do not have this constraint and can be located at the root level.
+
+<br/>
+**What is the name of the function to break in when investigating a crash under a debugger?**
+
+Break in `plCrash`.
+
+<br/>
+**I have some troubles with sockets under Windows**
+
+First, ensure that "`#define _WINSOCKAPI_`" is set before including any windows header (see testProgram.cpp). <br/>
+Then, if your program already manages the WSA, you have to tell Palanteer not to do it also, with `#define PL_IMPL_MANAGE_WINDOWS_SOCKET 0`
+
+<br/>
+**PL_IMPL_CONTEXT_SWITCH is set to 1 but I do not see any core related event**
+
+The access to such process data is restricted on many OS for security reasons. <br/>
+To be able to collect them, your program shall run in privileged mode (root on Linux, administrator on Windows).
+
+Beware that on Linux, using `sudo` will create record files from and for the root user. The location of the records may change too.
+
+<br/>
+**I have many threads in parallel and many "SATURATION" markers despite I allocated enough memory for the event collection buffers**
+
+If all CPUs are saturated, the collection task cannot run regularly enough and buffers will get full whatever their allocated size. <br/>
+The consequence is that event logging will start to block the threads, waiting for some space for logging, and place a "SATURATION" marker.
+
+The presence of the viewer or scripting module on the same machine is maybe the problem, as they use also some CPU and may interfere with the program observation. <br/>
+Ideally, the available CPU quantity shall be: at least the required quantity for your program + 3 (instrumentation thread + viewer recording thread + viewer display thread).
+
+Recording on a file reduces this requirement to: at least the required quantity for your program + 1 (instrumentation thread), as the processing of the raw events will be done later.
+
+<br/>
+**What are the limitations on thread and event quantity?**
+
+The system can handle up to 254 threads and 2 billions events. <br/>
+The estimated size of the record would be ~20 GB, still displayed smoothly.
+
+
+<h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>
+<h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>
+<h1> @@ <a href="scripting_api.md.html">Scripting API</a> </h1>
+<h1> @@ <a href="more.md.html">More</a> </h1>
+
+
+<script>markdeepOptions = {tocStyle:'long', definitionStyle:'long'};</script>
+<link rel="stylesheet" href="palanteer.css">
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

@@ -1,0 +1,708 @@
+                   <meta charset="utf-8" emacsmode="-*- markdown -*-">
+       **Look into Palanteer and get an omniscient view of your program**
+            Improve software code quality - C++ and Python
+
+
+<h1> @@ <a href="index.html">Overview</a> </h1>
+<h1> @@ <a href="getting_started.md.html">Getting started</a> </h1>
+<h1> @@ <a href="base_concepts.md.html">Base concepts</a> </h1>
+<h1> @@ <a href="instrumentation_api_cpp.md.html">C++ Instrumentation API</a> </h1>
+<h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>
+<h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>
+<h1> @@ <a href="#">Scripting API</a> </h1>
+
+This chapter describes the API of the Python scripting module.
+
+Such script can remote interact with any instrumented program with `Palanteer`, independently of the used language (C++ or Python at the moment).
+
+Some typical usages are:
+ - system tests
+ - automatic performance extraction
+ - monitoring
+ - ...
+
+This API aims at being simple to use. As multi-threading would introduce a lot of complexity for few benefits, calls are synchronous and with polling APIs.
+
+!!!
+    For a proper usage of monitoring in production, it is recommended to:
+     - use a light instrumentation (using groups in C++, with only manual instrumentation in Python) to maintain the optimal program performances and limit the network flow
+     - not record in a file at the same time. For ever-lasting runs, the limit of 2 billions events is bound to be reached.
+
+!!! warning
+    The module is not thread-safe, it is up to the user to add protections if multi-threading is really required.
+
+## Exceptions
+
+When the module encounters a non recoverable problem, a specific exception is raised with an explanatory message. <br/>
+This section presents the list of exceptions and when they are raised.
+
+**InitializationError** is raised when calling an API which requires that the module is initialized and it is not:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+class InitializationError(Exception):
+    """The Palanteer library has not been initialized. Use the function 'initialize_scripting'."""
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**ConnectionError** is raised when calling an API which requires a connection to the instrumented program and there is none:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+class ConnectionError(Exception):
+    """There is no connection to the program."""
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**UnknownThreadError** is raised when calling program_step_continue with an unknown thread name:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+class UnknownThreadError(Exception):
+    """The thread with the provided name is unknown."""
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+## Module initialization
+
+### initialize_scripting
+
+This function initializes the scripting module. It shall be called once before any other call.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# port    : the TCP port that is used to communicate with the instrumented program
+# log_func: the logging function for the Palanteer library (debug)
+# no returned value
+def initialize_scripting(port=59059, log_func=_default_log_func)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The default logging function prints warning or errors on stdout for debugging purposes. It can thus be overriden.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+_default_log_min_level = 2
+
+def _default_log_func(level, msg):
+    if level<_default_log_min_level:
+        return
+    date_str = datetime.datetime.today().strftime("%H:%M:%S.%f")[:-3]  # [:-3] to remove the microseconds
+    level_str = "[%s]" % {0: "detail ", 1: "info   ", 2: "warning", 3: "error  "}.get(level, "unknown")
+    print("%s %-9s %s" % (date_str, level_str, msg))
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+initialize_scripting()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### uninitialize_scripting
+
+This function uninitializes the scripting module.
+
+If a launched program is still running, it is automatically stopped.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# no returned value
+def uninitialize_scripting()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### set_external_strings
+
+This function sets the lookup to convert an obfuscated strings into the original one.
+
+It installs the union of the two sources, from a file and from a Python dictionary. <br/>
+The lookup generation is explained [here](getting_started.md.html#quickc++externalstringconfiguration).
+
+The string resolution is done at string reception time, so it is advised to install it before running a program. <br/>
+The lookup is persistent until another one is installed.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# filename: the filename which contains the lookup content (text format)
+# lkup: a Python 'dict'
+def set_external_strings(filename=None, lkup={})
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+set_external_strings("lookup.txt")
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    Scripts work with hashed strings so without any lookup requirement. <br/>
+    Even CLI calls are functional as the parameter specification is not obfuscated on program side. Moreover, the CLI answers are sent in clear because they are dynamic strings. <br/>
+    So, registering a string lookup with this function is useful mainly for developers when debugging scripts, as non obfuscated strings are required.
+
+
+## Process
+
+### process_launch
+
+This function launches an instrumented program and connects to it.
+
+If the connection fails or another program is already connected, a **ConnectionError** exception is raised.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# program_path   : path of the program to launch
+# args           : list of command line arguments
+# record_filename: filename for the record. Empty string means no storage
+# pass_first_freeze_point: if True, returns only after first freeze point is met and released (kind of synchro)
+# capture_output : if True, reads stdout and stderr and allows the user to poll them asynchronously
+# cli_to_quit    : if not None, CLI command in order to call to quit the application. If it fails, it falls back to other termination mechanisms
+# connection_timeout_sec : timeout in second to have a connection with the program. After it expires, a ConnectionError exception is triggered
+# no returned value
+def process_launch(program_path, args=[], record_filename="", pass_first_freeze_point=False, capture_output=False, cli_to_quit=None, connection_timeout_sec=5.)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+process_launch("./build/bin/testprogram", ["collect"], capture_output=True)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### process_is_running
+
+This function provides the state of the launched program:
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# state: boolean state True if running, False if not launched or exited
+state = process_is_running()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+while process_is_running():
+    ... # Do something
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### process_get_returncode
+
+This function provides the return code of the launched program if finished, else `None`
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# returncode: process return code if finished, else None
+returncode = process_get_returncode()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+if not process_is_running():
+    print("Exit status is: %d" % process_get_returncode())
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### process_get_stderr_lines
+
+This function returns the currently received stderr output in case the program has been launched with the parameter `capture_output=True`.
+
+This output is buffered in memory waiting for the next call. The buffer is cleared after the call.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# lines: a list of strings (one per line)
+lines = process_get_stderr_lines()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+lines = process_get_stderr_lines()
+if lines:
+    print("\n".join(lines))
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### process_get_stdout_lines
+
+This function returns the currently received stdout output in case the program has been launched with the parameter `capture_output=True`.
+
+This output is buffered in memory waiting for the next call. The buffer is cleared after the call.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# lines: a list of strings (one per line)
+lines = process_get_stdout_lines()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+lines = process_get_stdout_lines()
+if lines:
+    print("\n".join(lines))
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### process_stop
+
+This function "terminates" a launched program with the following mechanisms in order, until the process is effectively ended:
+
+  1. using the "quit" CLI optionally provided as a program launch parameter (see [process_launch](#process_launch))
+  1. using the "terminate" signal (SIG_TERM) which let a chance to the program for finishing gracefully
+  1. using the "kill" signal (SIG_KILL) which is merciless and cannot fail
+
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# no returned value
+def process_stop()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+process_stop()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! Note Automatic cleaning
+    Any running instrumented program is stopped when the `palanteer` module is uninitialized or when the python script exits (except with SIG_KILL...). <br/>
+    This property prevents pollution by zombie processes in case of script crash for instance.
+
+
+## Program
+
+This set of commands is functional only if the instrumented program was not compiled with the flag `PL_NOCONTROL` set to 1. <br/>
+Indeed, this directive explicitely removes the remote control feature, leaving only the observation part.
+
+### program_cli
+
+This function calls a remote [CLI (Command Line Interface)](base_concepts.md.html#commandlineinterface) to be executed on the instrumented program side.
+
+The input is a string which contains the command name and its parameters, see [here](base_concepts.md.html#clicommand) for full description.
+
+The output is a tuple (`status`, `text_answer`). <br/>
+A null status means a successful call, else a failure. In the latter case, the text_answer shall contain some details on the error.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# command_string: the command string including the command name and the parameters
+# status        : status code integer value. 0 means success, else failure
+# text_answer   : text answer from the command. In case of failure, shall contain some details on the error
+status, text_answer = program_cli(command_string)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+status, text_answer = palanteer.program_cli("config:setRange min=300 max=500")
+if status!=0:
+  print("Error: %s" % text_answer)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### program_set_freeze_mode
+
+This function controls the "freeze mode" state on the program side. <br/>
+If enabled, each thread of the program hitting a `plFreezePoint()` call is stopped, waiting for an order from the script to continue (either disabling the freeze mode, either using `program_step_continue`)
+
+The typical usage is to control the dynamic of the program to safely change its configuration or stimulate it. This can be associated to a dedicated event filtering.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# state: boolean
+# no returned value
+def program_set_freeze_mode(state)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+program_set_freeze_mode(True)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### program_get_frozen_threads
+
+This function returns the list of names of the currently frozen threads.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+frozen_thread_list = program_get_frozen_threads()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+for thread_name in program_get_frozen_threads():
+    print(thread_name)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### program_wait_freeze
+
+This function returns the frozen threads among the provided ones either as soon as all provided threads are frozen, either because the timeout expired.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# thread_names      : list of names of threads that we expect to be frozen before the timeout
+# timeout_sec       : maximum duration in second to wait for all provided threads to be frozen.
+# frozen_thread_list: list of names of the frozen threads restricted to the list of provided ones as input (the list can be a string in case of only 1 thread)
+frozen_thread_list = program_wait_freeze(thread_names, timeout_sec=1.0)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+if program_wait_freeze("Workers/Worker 1", 0.2):
+  ... # Call a CLI (for instance)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### program_step_continue
+
+This function releases a selection of "frozen" threads from their current freezing point. It has an effect only on the frozen threads. <br/>
+If one of the input thread is unknown, an `UnknownThreadError` exception is raised. <br/>
+After sending the command to the remote program, the function waits up to the timeout that each thread changes its frozen state.
+
+!!!
+    The function is robust to the ABA problem.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# status: True if all input threads have changed their state, else False
+status =  program_step_continue(thread_names, timeout_sec=1.)  # Note: the list can be a string in case of only 1 thread
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+program_step_continue(["Workers/Worker 1", "Main"])
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+## Data
+
+This set of commands is functional only if the instrumented program was not compiled with the flag `PL_NOEVENT` set to 1. <br/>
+Indeed, this directive explicitely removes the code of the events generation, leaving only the control part (CLIs).
+
+### data_collect_events
+
+This function returns the list of the received events from the selected ones.
+
+This list is cleared after being returned, so only new events are provided. It is also cleared when calling `events_clear_buffered` or `data_configure_events`.
+
+The call to `data_collect_events()` returns only when at least one of these conditions is met (see parameters in [`data_configure_events`](#data_configure_events)):
+
+  * all the `wanted` events have been seen at least once
+  * one of the `unwanted` events has been seen once
+  * all the threads listed in `frozen_threads` are frozen
+  * the quantity of received events is at least `max_event_qty`
+  * the call lasted at least `timeout_sec` seconds
+  * the program is no more running
+
+Only the events selected with [`data_configure_events`](#data_configure_events) are received, in chronological order of the parent's end date (if any parent).
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# wanted:         stops the event collection as soon as all event names in this list are found (order does not matter)
+# unwanted:       stops the event collection as soon as one event name in this list is found
+# frozen_threads: stops the event collection as soon as all provided threads are frozen
+# max_event_qty:  stops the event collection as soon as this quantity of event is collected
+# timeout_sec  :  stops the event collection as soon as the function duration exceeds this timeout
+# events: a list of collected Evt objects sorted by "end date"
+events = data_collect_events(wanted=[], unwanted=[], frozen_threads=[], max_event_qty=None, timeout_sec=1.)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+for e in palanteer.data_collect_events(unwanted=["Error"], frozen_threads=["Main"]):
+    print(e)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An Evt object has the following fields:
+| Field    | Description                                                                                                                         |
+| ---      | ---                                                                                                                                 |
+| thread   | thread name                                                                                                                         |
+| kind     | the type of event, among `data`, `marker`, `lock use`, `lock wait`, `lock ntf`                                                      |
+| path     | a list of names from the root event to the captured event name. The event name is always path[-1]                                   |
+| value    | the value of the event. The type depends on the event. For "scopes", the value is the duration in nanosecond                        |
+| date_ns  | the event date in nanosecond. The origin is the date of the connection to the program                                               |
+| spec_id  | the event spec index in the configuration list where this event comes from (see [`data_configure_events`](#data_configure_events))) |
+| children | a list of nested events if the event is a "hierarchical parent"                                                                     |
+
+!!! tip
+    There is **at most** one depth level with children by construction of the event specs (see [`data_configure_events`](#data_configure_events))
+
+
+### data_clear_buffered_events
+
+This function clears the buffered event waiting in the module for a polling call to [`data_collect_events`](#data_collect_events).
+
+It is "deeper" than a dummy call to [`data_collect_events`](#data_collect_events) (i.e. and ignoring its content) because it also clears the events buffered inside the dynamic library.
+
+Its typical use is to start a fresh scenario after an unsynchronized CLI call which affects the generated events.
+
+!!!
+    Configuring a new set of event specs also "deeply" clears all previously buffered events.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# no returned value
+def data_clear_buffered_events()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+data_clear_buffered_events()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### data_configure_events
+
+This function configures the subsequent reception of events via [`data_collect_events`](#data_collect_events). This configuration includes both the polling process and the content of the event list.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# specs: list of EvtSpec objects defining the selection of events
+def data_configure_events(specs)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Definition:** An `EvtSpec` is a specification of a simplified subtree of the event hierarchy of a particular thread, as defined in the instrumented program. <br/>
+Its parameters are:
+
+  * thread_name: thread name
+  * events: list of event "path" (see exact definition below)
+  * parent: an optional parent event path
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Specify an EvtSpec. It can be prepared in advance and reused multiple time
+my_selection = palanteer.EvtSpec(thread="MyThread", events=["first event", "top event/**/child event", "value"], parent="Task/Top node")
+
+# Apply the event selection from now on
+palanteer.data_configure_events(my_selection)  # Note: with 1 event spec, the list can be replaced by the lonely spec
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    The configuration function accepts a list of `EvtSpec` objects so that several use cases can be processed at the same time. <br/>
+    The collected `Evt` object contains the field `spec_id` which refers to the event spec index in this list.
+
+**Definition:** An event path is a way to specify the location of an event in the hierarchical tree. <br/>
+Its format is similar to Unix paths: an ordered list of event name separated with a slash '/'.
+
+  * `*` is a wildcard for 1 level. It shall be used alone (not a wildcard on a part of the name)
+    * A wildcard can be used for a thread or event name
+    * Example: "`Tasks/*/iteration number`"
+  * `**` is a wildcard for any quantity of levels
+    * It has no effect when first item in the path (ex: "`**/event name`" is equivalent to "`event name`")
+    * Example: "`Tasks/**/iteration number`"
+  * `.` forces the location to match the root (either the parent for an element with parent, or the tree root in other cases)
+    * It has no effect if not the first item in the path (ex: "`Tasks/./Sub Task`" is equivalent to "`Tasks/Sub Task`"
+    * Example: ".`/Tasks/iteration number`"
+
+When no parent event path is specified, the corresponding return list via [`data_collect_events`](#data_collect_events) is a flat list of "chronological" (see note below) events without children.
+
+When a parent event path is specified, the corresponding return list is a list of "chronological" parent events whose field `children` is a flat list of chronological instances of the specified events under it in the event tree. <br/>
+
+!!! note About "chronological"
+    The date of an event is either the one of the event if it owns one, either the start date of the parent (which is a scope by design so always has a start date). <br/>
+    The chronological ordering follows these dates with the important exception of scopes where the **scope end date** is used. The reason is that the scope is "complete" and usable only when its end is known, and is stored only at that moment.
+
+Using a parent event path is an implicit and easy way to associate some event instances. <br/>
+To work properly with this concept, the following points are important to note:
+
+  * all event paths shall be located inside the parent path
+  * if the parent path is ambiguous for a particular event, the one closest to the root is taken
+  * all event paths shall have the same "resolved" parent path  (see exact definition below)
+
+**Definition:** Resolving a path means confronting and successfully matching an event path as specified above with the time-evolving tree of the instrumented program. It is instrinsically a dynamic process. <br/>
+A resolution does not always occurs, due to inadequate specified event path or due to some not met dynamic condition to generate such event. <br/>
+When investigating a resolution failure during a script creation, some valuable hints are provided by the command [`data_get_unresolved_events`](#data_get_unresolved_events).
+
+!!! warning Important
+    As all mechanisms are based on hashed strings, all event names shall be exactly as written in the code, including case, spaces and units.
+
+
+**Examples:**
+************************************************
+*   +---A
+*   |   |
+*   |   +---B
+*   |   |   |
+*   |   |   +---E          (1)
+*   |   |       |
+*   |   |       +---K      (1)
+*   |   |
+*   |   +---C
+*   |   |
+*   |   +---D              (1)
+*   |   |   |
+*   |   |   +---E          (2)
+*   |   |   |
+*   |   |   +---D          (2)
+*   |   |       |
+*   |   |       +---G
+*   |   |       |
+*   |   |       +---H
+*   |   |           |
+*   |   |           +---K  (2)
+*   |   |
+*   |   +---I              (1)
+*   |
+*   +---D                  (3)
+*       |
+*       +---I              (2)
+*       |
+*       +---J
+*       |
+*       +---K              (3)
+************************************************
+[Example of event tree generated during the execution of the dynamic program for a thread "Worker"]
+
+The tree above contains events with names as a letter for clarity. Note that these names are reused (on purpose) in different locations of the tree. <br/>
+Based on this tree, below are some example of event specifications and their result in comment:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+EvtSpec(thread="Worker", events=["A", "D", "I", "K"])         # => selects individually A, D(1), D(2), D(3), I(1), I(2) and K
+
+EvtSpec(thread="Worker", parent="A", events=["D", "I", "K"])  # => selects A as parent, D(1), D(2), I(1) and K.  I(2) has a non matching parent
+
+EvtSpec(thread="Worker", parent="A", events=["D/D", "K"])     # => selects A as parent, D(2) and K.    D(1) has a non matching event path
+
+EvtSpec(thread="Worker", parent="A", events=["*/D", "K"])     # => selects A as parent, D(2) and K.    D(1) event path is not matching because 1 level is missing below the parent
+
+EvtSpec(thread="Worker", parent="A", events=["./D", "K"])     # => selects A as parent, D(1) and K.    D(2) is not matching because of the "." constraint
+
+EvtSpec(thread="Worker", parent="A", events=["B/**/K"])       # => selects A as parent, and K(1).      K(2) has a non matching event path
+
+EvtSpec(thread="Worker", parent="D/D", events=["K"])          # => selects A as parent, and K(2).
+
+EvtSpec(thread="Worker", parent="A/*/D", events=["K"])        # => selects D(2) as parent, and K(2).
+
+EvtSpec(thread="Worker", parent="D", events=["K"])            # => selects D(1) as parent, and K(2).   The closest parent of the root is always selected.
+
+EvtSpec(thread="Worker", parent="D/D", events=["K"])          # => selects D(2) as parent, and K(2).
+
+EvtSpec(thread="Worker", parent="./D", events=["K"])          # => selects D(2) as parent, and K(3).   Only L(3) has a parent matching the "." constraint
+
+EvtSpec(thread="Worker", events=["./D/*"])                    # => selects individually I(2), J and K(3). Only D(3) has a parent matching the "." constraint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### hash_string
+
+This function returns the `Palanteer` hash of the provided string. Its typical usage is debugging scripts with the external string feature enabled.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# string_to_hash: the string to hash
+# is_short_hash:  32 bits hash if set to True (default is 64 bits)
+hash = hash_string(string_to_hash, is_short_hash=False):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Creating a "manual" external string lookup
+set_external_strings(lkup={hash_string("Add fruit"): "Add fruit", hash_string("CRASH"): "CRASH"})
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### data_get_unresolved_events
+
+This function returns unresolved event specs configured with [`data_configure_events`](#data_configure_events). <br/>
+It is typically used to investigate a specification issue.
+
+It reports information up to 32 unresolved events. <br/>
+The information is kept after a process is finished, but is cleared when a new event spec configuration is set.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# unresolved_event_info_list: list of triplet (spec_id, event_spec, explanation message) for all unresolved event specifications
+unresolved_event_info_list = data_get_unresolved_events()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+def debug_print_unresolved_events():
+    unresolved_event = data_get_unresolved_events()
+    print("Unresolved events (%d):" % len(unresolved_event))
+    for spec_id, event_spec, msg in unresolved_event:
+        print("  - From spec #%d, %s for event '%s'" % (spec_id, msg, event_spec))
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    This example is the code of the debug helper `debug_print_unresolved_events()` that can be used to investigate
+
+The list of possible error messages is:
+
+| Error message                                                    | Explanation                                                                                                                                                                                                                                                                                      |
+|------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| "No events in record to match with"                              | no event was seen during the execution of the program, either because `PL_NOEVENT==1` or the program had no time to generate events on the period                                                                                                                                                |
+| "No matching thread"                                             | no thread is matching the provided name                                                                                                                                                                                                                                                          |
+| "No matching event name"                                         | no event has a name corresponding to the one in the event spec                                                                                                                                                                                                                                   |
+| "No matching event path"                                         | some event with the right name have been found but the constraints on the path are not matching                                                                                                                                                                                                  |
+| "No matching parent event name"                                  | some event with the right name and path have been found but no parent event has a name corresponding to the one in the event spec                                                                                                                                                                |
+| "No matching parent event path"                                  | Everything is resolved except that the constraints on the parent event path are not matching                                                                                                                                                                                                     |
+| "'.' is not matching the event's root"                           | Everything is resolved except that the "." constraint is not fullfiled for the event                                                                                                                                                                                                             |
+| "'.' is not matching the parent event's root"                    | Everything is resolved except that the "." constraint is not fullfiled for the parent event                                                                                                                                                                                                      |
+| Inconsistent parent events, it shall be the same for all events" | Several couples (event, parent event) were found but with different parents. The first parent event found becomes the reference, others are ignored and are unresolved. <br/>This can be solved by being more specific on the different paths, or by splitting the event spec into several ones. |
+|                                                                  |                                                                                                                                                                                                                                                                                                  |
+
+### data_get_known_threads
+
+This function returns all currently known threads.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# thread_names: list of thread names
+thread_names = data_get_known_threads()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+def debug_print_known_threads():
+    thread_names = data_get_known_threads()
+    print("Known threads (%d):" % len(thread_names))
+    for t in thread_names:
+        print("  - %s" % t)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    This example is the code of the debug helper `debug_print_known_threads()` that can be used to investigate
+
+### data_get_known_event_kinds
+
+This function returns all currently known kinds of events.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# event_kinds: list of pair (event path, kind of event as string, thread name)
+event_kinds = data_get_known_event_kinds()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+def debug_print_known_event_kinds(output_file=sys.stdout):
+    """This function displays the list of the known event kinds"""
+
+    event_kinds = data_get_known_event_kinds()
+    print("Known event kinds (%d):" % len(event_kinds), file=output_file)
+    event_kinds.sort(key=lambda x: (x[2].lower(), x[1].lower(), x[0]))
+    for path, kind, thread_name in event_kinds:
+        print(" %-11s %-24s : %s" % ("[%s]" % kind, thread_name, "/".join(path)), file=output_file)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    This example is the code of the debug helper `debug_print_known_event_kinds()` that can be used to investigate
+
+## Troubleshootings
+
+**My test is not always giving the same result when run in a loop**
+
+Some actions require strict synchronization to be reliable. In particular:
+  - Declare CLIs before starting the instrumentation library, to avoid any remote call before they are known.
+  - Use the freeze point feature for precise control of the moment of stimulation.
+  - Clear the previously collected events before any experiment, if they have a possibility to interfere
+    - Setting a new filter specification does it automatically
+  - Use the adequate trigger for end of event collection end from `data_collect_events`
+
+<br/>
+**A CLI is failing because it is not known. But it is present in my code**
+
+The CLI may be present in the code but not declared yet on the remote program side. <br/>
+Declaring the CLI before the start of the instrumentation library is a good habit and fully prevent this kind of issues.
+
+<br/>
+**I have hard times debugging my script**
+
+Here are some advises:
+ - Use the debugging helpers
+   -  The most useful in probably `debug_print_unresolved_events()` which tells you which Event Specification was not matched in the record and why.
+ - Set the recording log level (module variable) to zero (all is displayed), with `palanteer_scripting.default_log_min_level = 0`
+ - Record in a file while the script is executing, then check in the viewer that the targetted events are really present and with the expected structure.
+
+<br/>
+** I cannot retrieve marker events**
+
+Ensure that the EvtSpec refers to the category of the marker, not to its message (which is the event "value").
+
+<br/>
+**Is it ok to have several events with the same name?**
+
+Name collision are ok, if the "path" in the tree is different, they will be seen as different event kinds. <br/>
+However, it makes it harder for humans to visualize them, or point on a particular one in a script, as the usage of "parent" is then mandatory.
+
+
+<h1> @@ <a href="more.md.html">More</a> </h1>
+
+
+<script>markdeepOptions = {tocStyle:'long', definitionStyle:'long'};</script>
+<link rel="stylesheet" href="palanteer.css">
+<!-- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
