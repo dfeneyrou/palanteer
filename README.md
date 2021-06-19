@@ -1,8 +1,8 @@
 # Look into Palanteer and get an omniscient view of your program
 
-Palanteer is a set of tools to improve the general software quality, for C++ and Python programs.
+Palanteer is a set of lean and efficient tools to improve the general software quality, for C++ and Python programs.
 
-Simple code instrumentation, partially automatic in Python, delivers powerful features:
+Simple code instrumentation, mostly automatic in Python, delivers powerful features:
   - **Collection of meaningful atomic events** on timings, memory, locks wait and usage, context switches, data values..
   - **Visual and interactive observation** of record: timeline, plot, histograms, flame graph, ...
   - **Remote command call and events observation can be scripted in Python**: deep testing has never been simpler
@@ -79,10 +79,18 @@ Some C++ performance figures (see [here](https://dfeneyrou.github.io/palanteer/i
   - up to ~3 millions events per second when recording, the bottleneck being on the server processing side
   - up to ~150 000 events per second when processing the flow through a Python script, the bottleneck being on the Python script side
 
+More details and an example of remote script is provided [here](https://dfeneyrou.github.io/palanteer/index.html#overview/commonfeatures/remotecontrol)
 
 ## Python instrumentation example
 
-Same example than in C++ but in Python:
+Execution of unmodified Python programs can be analyzed directly with a syntax similar to the one of `cProfile`, as a large part of the instrumentation is automated by default:
+   - Functions enter/leave
+   - Interpreter memory allocations
+   - All raised exceptions
+   - Garbage collection runs
+
+In some cases, a manual instrumentation which enhances or replaces the automatic one is desired. <br/>
+The example below is such an equivalent of the C++ one above but in Python:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ python
 #! /usr/bin/env python3
 import sys
@@ -124,6 +132,8 @@ if __name__ == "__main__":
     main(sys.argv)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+More details and an example of remote script, the same as for the C++ example, is provided [here](https://dfeneyrou.github.io/palanteer/index.html#overview/commonfeatures/remotecontrol)
+
 ## Documentation
 
 The complete documentation is accessible inside the repository, and online:
@@ -139,13 +149,15 @@ The complete documentation is accessible inside the repository, and online:
 
 ## Requirements
 
-Full installation of Palanteer requires:
+Palanteer is lean, its full installation requires only usual components:
   - a C++14+ compiler (gcc, clang or MSVC) in Windows 10 or Linux 64 bits for the viewer and scripting module
   - a C++11+ compiler (tested with gcc, clang and MSVC) 32 or 64 bits for the C++ instrumentation library
-  - CPython 3.7+  with setuptools package
+  - CPython 3.7+
   - OpenGL 3.3+
 
-See [here](https://dfeneyrou.github.io/palanteer/index.html#requirements) for detailed requirements per component.
+In particular, the C++ single-header instrumentation library requires only C++11 or above.
+
+See [here](https://dfeneyrou.github.io/palanteer/index.html#requirements) for more details on the requirements per component.
 
 Other dependencies are snapshotted inside this repository, so for information only:
 
