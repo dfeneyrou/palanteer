@@ -47,9 +47,10 @@ import re
 MATCH_DETECT = re.compile(".*?(^|[^a-zA-Z\d])pl(g?)([a-zA-Z]*)\s*\((.*)")
 
 # Commands whose parameters shall be processed. Associated values are: 0=convert only strings   1=convert all parameters
-PL_COMMANDS_TYPE = { "Assert":1, "Begin":0, "End":0, "Data":0, "DeclareThread":0, "IdleBegin":0, "IdleEnd":0,
-                     "LockNotify":0, "LockScopeWait":0, "LockState":0, "LockWait":0, "MakeString":0, "Marker":0, "MarkerDyn":0,
-                     "MemPush":0, "RegisterCli":1, "Scope":0,  "Text":0, "Var":1 }
+PL_COMMANDS_TYPE = { "Assert":1, "Begin":0, "End":0, "Data":0, "Text":0, "DeclareThread":0, "IdleBegin":0, "IdleEnd":0,
+                     "LockNotify":0, "LockNotifyDyn":0, "LockWait":0, "LockWaitDyn":0, "LockState":0,
+                     "LockStateDyn":0, "LockScopeState":0, "LockScopeStateDyn":0,
+                     "MakeString":0, "Marker":0, "MarkerDyn":0, "MemPush":0, "RegisterCli":1, "Scope":0,  "Text":0, "Var":1 }
 
 # Helpers
 # =======
