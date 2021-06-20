@@ -22,4 +22,4 @@ or <br/>
 Usage
 =====
 
-Please refer to the Palanteer documentation.
+Please refer to the [scripting documentation](https://dfeneyrou.github.io/palanteer/scripting_api.md.html).

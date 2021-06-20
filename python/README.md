@@ -29,10 +29,10 @@ Profiling can be done:
 
      This syntax is similar to the `cProfile` usage and no script modification is required. <br/>
      By default, it tries to connect to a Palanteer server. With options, offline profiling can be selected. <br/>
-     Launch `python -m palanteer` for help.
+     Launch `python -m palanteer` for help or refer to the [documentation](https://dfeneyrou.github.io/palanteer/instrumentation_api_python.md.html#pythoninstrumentationapi/initialization/automaticinstrumentationwithoutcodemodification).
 
 2) With code instrumentation:
 
-    Please refer to the Palanteer documentation for details. <br/>
-    Manual instrumentation can provide much more information than just the automatic function profiling (data, locks, ...)
+    Please refer to the [documentation](https://dfeneyrou.github.io/palanteer/instrumentation_api_python.md.html) for details. <br/>
+    Manual instrumentation can provide additional valuable information compared to just the automatic function profiling, like data, locks, ...
 

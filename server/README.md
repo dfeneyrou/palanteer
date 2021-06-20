@@ -13,5 +13,5 @@ Content
 Installation
 ============
 
-Install all `Palanteer` components with CMake (see ./INSTALL.md). <br/>
+Install all `Palanteer` components with CMake (see ./INSTALL.md or the [quick install](https://dfeneyrou.github.io/palanteer/getting_started.md.html#gettingstarted/quickinstall)). <br/>
 The individual targets are "viewer" and "scripting".

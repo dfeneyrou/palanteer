@@ -13,11 +13,11 @@ Installation
 
 Copy the file `palanteer.h` in your project.
 
-See documentation how to enable it.
+See [documentation](https://dfeneyrou.github.io/palanteer/getting_started.md.html#gettingstarted/quickc++programinstrumentation) how to enable it.
 
 
 Usage
 =====
 
 The code of the program shall be manually instrumented. <br/>
-See the documentation for a full description of the services and how to control them.
+See the [documentation](https://dfeneyrou.github.io/palanteer/instrumentation_api_cpp.md.html) for a full description of the services and how to control them.

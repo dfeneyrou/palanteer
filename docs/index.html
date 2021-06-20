@@ -329,6 +329,7 @@ The CPython interpreter offers dedicated profiling hooks that `Palanteer` levera
  - Entering or leaving a function
  - Raised exception, caught or not
  - Memory allocations (at the interpreter level)
+ - Garbage collection runs
 
 This means that **unmodified code** can already provide useful insights, by using the same mechanism than the standard `cProfile` module:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
