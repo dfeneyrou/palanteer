@@ -78,17 +78,14 @@ Unless with the explicit prefix "Dyn", the strings are expected to be static. Th
 Some examples:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
 // Text logging
-plText("Phase one reached"); // Static string
+plText("stage", "Phase one reached"); // Static string
 
 // Text logging
 constexpr const char* myConstExprString = "I am a static string because constexpr";
-plText(myConstExprString); // OK, as myConstExprString is "constexpr"
-
-// Text logging
-const char* myConstString = "I am not a static string";
-plTextDyn (myConstString); // Dynamic string API required because not constexpr. "const" is not enough for compile time processing.
+plText("stage", myConstExprString); // OK, as myConstExprString is "constexpr"
 
 // Data logging (numeric or string)
+const char* myConstString = "I am not a static string"; // Dynamic string API required because not constexpr. "const" is not enough for compile time processing.
 plData("Status", myConstString); // plData always considers the value string as dynamic, so it is hashed at run-time.
 
 // Function scope logging

@@ -340,7 +340,7 @@ static int palComReceive(uint8_t* buffer, int maxBuffersize);
     * A call to `plCrash` shall be inserted in these OS handlers so that the stacktrace can be handled and the last events flushed to the server.
  1. Optional: Stack trace collection
     * Override the macro `PL_IMPL_STACKTRACE_FUNC` to point on the new stack trace collection function.
-    * Each stack trace line shall be logged with `plTextDyn` in a scope made declared with `plScope("CRASH Stacktrace")`
+    * Each stack trace line shall be logged with `plData` as a dynamic string inside a scope declared with `plScope("CRASH Stacktrace")`
       * The scope name is arbitrary and allows common tools to understand the semantic
 
 !!! note

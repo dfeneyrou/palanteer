@@ -161,7 +161,7 @@ The [instrumentation API](instrumentation_api_cpp.md.html) is straightforward an
 
 Example:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
-// Declare your thread once after its creation (mandatory to enable inner event tracking)
+// Declare the name of your thread (optional, it helps visualization, persistence of config and scripting)
 plDeclareThread("Worker 1");
 
 // Named variable value logging
@@ -174,7 +174,7 @@ plVar(monsterHealth);
 plVar(monsterHealth, monsterAttackCoef, monsterName);
 
 // Text logging
-plText("Level one reached");
+plText("stage", "Level one reached");
 
 // Timestamped scope (automatically closed at C++ scope end)
 plScope("superFunction");
