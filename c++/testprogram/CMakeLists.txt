@@ -34,7 +34,6 @@ endif(WIN32)
 
 # Compilation flags
 # =================
-add_definitions(-DUSE_PL=1)
 
 if(MSVC)
   # I gave up trying to have a nice way to force /W4 and /GR-
@@ -53,3 +52,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CUSTOM_FLAGS}")
 add_executable            ("testprogram"                    testProgram.cpp testPart.cpp testPart.h)
 target_link_libraries     ("testprogram" ${STACKTRACE_LIBS} Threads::Threads)
 target_include_directories("testprogram" PRIVATE            ../../c++)
+target_compile_options    ("testprogram" PRIVATE            -DUSE_PL=1)
+
+# Test program executable with deactivated Palanteer
+# =======================
+add_executable            ("testprogram_disabled"                    testProgram.cpp testPart.cpp testPart.h)
+target_link_libraries     ("testprogram_disabled" ${STACKTRACE_LIBS} Threads::Threads)
+target_include_directories("testprogram_disabled" PRIVATE            ../../c++)
+
