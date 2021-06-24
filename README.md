@@ -1,10 +1,10 @@
 # Look into Palanteer and get an omniscient view of your program
 
-Palanteer is a set of lean and efficient tools to improve the general software quality, for C++ and Python programs.
+Palanteer is a set of lean and efficient tools to improve the quality of software, for C++ and Python programs.
 
 Simple code instrumentation, mostly automatic in Python, delivers powerful features:
   - **Collection of meaningful atomic events** on timings, memory, locks wait and usage, context switches, data values..
-  - **Visual and interactive observation** of record: timeline, plot, histograms, flame graph, ...
+  - **Visual and interactive observation** of record: timeline, plot, histograms, flame graph...
   - **Remote command call and events observation can be scripted in Python**: deep testing has never been simpler
   - **C++**:
     - ultra-light single-header cross-platform instrumentation library
@@ -140,7 +140,7 @@ The complete documentation is accessible inside the repository, and online:
   - [Introduction](https://dfeneyrou.github.io/palanteer/index.html)
   - [Getting started](https://dfeneyrou.github.io/palanteer/getting_started.md.html)
   - [Base concepts](https://dfeneyrou.github.io/palanteer/base_concepts.md.html)
-  - [C++ instrumentation API](https://dfeneyrou.github.io/palanteer/instrumentation_api_cpp..md.html)
+  - [C++ instrumentation API](https://dfeneyrou.github.io/palanteer/instrumentation_api_cpp.md.html)
   - [C++ instrumentation configuration](https://dfeneyrou.github.io/palanteer/instrumentation_configuration_cpp.md.html)
   - [Python instrumentation API](https://dfeneyrou.github.io/palanteer/instrumentation_api_python.md.html)
   - [Scripting API](https://dfeneyrou.github.io/palanteer/scripting_api.md.html)

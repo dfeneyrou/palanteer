@@ -124,7 +124,7 @@ def plStopAndUninit()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!!
-    If not called explicitely before exiting the program (case of a crash, or simply not called at all), the service stopping is performed implicitely, unless the process is hard-killed.
+    If not called explicitly before exiting the program (case of a crash, or simply not called at all), the service stopping is performed implicitly, unless the process is hard-killed.
     This behavior ensures that all last events are properly recorded, which is critical in case of crash.
 
 
@@ -160,7 +160,7 @@ Some example of thread grouping:
 plDeclareThread("Render")
 
 
-# The calls below implicitely define a group "Workers" which contains 3 threads
+# The calls below implicitly define a group "Workers" which contains 3 threads
 
 # (Called at the start of another thread)
 plDeclareThread("Workers/Worker 1")
@@ -236,7 +236,7 @@ They can optionaly be associated to an `unit` by ending the event name with `##<
   * The unit is stripped from the name, it is not displayed
   * The unit increases the semantic of the events and make is more useful for the users
   * Only events with consistent units can be plotted together.
-  * "hexa" is a special and hardocded unit which displays integer in hexadecimal
+  * "hexa" is a special and hardcoded unit which displays integer in hexadecimal
 
 Ex: `"Duration##nanosecond"`,  `"pointer##hexa"`, `"Banana##fruit"`
 
@@ -326,7 +326,7 @@ When the wait ends, `plLockState(...)` or `plLockScopeState(...)` **must** be ca
   - the state of the lock: `true` if the lock is taken, or `false` if not.
 
 !!!
-    This "lock wait" information is crucial in a multithreaded program so it should be instrumented thoroughfully.
+    This "lock wait" information is crucial in a multithreaded program so it should be instrumented thoroughly.
 
 
 The declaration is:

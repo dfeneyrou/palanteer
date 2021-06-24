@@ -26,7 +26,7 @@ Three types of configuration parameter exist:
     For the sake of consistency, never override a parameter of the second type directly in each instrumented file.<br/>
     First, it is not convenient. And if you miss one file, unconsistent configuration can lead to undefined behavior.
 
-Defining your own configuration can be done safely in several ways (non exhaustive):
+Defining your own configuration can be done safely in several ways (non-exhaustive):
 
 1. Directly modify the file `palanteer.h`
   - Safe and easy way but with potential conflict when upgrading
@@ -81,7 +81,7 @@ File myCode.cpp:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!!
-    In short, adapt the strategie to the need. <br/>
+    In short, adapt the strategy to the need. <br/>
     For large projects it is recommended to use groups and at least wrap the instrumentation library as in point (2) above.
 
 The rest of this chapter describes all configuration parameters for the instrumentation.
@@ -328,7 +328,7 @@ Getting a stacktrace requires two base functionalities:
   - unwinding the call stack
   - decoding the program counter addresses to get the associated filename, line number, and function name, demangled.
 
-On Window, the standard libraries provide all the required functions. <br/>
+On Windows, the standard libraries provide all the required functions. <br/>
 On Linux, the stacktrace requires two external dynamic libraries:
 
   - libunwind.so to unwind the call stack
@@ -369,7 +369,7 @@ The default value is (built-in function):
 This macro points to the last function called to terminate the program when an assertion fails or a signal is received. <br/>
 Before this call and if applicable, the record is already flushed to the server and stacktraces are already dumped).
 
-The typical use case for overriding this macro is on an embedded system where "exiting" has no meaning.
+The typical use case for overriding this macro is on an embeded system where "exiting" has no meaning.
 
 The default value is simply calling the system exit function:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -470,7 +470,7 @@ The [enhanced assertions feature](index.html#enhancedassertions) uses variadic t
 
 With this compilation flag it is possible to keep the "per category compilation" feature of the `Palanteer` assertions but revert to the lighter and standard behavior of assertions by ignoring the extra context parameters.
 
-The typical usage of this feature is in constrained embedded systems where code size really matters.
+The typical usage of this feature is in constrained embeded systems where code size really matters.
 
 The default value is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++

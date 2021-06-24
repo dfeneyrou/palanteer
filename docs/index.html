@@ -239,13 +239,13 @@ Instrumenting the code, to track its execution, obviously means more accessible 
 There is at least 2 cases where this might be a problem:
 
   - **Obfuscation**: if the production code embeds some instrumentation, the corresponding text strings are present in clear in the binary
-  - **Binary size reduction**: in embedded software, each byte matters. On the other side, instrumentation or any kind of observation is critical to be able to debug efficiently
+  - **Binary size reduction**: in embeded software, each byte matters. On the other side, instrumentation or any kind of observation is critical to be able to debug efficiently
 
 Both cases above are solved by using the "external strings" feature, simply by compiling with the flag `PL_EXTERNAL_STRINGS` set to 1.
 In this mode, all static strings used by `Palanteer` are stripped out at compilation time, only their hash remain in the binary.
 
 !!!
-    On Linux, the standard command `strings &lt;binary name&gt;` shows in clear all text strings of the binary. It is an easy way to check your embedded strings.
+    On Linux, the standard command `strings &lt;binary name&gt;` shows in clear all text strings of the binary. It is an easy way to check your embeded strings.
 
 In order to properly work with a record where the external string feature have been enabled, the additional actions below are required:
 
@@ -389,7 +389,7 @@ Two kinds of data are automatically collected:
   - In Python, the allocations are tracked on the interpreter level (i.e. what is seen by the OS)
     - Tracking at the "object" level would insanely bloat records, as even an integer is an object and requires an internal (optimized) allocation.
   - Note: memory event locations are identified only by the instrumented scopes.
-    - Collecting stacktraces is an heavy process, definitely outside the "light overhead" rules of the tool
+    - Collecting stacktraces is a heavy process, definitely outside the "light overhead" rules of the tool
 
 **Operating System context switches**
 
@@ -703,11 +703,11 @@ Unless not applicable or specified otherwise in the dedicated help window, the o
 
 **Views synchronization**
 
-Views can be 'associated' so that they  share the same time range and react to each other. This is called 'view synchronization'. <br/>
+Views can be 'associated' so that they share the same time range and react to each other. This is called 'view synchronization'. <br/>
 This association is chosen in the top right combobox of the views
 
 By default, all views are associated with the Group 1 . The 'Group 2' provides a second shared focus. <br/>
-A view can also be 'Isolated' and become independant of all others.
+A view can also be 'Isolated' and become independent of all others.
 
 
 ## Requirements
@@ -765,7 +765,7 @@ Other dependencies are snapshotted inside this repository (see [dependencies](#t
 
 ## Performance
 
-C/C++ is a language made to juice performances from hardwares. Having an idea of the impact of the instrumentation on them is a must.
+C/C++ is a language made to juice performances from hardware. Having an idea of the impact of the instrumentation on them is a must.
 
 For Python, this requirement is weaker because the language is interpreted.
 
