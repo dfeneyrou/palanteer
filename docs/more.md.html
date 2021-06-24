@@ -44,9 +44,9 @@ A successful tool is one which:
 
   1. matches the needs and use cases of the users
   2. fulfills its task efficiently and reliably
-  3. has a complexity level equal to the one of the problem to solve, not more
+  3. has a complexity level equal to that of the the problem it solves, not more
 
-As `Palanteer` is a tool which aims at increasing the quality of softwares in general, applying `Palanteer` to itself was an obvious choice.
+As `Palanteer` is a tool which aims at increasing the quality of software in general, applying `Palanteer` to itself was an obvious choice.
 
   - Its development provided many real use cases (point 1) for instrumentation and visualization, along with some ideas of the associated user experience (point 3)
   - Profiling oneself helped spotting numerous bottlenecks and improved overall efficiency (point 2 and 3)
@@ -234,7 +234,7 @@ Brief and partial thoughts:
       * Less control on the hardware also means less responsibilities...
   * C++
     * C++11 is the minimum supported version as older releases miss many useful features (mainly platform-uniform support, atomic functions, variadic templates for enhanced assertions)
-    * Older C++ support is possible but would require more platform specific work (multithreading, atomic, non standard thread_local...) and a reduction of the feature list (no enhanced assertions).
+    * Older C++ support is possible but would require more platform specific work (multithreading, atomic, non-standard thread_local...) and a reduction of the feature list (no enhanced assertions).
   * C
     * Like C++ releases before C++11, C11 support is possible but would require more platform specific work (multithreading) and a reduction of the feature list (no enhanced assertions, no automatic scope closing)
     * atomic were introduced in C11, so ok
@@ -268,20 +268,20 @@ Therefore the following features **are not** considered in `Palanteer`:
 - **Advanced CPU profiling**
 
      Hardware events of CPU chipsets are obviously better managed by their respective CPU vendors who already propose their own tool. <br/>
-     Non exhaustive list: *Intel VTune Amplifier, AMD uProf (formerly CodeAnalyst), Arm MAP*... <br/>
+     Non-exhaustive list: *Intel VTune Amplifier, AMD uProf (formerly CodeAnalyst), Arm MAP*... <br/>
      Cache misses, branch misprediction, optimal port usage... are advanced profiling and not in the scope of `Palanteer` which targets higher level CPU profiling.
 
 - **GPU Profiling**
 
      Modern GPUs are accessible through different APIs (*Vulkan, OpenGL, DirectX, Metal...*) and can also provide chipset specific statistics. <br/>
      Dedicated profiling and analysis tools exploiting this information already exist for many couple (chipset, API). <br/>
-     Non exhaustive list: *RenderDoc (open source), NVidia Nsight, Radeon GPU Profiler, Intel GPA*... <br/>
+     Non-exhaustive list: *RenderDoc (open source), NVidia Nsight, Radeon GPU Profiler, Intel GPA*... <br/>
      The argument for not adding such feature is very similar to the one of the advanced CPU profiling: vendor or dedicated GPU profiler are already covering the topic.
 
 - **Code disassembly**
 
      This kind of view, depending on chipsets, is required only in very specific conditions and many tools are already available. <br/>
-     Non exhaustive list: *any debugger, objdump, compiler explorer (https://godbolt.org )*... <br/>
+     Non-exhaustive list: *any debugger, objdump, compiler explorer (https://godbolt.org )*... <br/>
      For code optimization, the strategy here is to detect hot spots with `Palanteer` and, only if required, disassemble and investigate with an available external tool.
 
 
@@ -310,7 +310,7 @@ The list of "porting points" are:
     * The main constraint comes from the compatibility of this thread ID getter with the ones processed in the context switches collection (if any).
  1. Program exit
     * Override the macro `PL_IMPL_CRASH_EXIT_FUNC` to point on the new program exit function.
-    * The default and standard C++ `quick_exit(1)` value should work for most system, except maybe the embedded ones.
+    * The default and standard C++ `quick_exit(1)` value should work for most system, except maybe the embeded ones.
  1. Communication channels
     * The standard communication is done through sockets (POSIX or Windows) or written in a file, via 4 functions (init, uninit, send, receive) <br/>
     * If `PL_IMPL_CUSTOM_COM_LAYER==1`, the following functions shall be redefined externally, after the `palanteer.h` include to be able to access the internal implementation state:
@@ -355,9 +355,9 @@ static int palComReceive(uint8_t* buffer, int maxBuffersize);
 
 ## Thoughts on software quality
 
-### Development advices
+### Development advice
 
-This section is an unordered collection of "advices", mostly common sense, for software developers.
+This section is an unordered collection of "pieces of advice", mostly common sense, for software developers.
 
 - **Never ever ignore "weird" observed behaviors**
    - Investigate them ASAP, or at least note them somewhere for early investigation.
@@ -388,7 +388,7 @@ This section is an unordered collection of "advices", mostly common sense, for s
   - The performance of the Address Sanitizers is often around half of the one of the debug mode, so much more acceptable than the 10x slowdown of `valgrind` (which is a fantastic tool anyway).
   - If possible, test shall be performed with ASAN builds in order to maximize the observation spectrum.
 
-- **Remember that softwares always contain bugs** (just try to prove the opposite...)
+- **Remember that software always contain bugs** (just try to prove the opposite...)
   - Also, any change can create a regression.
   - Eventually, what matter is simply that all target use-cases are covered by tests before each delivery.
   - Ideally tests that can be run quickly and easily (because humans do not like to wait).
@@ -397,7 +397,7 @@ This section is an unordered collection of "advices", mostly common sense, for s
 - **A software evolves in time, and with some work, from young to mature**
   - Feedback from users or testers are critical to the maturation of the software. No feedback, no correct evolution.
   - Initial implementations provide a global view on the system, and they are usually suboptimal in many ways as the build and the discovery of the topic are done in parallel.
-  - To keep a software under control, regular "maintenance" is required, which implies rewriting and simplifiying some parts.
+  - To keep a software under control, regular "maintenance" is required, which implies rewriting and simplifying some parts.
   - Simplifying or clarifying a larger code around the location of an evolution can be seen as a risk in the short term, but is very beneficial at middle term.
   - The safety net when rewriting or modifying some code is the tests. Have some tests...
     - Without tests, no measure of quality is possible (whatever its real value): the code is not under control and each evolution jeopardize deliveries.

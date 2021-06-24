@@ -196,7 +196,7 @@ Some example of thread grouping:
 plDeclareThread("Render");
 
 
-// The calls below implicitely define a group "Workers" which contains 3 threads
+// The calls below implicitly define a group "Workers" which contains 3 threads
 
 // (Called at the start of another thread)
 plDeclareThread("Workers/Worker 1");
@@ -290,7 +290,7 @@ The declaration is:
 void plBegin(const char* name);
 
 // Declares the end of a scope with the provided name as static strings
-// The name shall match the begin name, so mismatchs can be detected on viewer side and lead to warnings
+// The name shall match the begin name, so mismatches can be detected on viewer side and lead to warnings
 void plEnd(const char* name);
 
 // If the group is enabled, declares the start of a scope with the provided name as static strings
@@ -310,11 +310,11 @@ The instrumentation in this chapter logs string or data of any numeric type insi
     Indeed, they carry only the logged data and are not timestamped. 
 
 Such events can be visualized in the viewer under several forms: text, curve or histogram. <br/>
-They can optionaly be associated to an `unit` by ending the event name with `##<unit>`:
+They can optionally be associated to a `unit` by ending the event name with `##<unit>`:
   * The unit is stripped from the name, it is not displayed
   * The unit increases the semantic of the events and make is more useful for the users
-  * Only events with consistent units can be plotted together.
-  * "hexa" is a special and hardocded unit which displays integer in hexadecimal
+  * Only events with consistent units can be plotted together
+  * "hexa" is a special and hardcoded unit which displays integer in hexadecimal
 
 Ex: `"Duration##nanosecond"`,  `"pointer##hexa"`, `"Banana##fruit"`
 
@@ -366,7 +366,7 @@ plData("Dynamic string", c);
 plgData(MY_DETAIL, "my value A", a); // PL_GROUP_MY_DETAIL must be defined with value 0 or 1
 
 // Logging of a static string, with the help of plMakeString
-plData("Status", plMakeString("Low run time ressource with such static string"));
+plData("Status", plMakeString("Low run time resource with such static string"));
 
 // Another dynamic string message
 const char* states[3] = { "Good automata state", "Average automata state", "Bad automata state" };
@@ -395,7 +395,7 @@ void plgText(const char* group, const char* name, const char* msg);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! error
-    A hell of preprocessor and compiler errors are triggered if a non static string is passed as a value. These errors usually start with:
+    A hell of preprocessor and compiler errors are triggered if a non-static string is passed as a value. These errors usually start with:
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
     palanteer.h: error: "string variable" is not a constant expression
     | #define PL_STRINGHASH(s) plPriv::forceCompileTimeElseError_ < plPriv::fnv1a_(s,PL_FNV_HASH_OFFSET_) > ::compileTimeValue
@@ -549,7 +549,7 @@ Some examples of instrumentation of several usual primitives are shown [after th
 
 !!!
     The locking process has two different phases:
-     - waiting for the lock: the wait for lock is started, then ended with a positif or negative outcome
+     - waiting for the lock: the wait for lock is started, then ended with a positive or negative outcome
      - using the lock: the lock is first taken, then released.
 
 ### plLockWait
@@ -563,7 +563,7 @@ When the wait ends, `plLockState(...)` or `plLockScopeState(...)` **must** be ca
   - the state of the lock: `true` if the lock is taken, or `false` if not.
 
 !!!
-    This "lock wait" information is crucial in a multithreaded program so it should be instrumented thoroughfully.
+    This "lock wait" information is crucial in a multithreaded program so it should be instrumented thoroughly.
 
 This function has both group and dynamic variants.
 
@@ -852,7 +852,7 @@ This "communication" object has two roles:
     * Using the wrong accessor type is a bug and leads to an assertion failure.
   * Format the command output, namely the binary success state and the text response
     * Initial response is empty and texts provided by `addToResponse` are concatenated.
-    * A call to `setErrorState` indicate an execution failure (non cancellable)
+    * A call to `setErrorState` indicate an execution failure (non-cancellable)
        * Previous text response is cleared
        * Some text can be provided directly in the call. Subsequent calls to `addToResponse` add up.
 
@@ -961,7 +961,7 @@ Recording on a file reduces this requirement to: at least the required quantity 
 <br/>
 **What are the limitations on thread and event quantity?**
 
-The system can handle up to 254 threads and 2 billions events. <br/>
+The system can handle up to 254 threads and 2 billion events. <br/>
 The estimated size of the record would be ~20 GB, still displayed smoothly.
 
 

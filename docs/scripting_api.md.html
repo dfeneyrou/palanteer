@@ -21,19 +21,19 @@ Some typical usages are:
  - monitoring
  - ...
 
-This API aims at being simple to use. As multi-threading would introduce a lot of complexity for few benefits, calls are synchronous and with polling APIs.
+This API aims at being simple to use. As multi-threading would introduce a lot of complexity for few benefits, calls are synchronous and poll rather than blocking.
 
 !!!
     For a proper usage of monitoring in production, it is recommended to:
      - use a light instrumentation (using groups in C++, with only manual instrumentation in Python) to maintain the optimal program performances and limit the network flow
-     - not record in a file at the same time. For ever-lasting runs, the limit of 2 billions events is bound to be reached.
+     - not record in a file at the same time. For ever-lasting runs, the limit of 2 billion events is bound to be reached.
 
 !!! warning
     The module is not thread-safe, it is up to the user to add protections if multi-threading is really required.
 
 ## Exceptions
 
-When the module encounters a non recoverable problem, a specific exception is raised with an explanatory message. <br/>
+When the module encounters a non-recoverable problem, a specific exception is raised with an explanatory message. <br/>
 This section presents the list of exceptions and when they are raised.
 
 **InitializationError** is raised when calling an API which requires that the module is initialized and it is not:
@@ -123,7 +123,7 @@ set_external_strings("lookup.txt")
 !!!
     Scripts work with hashed strings so without any lookup requirement. <br/>
     Even CLI calls are functional as the parameter specification is not obfuscated on program side. Moreover, the CLI answers are sent in clear because they are dynamic strings. <br/>
-    So, registering a string lookup with this function is useful mainly for developers when debugging scripts, as non obfuscated strings are required.
+    So, registering a string lookup with this function is useful mainly for developers when debugging scripts, as non-obfuscated strings are required.
 
 
 ## Process
@@ -250,7 +250,7 @@ process_stop()
 ## Program
 
 This set of commands is functional only if the instrumented program was not compiled with the flag `PL_NOCONTROL` set to 1. <br/>
-Indeed, this directive explicitely removes the remote control feature, leaving only the observation part.
+Indeed, this directive explicitly removes the remote control feature, leaving only the observation part.
 
 ### program_cli
 
@@ -352,7 +352,7 @@ program_step_continue(["Workers/Worker 1", "Main"])
 ## Data
 
 This set of commands is functional only if the instrumented program was not compiled with the flag `PL_NOEVENT` set to 1. <br/>
-Indeed, this directive explicitely removes the code of the events generation, leaving only the control part (CLIs).
+Indeed, this directive explicitly removes the code of the events generation, leaving only the control part (CLIs).
 
 ### data_collect_events
 
@@ -484,7 +484,7 @@ To work properly with this concept, the following points are important to note:
   * if the parent path is ambiguous for a particular event, the one closest to the root is taken
   * all event paths shall have the same "resolved" parent path  (see exact definition below)
 
-**Definition:** Resolving a path means confronting and successfully matching an event path as specified above with the time-evolving tree of the instrumented program. It is instrinsically a dynamic process. <br/>
+**Definition:** Resolving a path means confronting and successfully matching an event path as specified above with the time-evolving tree of the instrumented program. It is intrinsically a dynamic process. <br/>
 A resolution does not always occurs, due to inadequate specified event path or due to some not met dynamic condition to generate such event. <br/>
 When investigating a resolution failure during a script creation, some valuable hints are provided by the command [`data_get_unresolved_events`](#data_get_unresolved_events).
 
@@ -662,7 +662,7 @@ def debug_print_known_event_kinds(output_file=sys.stdout):
 !!!
     This example is the code of the debug helper `debug_print_known_event_kinds()` that can be used to investigate
 
-## Troubleshootings
+## Troubleshooting
 
 **My test is not always giving the same result when run in a loop**
 
@@ -686,7 +686,7 @@ Here are some advises:
  - Use the debugging helpers
    -  The most useful in probably `debug_print_unresolved_events()` which tells you which Event Specification was not matched in the record and why.
  - Set the recording log level (module variable) to zero (all is displayed), with `palanteer_scripting.default_log_min_level = 0`
- - Record in a file while the script is executing, then check in the viewer that the targetted events are really present and with the expected structure.
+ - Record in a file while the script is executing, then check in the viewer that the targeted events are really present and with the expected structure.
 
 <br/>
 ** I cannot retrieve marker events**
@@ -696,7 +696,7 @@ Ensure that the EvtSpec refers to the category of the marker, not to its message
 <br/>
 **Is it ok to have several events with the same name?**
 
-Name collision are ok, if the "path" in the tree is different, they will be seen as different event kinds. <br/>
+Name collisions are ok, if the "path" in the tree is different, they will be seen as different event kinds. <br/>
 However, it makes it harder for humans to visualize them, or point on a particular one in a script, as the usage of "parent" is then mandatory.
 
 
