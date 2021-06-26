@@ -63,3 +63,15 @@ extern RandomLCM globalRandomGenerator;
 void  associatedTask(int groupNbr, const char* groupName, int crashKind);
 
 float busyWait(int kRoundQty);
+
+#if USE_PL==1 && PL_VIRTUAL_THREADS==1
+
+struct Fiber {
+    int  id;
+    int  currentJobId = -1; // -1 means none
+    bool isNameAlreadyDeclared = false;
+};
+
+void fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<Fiber>* fiberWaitingList,
+                     std::atomic<int>* sharedJobIndex);
+#endif

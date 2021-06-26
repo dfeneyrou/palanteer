@@ -1336,7 +1336,7 @@ cmRecordIteratorLockUseGraph::getNextLock(s64& timeNs, double& value, cmRecord::
     if(mrIdx2>=chunkLocs.size()) { plgText(ITLOCK, "IterLock", "chunk index out of bound (2)"); return false; }
     const bsVec<cmRecord::Evt>& chunkData2 = _record->getEventChunk(chunkLocs[mrIdx2], _lastLiveEvtChunk);
     if(eIdx2>=chunkData2.size())  { plgText(ITLOCK, "IterLock", "data index out of bound (2)"); return false; }
-    value = chunkData2[eIdx2].vS64-timeNs;
+    value = (double)(chunkData2[eIdx2].vS64-timeNs);
 
     _pmIdx += isCoarse? 1:2; // Next point next time
 

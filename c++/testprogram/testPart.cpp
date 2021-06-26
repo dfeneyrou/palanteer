@@ -160,3 +160,133 @@ associatedTask(int groupNbr, const char* groupName, int crashKind)
     plVar(dummyValue);
     plEnd("Final result");
 }
+
+
+
+#if USE_PL==1 && PL_VIRTUAL_THREADS==1
+
+// ================================
+// Functions of the "Fiber" tasks
+// ================================
+
+// Fibers are shared
+std::mutex fibersMx;
+
+
+// Thread entry point
+void
+fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<Fiber>* fiberWaitingList, std::atomic<int>* sharedJobIndex)
+{
+    // This tasks stimulates the 3 required API for enabling support of virtual threads:
+    // 1) plDeclareVirtualThread, to associate the external thread ID to a name
+    // 2) plAttachVirtualThread,  to attach a virtual threads to the current worker thread
+    // 3) plDetachVirtualThread,  to detach the virtual thread. The thread is back to the OS thread
+
+    // Declare the worker thread name with a dynamic string
+    char tmpStr[64];
+    snprintf(tmpStr, sizeof(tmpStr), "Fiber workers/Fiber worker %d", workerThreadNbr+1);
+    plDeclareThreadDyn(tmpStr);
+
+    // Log on the OS thread
+    plMarker("threading", "Fiber worker thread creation");
+
+    // Same job definition on all workers
+    constexpr int JOBS_QTY = 6;
+    const char* jobNames[JOBS_QTY] = { "Load texture", "Update particules", "Animate chainsaw",
+                                       "Skeleton interpolation", "Fog of War generation", "Free arena memory pools" };
+
+    int iterationNbr = 0;
+    while(iterationNbr<50 || !fiberWaitingList->empty()) {
+        ++iterationNbr;
+        Fiber fiber;
+
+        // Dice roll
+        int dice = globalRandomGenerator.get(0, 99);
+
+        // 1/3 chance to resume a waiting job (unless we are at the end)
+        if(!fiberWaitingList->empty() && (dice<33 || iterationNbr>=20)) {
+            fibersMx.lock();
+            if(fiberWaitingList->empty()) {
+                fibersMx.unlock();
+                continue;
+            }
+            // Take a random waiting fiber
+            int idx = globalRandomGenerator.get(0, fiberWaitingList->size());
+            fiber = (*fiberWaitingList)[idx];
+            fiberWaitingList->erase(fiberWaitingList->begin()+idx);
+            fibersMx.unlock();
+        }
+
+        // 1/4 chance to idle
+        else if(dice>75) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(globalRandomGenerator.get(10, 30)));
+            continue;
+        }
+
+        // Else take a new job if some fibers are available
+        else {
+            fibersMx.lock();
+            if(fiberPool->empty()) {
+                fibersMx.unlock();
+                continue;
+            }
+            // Pick a fiber
+            fiber = fiberPool->back(); fiberPool->pop_back();
+            fibersMx.unlock();
+            fiber.currentJobId = -1;
+        }
+        // From here, we have a fiber (to start using or interrupted)
+
+        // Switch to this "fiber" =
+        plAttachVirtualThread(fiber.id);  // ==> First API under check
+        if(!fiber.isNameAlreadyDeclared) {
+            snprintf(tmpStr, sizeof(tmpStr), "Fibers/Fiber %d", fiber.id);
+            plDeclareVirtualThread(fiber.id, tmpStr);  // ==> Second API under check
+            fiber.isNameAlreadyDeclared = true;
+        }
+
+        // Job start?
+        bool doEndJob = true;
+        if(fiber.currentJobId<0) {
+            // Refill by picking the next job
+            fiber.currentJobId = (sharedJobIndex->fetch_add(1)%JOBS_QTY);
+
+            // And start it
+            plBeginDyn(jobNames[fiber.currentJobId]);
+            std::this_thread::sleep_for(std::chrono::milliseconds(globalRandomGenerator.get(10, 30)));
+            plData("Worker Id", workerThreadNbr);
+            plData("Fiber-job Id", fiber.currentJobId);
+
+            // Dice roll: 60% chance to end the job without interruption. Else it will go on the waiting list
+            doEndJob = (globalRandomGenerator.get(0, 99)>40);
+            plData("Scheduling", doEndJob? "One chunk" : "Interrupted");
+        }
+
+        if(doEndJob) {
+            // End the job
+            std::this_thread::sleep_for(std::chrono::milliseconds(globalRandomGenerator.get(10, 30)));
+            plEndDyn(jobNames[fiber.currentJobId]);
+            fiber.currentJobId = -1;
+
+            // Put back the fiber in the pool
+            fibersMx.lock();
+            fiberPool->push_back(fiber);
+            fibersMx.unlock();
+            plDetachVirtualThread(false); // Third API to check
+        }
+        else {
+            // Interrupt the job, put the fiber on the waiting list
+            fibersMx.lock();
+            fiberWaitingList->push_back(fiber);
+            fibersMx.unlock();
+            plDetachVirtualThread(true); // Switch back to the OS thread
+        }
+
+    } // End of loop on iterations
+
+    plDetachVirtualThread(false); // Switch back to the OS thread
+    plMarker("threading", "Fiber worker thread end");
+}
+
+
+#endif

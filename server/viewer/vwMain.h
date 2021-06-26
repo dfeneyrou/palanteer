@@ -134,7 +134,7 @@ private:
 
     // Record handling methods
     bool findRecord(const bsString& recordPath, int& foundAppIdx, int& foundRecIdx);
-    void loadRecord(const bsString& recordPath, int appIdx, int recIdx);
+    bool loadRecord(const bsString& recordPath, int appIdx, int recIdx);
     void clearViews(void);
     void clearRecord(void);
     void removeSomeRecords(const bsVec<bsString>& recordsToDelete);
@@ -346,6 +346,7 @@ private:
         u32    ctxScopeNameIdx = (u32)-1;
         // Cache
         bsVec<TlCachedLockUse>         cachedLockUse;
+        bsVec<int>                     cachedLockOrderedIdx;
         bsVec<bsVec<TlCachedLockNtf>>  cachedLockNtf;
         bsVec<bsVec<TlCachedLockScope>> cachedLockWaitPerThread;
         bsVec<bsVec<TlCachedMarker>>   cachedMarkerPerThread;

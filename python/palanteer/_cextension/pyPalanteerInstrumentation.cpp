@@ -999,7 +999,8 @@ static PyMethodDef module_methods[] = {
 PyMODINIT_FUNC
 PyInit__cextension(void)
 {
-    static struct PyModuleDef totoModuleDef = { PyModuleDef_HEAD_INIT, "_cextension", "blah blah", -1, module_methods, 0, 0, 0, 0 };
+    static struct PyModuleDef totoModuleDef = { PyModuleDef_HEAD_INIT, "_cextension", "Palanteer Python instrumentation C extension",
+                                                -1, module_methods, 0, 0, 0, 0 };
     PyObject* m = PyModule_Create(&totoModuleDef);
     return m;
 }

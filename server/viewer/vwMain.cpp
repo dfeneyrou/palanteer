@@ -1042,15 +1042,18 @@ vwMain::draw(void)
         findRecord(_recordLoadSavedMsg->recordPath, _underDisplayAppIdx, _underDisplayRecIdx);
         if(_underDisplayRecIdx>=0) {
             _forceOpenAppIdx = _underDisplayAppIdx;
-            loadRecord(_recordLoadSavedMsg->recordPath, _underDisplayAppIdx, _underDisplayRecIdx);
+            if(loadRecord(_recordLoadSavedMsg->recordPath, _underDisplayAppIdx, _underDisplayRecIdx)) {
+                _liveRecordUpdated  = true;
+                _recordWindow.isWindowSelected = true;
+                // The _actionMode will be cleared after setting the layout and waiting for some frame
+            } else {
+                _actionMode = READY; // Unable to load the record
+            }
         } else {
             _actionMode = READY; // File to load was not found
         }
-        _liveRecordUpdated  = true;
         _recordLoadSavedMsg = 0;
         _msgRecordLoad.releaseMsg();
-        _recordWindow.isWindowSelected = true;
-        // The _actionMode will be cleared after setting the layout and waiting for some frame
     }
 
     // Global record precomputations
@@ -1275,7 +1278,7 @@ vwMain::notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg)
 // View record API
 // ===========================
 
-void
+bool
 vwMain::loadRecord(const bsString& recordPath, int appIdx, int recIdx)
 {
     bsString errorMsg;
@@ -1286,7 +1289,7 @@ vwMain::loadRecord(const bsString& recordPath, int appIdx, int recIdx)
         notifyErrorForDisplay(ERROR_LOAD, errorMsg);
         _underDisplayAppIdx = -1;
         _underDisplayRecIdx = -1;
-        return;
+        return false;
     }
 
     _underDisplayAppIdx = appIdx;
@@ -1302,6 +1305,7 @@ vwMain::loadRecord(const bsString& recordPath, int appIdx, int recIdx)
     _screenLayoutToApply = getConfig().getCurrentLayout();
 
     dirty();
+    return true;
 }
 
 

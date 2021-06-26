@@ -102,7 +102,7 @@ struct TimelineDrawHelper {
                      double pixStartRect, double pixEndRect, double y, s64 durationNs, double lastScopeEndTimeNs, double yThread);
     void drawCoreTimeline(double& yThread);
     void drawLocks       (double& yThread);
-    void drawScopes       (double& yThread, int threadId);
+    void drawScopes      (double& yThread, int threadId);
 };
 
 
@@ -367,7 +367,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
     }
 
     // Loop on locks
-    for(int lockIdx=0; lockIdx<tl->cachedLockUse.size(); ++lockIdx) {
+    for(int lockIdx : tl->cachedLockOrderedIdx) {
         const vwMain::TlCachedLockUse&  clu  = tl->cachedLockUse[lockIdx];
         bsVec<int>& waitingThreadIds = record->locks[lockIdx].waitingThreadIds;
         double      threadBarHeight  = bsMinMax(fontHeight/bsMax(1,waitingThreadIds.size()), 3., 0.5*fontHeight);
@@ -1141,6 +1141,20 @@ vwMain::prepareTimeline(Timeline& tl)
         } // End of loop on lock notification events
 
     } // End of caching the used locks
+
+    // Create the lock reordering lookup (alphabetical)
+    if(tl.cachedLockOrderedIdx.size()!=_record->locks.size()) {
+        tl.cachedLockOrderedIdx.clear();
+        for(int lockIdx=0; lockIdx<_record->locks.size(); ++lockIdx) {
+            tl.cachedLockOrderedIdx.push_back(lockIdx);
+        }
+        std::sort(tl.cachedLockOrderedIdx.begin(), tl.cachedLockOrderedIdx.end(),
+                  [this](int& a, int& b)->bool {
+                      return _record->getString(_record->locks[a].nameIdx).alphabeticalOrder<
+                          _record->getString(_record->locks[b].nameIdx).alphabeticalOrder;
+                  });
+    }
+
     plgEnd(TML, "Used locks");
 
     // Loop on threads

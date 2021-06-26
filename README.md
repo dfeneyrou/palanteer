@@ -146,6 +146,16 @@ The complete documentation is accessible inside the repository, and online:
   - [Scripting API](https://dfeneyrou.github.io/palanteer/scripting_api.md.html)
   - [More](https://dfeneyrou.github.io/palanteer/more.md.html)
 
+## OS Support
+
+Viewer and scripting library:
+  - Linux 64 bits
+  - Windows 10
+
+Instrumentation libraries:
+   - Linux 32 or 64 bits (tested on PC and armv7l)
+   - Windows 10
+   - Support for [virtual threads](docs/instrumentation_api_cpp.md.html#c++instrumentationapi/virtualthreads) (userland threads, like fibers)
 
 ## Requirements
 

@@ -203,6 +203,15 @@
 #define PL_SIMPLE_ASSERT 0
 #endif
 
+// Enables the support of "virtual" threads (like fibers or in DES simulators). Disabled by default.
+// To make it work, the following actions are required:
+// 1) the framework hook on virtual thread creation should call plDeclareVirtualThread(...). Example of name: "Fibers/Fiber 14"
+// 2) the framework hook on switching virtual threads shall call plAttachVirtualThread(...) and plDetachVirtualThread(...)
+// See the documentation for details
+#ifndef PL_VIRTUAL_THREADS
+#define PL_VIRTUAL_THREADS 0
+#endif
+
 
 // [Platform specific]
 // Clock function. By default, a predefined high performance clock is use
@@ -212,7 +221,6 @@
 #ifndef PL_GET_CLOCK_TICK_FUNC
 #define PL_GET_CLOCK_TICK_FUNC() plPriv::getClockTick()
 #endif
-
 
 // [Platform specific]
 // System thread ID getter
@@ -366,13 +374,32 @@ void plStopAndUninit(void);
 // This getter returns statistics on the collection process (can be called at any moment)
 plStats plGetStats(void);
 
+// This function is specific to the support of the virtual threads
+// It should be called once at virtual thread creation
+// The externalVirtualThreadId can have any value but shall uniquely identify the virtual thread.
+void plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* name);
+
+// This function is specific to the support of the virtual threads
+// It must be called when attaching a virtual threads to the current worker thread.
+// The worker thread shall currently not run any virtual thread ('detach' shall be called between 2 virtual threads)
+void plAttachVirtualThread(uint32_t externalVirtualThreadId);
+
+// This function is specific to the support of the virtual threads
+// It must be called when a virtual threads is detached from the current worker thread.
+// The flag `isSuspended` indicates if the virtual thread is suspended or simply finished.
+// In doubt, set it to false.
+void plDetachVirtualThread(bool isSuspended);
+
 #else // if USE_PL==1
 
-#define plSetFilename(filename) PL_UNUSED(filename)
+#define plSetFilename(filename_) PL_UNUSED(filename_)
 #define plSetServer(serverAddr_, serverPort_)
 #define plInitAndStart(appName_, ...) PL_UNUSED(appName_)
 #define plStopAndUninit()
 #define plGetStats() plStats { 0, 0, 0, 0, 0, 0, 0, 0 }
+#define plDeclareVirtualThread(externalVirtualThreadId_, name_)  do { PL_UNUSED(externalVirtualThreadId_); PL_UNUSED(name_); } while(0)
+#define plDetachVirtualThread(isSuspended_) PL_UNUSED(isSuspended_);
+#define plAttachVirtualThread(externalVirtualThreadId_) PL_UNUSED(externalVirtualThreadId_);
 
 #endif
 
@@ -386,6 +413,21 @@ plStats plGetStats(void);
 #define plgIsEnabled(group_) (PLG_IS_COMPILE_TIME_ENABLED_(group_) && PL_IS_ENABLED_())
 
 // Sets the name of the current thread. Only first call is taken into account
+#if PL_VIRTUAL_THREADS==1
+// With enabled virtual threads, the name hash is also stored in the TLS so that we can use it as a "resource" name
+#define plDeclareThread(name_)                                          \
+    do { if(PL_IS_INIT_()) {                                            \
+            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
+            plPriv::threadCtx.realRscNameHash = plPriv::hashString(name_);  \
+        }                                                               \
+    } while(0)
+#define plDeclareThreadDyn(name_)                                       \
+    do { if(PL_IS_INIT_()) {                                            \
+            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
+            plPriv::threadCtx.realRscNameHash = plPriv::hashString(name_); \
+        }                                                               \
+    } while(0)
+#else  // PL_VIRTUAL_THREADS==1
 #define plDeclareThread(name_)                                          \
     do { if(PL_IS_INIT_())                                              \
             plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
@@ -394,6 +436,7 @@ plStats plGetStats(void);
     do { if(PL_IS_INIT_())                                              \
             plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
     } while(0)
+#endif  // PL_VIRTUAL_THREADS==1
 
 // Closes itself automatically at end of scope
 #define plScope(name_)             PL_SCOPE_(name_, __LINE__)
@@ -422,6 +465,18 @@ plStats plGetStats(void);
     } while(0)
 #define plgBegin(group_, name_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plBegin(name_),do {} while(0))
 #define plgEnd(group_, name_)   PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plEnd(name_),do {} while(0))
+#define plBeginDyn(name_)                                               \
+    do { if(PL_IS_ENABLED_())                                           \
+            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+                                       PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC()); \
+    } while(0)
+#define plEndDyn(name_)                                                 \
+    do { if(PL_IS_ENABLED_())                                           \
+            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+                                       PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_END | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC()); \
+    } while(0)
+#define plgBeginDyn(group_, name_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plBeginDyn(name_),do {} while(0))
+#define plgEndDyn(group_, name_)   PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plEndDyn(name_),do {} while(0))
 
 // Log a numeric event with a name and a value. Optionally, the words after "##" in the name is the unit (for grouping curves)
 #define plData(name_, value_)                                          \
@@ -556,6 +611,10 @@ plStats plGetStats(void);
 #define plgBegin(group_, name_)                     do { } while(0)
 #define plEnd(name_)                                do { } while(0)
 #define plgEnd(group_, name_)                       do { } while(0)
+#define plBeginDyn(name_)                           do { } while(0)
+#define plgBeginDyn(group_, name_)                  do { } while(0)
+#define plEndDyn(name_)                             do { } while(0)
+#define plgEndDyn(group_, name_)                    do { } while(0)
 #define plData(name_, value_)                       do { } while(0)
 #define plgData(group_, name_, value_)              do { } while(0)
 #define plText(name_, msg_)                         do { } while(0)
@@ -890,7 +949,7 @@ namespace plPriv {
             _tail = 0;
         }
         ~MemoryPool(void) { delete[] _fifo; delete[] _buffer; }
-        // Concurrent calls (from user threads)
+        // Concurrent calls
         T* get(void) {
             int expected = _tail.load();
             while(expected==_head.load()) { _notifyEmpty->store(1); std::this_thread::yield(); expected = _tail.load(); } // Empty FIFO
@@ -1243,6 +1302,10 @@ namespace plPriv {
 
     struct ThreadContext_t {
         uint32_t    id         = 0xFFFFFFFF;
+#if PL_VIRTUAL_THREADS==1
+        uint32_t    realId     = 0xFFFFFFFF;  // Saves the initial Id, to be able to go back to the OS thread
+        hashStr_t   realRscNameHash = 0;      // Name of the worker thread resource
+#endif
         bool        doTrackMem = true;
         int         memLocQty  = 0;
         MemLocation memLocStack[PL_MEM_MAX_LOC_PER_THREAD];
@@ -1250,14 +1313,26 @@ namespace plPriv {
     extern thread_local ThreadContext_t threadCtx;
 
 #if PL_NOEVENT==0 || PL_NOCONTROL==0
+
     inline uint8_t getThreadId(void) {
         ThreadContext_t* tCtx = &threadCtx;
         if(tCtx->id==0xFFFFFFFF) {
-            tCtx->id = globalCtx.nextThreadId.fetch_add(1);
+            tCtx->id     = globalCtx.nextThreadId.fetch_add(1);
+#if PL_VIRTUAL_THREADS==1
+            tCtx->realId = tCtx->id; // Saved for restoration later
+#endif
             if(tCtx->id<PL_MAX_THREAD_QTY) globalCtx.threadPids[tCtx->id] = PL_GET_SYS_THREAD_ID();
         }
         return (uint8_t)tCtx->id;
     }
+
+    // Dynamic string hashing
+    inline hashStr_t hashString(const char* s, int maxCharQty=-1) {
+        hashStr_t strHash = PL_FNV_HASH_OFFSET_;
+        while(*s && maxCharQty--) strHash = (strHash^((hashStr_t)(*s++)))*PL_FNV_HASH_PRIME_;
+        return (strHash==0)? 1 : strHash; // Zero is a reserved value
+    }
+
 #endif // if PL_NOEVENT==0 || PL_NOCONTROL==0
 
     // Clock implementation
@@ -1265,7 +1340,7 @@ namespace plPriv {
     inline uint64_t getClockTick(void) {
         // RDTSC instruction is ~7x times more precise than the std::chrono or Windows' QPC timer.
         //  And nowadays it is reliable (it was not the case on older processors were its frequency was changing with power plans).
-        //  The potential wrong instruction order (no fence here) is considered as noise on the timestamp, with the benefit of a much smaller average value.
+        //  The potential wrong instruction order (no fence here) is considered as noise on the timestamp, with the benefit of a much smaller average resolution.
 #if defined(_WIN32)
         // Windows
         // Context switch events are using QPC, so a date conversion for these events is needed on Windows
@@ -1794,7 +1869,7 @@ namespace plPriv {
         ~FlatHashTable(void) { delete[] _nodes; }
         void clear(void) { _size = 0; for(int i=0; i<_maxSize; ++i) _nodes[i].hash = 0; }
         void insert(hashStr_t hash, T value) {
-            int idx = hash&_mask;
+            unsigned int idx = (unsigned int)hash&_mask;
             while(PL_UNLIKELY(_nodes[idx].hash)) idx = (idx+1)&_mask; // Always stops because load factor < 1
             _nodes[idx].hash  = hash; // Never zero, so "non empty"
             _nodes[idx].value = value;
@@ -1802,7 +1877,7 @@ namespace plPriv {
             if(_size*3>_maxSize*2) rehash(2*_maxSize); // Max load factor is 0.66
         }
         bool find(hashStr_t hash, T& value) {
-            int idx = hash&_mask;
+            unsigned int idx = (unsigned int)hash&_mask;
             while(1) { // Always stops because load factor <= 0.66
                 if(_nodes[idx].hash==hash) { value = _nodes[idx].value; return true; }
                 if(_nodes[idx].hash==0) return false; // Empty node
@@ -1815,7 +1890,7 @@ namespace plPriv {
             Node* old     = _nodes;
             _nodes   = new Node[maxSize]; // 'hash' are set to zero (=empty)
             _maxSize = maxSize;
-            _mask    = maxSize-1;
+            _mask    = (unsigned int)(maxSize-1);
             _size    = 0;
             for(int i=0; i<oldSize; ++i) { // Transfer the previous filled nodes
                 if(old[i].hash==0) continue;
@@ -1829,23 +1904,13 @@ namespace plPriv {
             T         value;
         };
         Node* _nodes   = 0;
-        int   _mask    = 0;
+        unsigned int _mask = 0;
         int   _size    = 0;
         int   _maxSize = 0;
         FlatHashTable(const FlatHashTable& other);     // To please static analyzers
         FlatHashTable& operator=(FlatHashTable other); // To please static analyzers
     };
 
-
-#if PL_NOEVENT==0 || PL_NOCONTROL==0
-    static
-    hashStr_t
-    hashString(const char* s, int maxCharQty=-1) {
-        hashStr_t strHash = PL_FNV_HASH_OFFSET_;
-        while(*s && maxCharQty--) strHash = (strHash^((hashStr_t)(*s++)))*PL_FNV_HASH_PRIME_;
-        return (strHash==0)? 1 : strHash; // Zero is a reserved value
-    }
-#endif
 
 
     // =======================================================================================================
@@ -2149,7 +2214,7 @@ namespace plPriv {
 #endif
         Array<uint8_t, PL_IMPL_STRING_BUFFER_BYTE_QTY> strBuffer;   // For batched strings sending
         std::atomic<int> rspBufferSize = { 0 };
-        int     lastSentCliQty = 0;
+        int              lastSentCliQty = 0;
 #if PL_NOCONTROL==0
         CliManager cliManager;
 #endif
@@ -2178,9 +2243,14 @@ namespace plPriv {
 
 #endif // if PL_NOCONTROL==0 || PL_NOEVENT==0
 
+#if PL_NOEVENT==0 && PL_VIRTUAL_THREADS==1
+        bool                    vThreadIsSuspended[PL_MAX_THREAD_QTY];
+        FlatHashTable<uint32_t> vThreadLkupExtToCtx;
+#endif
+
         // Signals and HW exceptions
         bool              signalHandlersSaved   = false;
-        plSignalHandler_t signalsOldHandlers[6] = { 0 };
+        plSignalHandler_t signalsOldHandlers[7] = { 0 };
 #if defined(_WIN32)
         PVOID      exceptionHandler = 0;
 #if PL_IMPL_STACKTRACE==1
@@ -2961,7 +3031,7 @@ namespace plPriv {
                         // Store the data in place (18 bytes stored, and a line is more than that in any cases)
                         EventExt& dst1  = dstBuffer[dstEventQty++];
                         dst1.threadId   = threadId;
-                        dst1.flags      = PL_FLAG_TYPE_SOFTIRQ | (isEntry? PL_FLAG_SCOPE_BEGIN: PL_FLAG_SCOPE_END);
+                        dst1.flags      = PL_FLAG_TYPE_SOFTIRQ | (isEntry? PL_FLAG_SCOPE_BEGIN : PL_FLAG_SCOPE_END);
                         dst1.lineNbr    = 0;
                         dst1.prevCoreId = coreId;
                         dst1.newCoreId  = coreId;
@@ -3435,6 +3505,9 @@ namespace plPriv {
         case SIGSEGV: sigDescr = "Segmentation fault"; break;
         case SIGINT:  sigDescr = "Interrupt"; break;
         case SIGTERM: sigDescr = "Termination"; break;
+#if defined(__unix__)
+        case SIGPIPE: sigDescr = "Broken pipe"; break;
+#endif
         default: break;
         }
         char infoStr[256];
@@ -3533,7 +3606,7 @@ plCrash(const char* message)
 
 #if !defined(PL_BUG_CLANG_ASAN_NEW_OVERLOAD)
 
-#define PL_NEW_(ptr, size) (void*)malloc(size); if(PL_IS_ENABLED_()) { plPriv::eventLogAlloc(ptr, (uint32_t)size); }
+#define PL_NEW_(ptr, size) malloc(size); if(PL_IS_ENABLED_()) { plPriv::eventLogAlloc(ptr, (uint32_t)size); }
 #define PL_DELETE_(ptr)    if(PL_IS_ENABLED_()) { plPriv::eventLogDealloc(ptr); } free(ptr)
 
 // @#LATER Handle the alignments stuff
@@ -3620,6 +3693,9 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
     ic.signalsOldHandlers[3] = std::signal(SIGSEGV, plPriv::signalHandler);
     ic.signalsOldHandlers[4] = std::signal(SIGINT,  plPriv::signalHandler);
     ic.signalsOldHandlers[5] = std::signal(SIGTERM, plPriv::signalHandler);
+#if defined(__unix__)
+    ic.signalsOldHandlers[6] = std::signal(SIGPIPE, plPriv::signalHandler);
+#endif
     ic.signalHandlersSaved = true;
 #if defined(_WIN32)
     // Register the exception handler
@@ -3887,6 +3963,9 @@ plStopAndUninit(void)
         std::signal(SIGSEGV, ic.signalsOldHandlers[3]);
         std::signal(SIGINT,  ic.signalsOldHandlers[4]);
         std::signal(SIGTERM, ic.signalsOldHandlers[5]);
+#if defined(__unix__)
+        std::signal(SIGPIPE, ic.signalsOldHandlers[6]);
+#endif
 #if defined(_WIN32)
         RemoveVectoredExceptionHandler(ic.exceptionHandler);
 #endif // if defined(_WIN32)
@@ -3943,7 +4022,131 @@ plStopAndUninit(void)
 }
 
 
-plStats plGetStats(void) { return plPriv::implCtx.stats; }
+plStats
+plGetStats(void) { return plPriv::implCtx.stats; }
 
+
+void
+plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* name)
+{
+    PL_UNUSED(externalVirtualThreadId); PL_UNUSED(name);
+#if PL_NOEVENT==0
+#if PL_VIRTUAL_THREADS==1
+    plAssert(externalVirtualThreadId!=0xFFFFFFFF);
+
+
+    // Ensure that the OS thread Id owns an internal Id (for context switches at least)
+    plPriv::ThreadContext_t* tCtx = &plPriv::threadCtx;
+    if(tCtx->id==0xFFFFFFFF) plPriv::getThreadId();
+
+    // Get the internal thread Id
+    plPriv::hashStr_t hash = (PL_FNV_HASH_OFFSET_^externalVirtualThreadId)*PL_FNV_HASH_PRIME_;
+    uint32_t newThreadId   = 0;
+    if(!plPriv::implCtx.vThreadLkupExtToCtx.find(hash, newThreadId)) {
+        // Create this new internal thread and virtual thread context
+        newThreadId = plPriv::globalCtx.nextThreadId.fetch_add(1);
+        plPriv::implCtx.vThreadLkupExtToCtx.insert(hash, newThreadId);
+        if(newThreadId<PL_MAX_THREAD_QTY) {
+            plPriv::globalCtx.threadPids[newThreadId] = 0xFFFFFFFF; // Prevent OS thread matching for context switches
+        }
+    }
+
+    // Log the thread declaration event with this new thread ID (no the standard call, as we do not want to override the real OS thread data)
+    uint32_t prevInternalThreadId = tCtx->id;
+    tCtx->id = newThreadId;
+    if(PL_IS_INIT_()) {
+        plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name, 0, 0, PL_FLAG_TYPE_THREADNAME, 0);
+    }
+    tCtx->id = prevInternalThreadId; // Restore previous thread Id
+#else
+    plAssert(0, "plDeclareVirtualThread is a specific API of the 'virtual threads' feature which is not enabled. Add -DPL_VIRTUAL_THREADS=1 in your compilation options.");
+#endif // if PL_VIRTUAL_THREADS==1
+#endif // if PL_NOEVENT==0
+}
+
+
+void
+plDetachVirtualThread(bool isSuspended)
+{
+#if PL_NOEVENT==0
+#if PL_VIRTUAL_THREADS==1
+    plPriv::ThreadContext_t* tCtx = &plPriv::threadCtx;
+
+    // Ensure that the OS thread Id owns an internal Id (for context switches at least)
+    if(tCtx->id==0xFFFFFFFF) plPriv::getThreadId();
+
+    if(tCtx->id==tCtx->realId) return; // Nothing to do
+    // Suspension is represented as an interrupting IRQ
+    if(isSuspended && PL_IS_ENABLED_()&& tCtx->id<PL_MAX_THREAD_QTY) {
+        plPriv::eventLogRaw(PL_STRINGHASH(""), PL_STRINGHASH("Suspended"), PL_EXTERNAL_STRINGS?0:"", "Suspended", 0, 0,
+                            PL_FLAG_TYPE_SOFTIRQ | PL_FLAG_SCOPE_BEGIN, PL_GET_CLOCK_TICK_FUNC());
+    }
+    // Save the suspend state
+    if(tCtx->id<PL_MAX_THREAD_QTY) {
+        plPriv::implCtx.vThreadIsSuspended[tCtx->id] = isSuspended;
+    }
+    // Switch to OS thread Id
+    tCtx->id = tCtx->realId;
+    // The worker thread is no more used (logged on the worker threadId)
+    if(tCtx->realRscNameHash!=0 && PL_IS_ENABLED_()) {
+        plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), tCtx->realRscNameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
+                            PL_FLAG_TYPE_LOCK_RELEASED, PL_GET_CLOCK_TICK_FUNC());
+    }
+#else  // if PL_VIRTUAL_THREADS==1
+    plAssert(0, "plDetachVirtualThread is a specific API of the 'virtual thread' feature which is not enabled. Add -DPL_VIRTUAL_THREADS=1 in your compilation options.");
+#endif // if PL_VIRTUAL_THREADS==1
+#endif // if PL_NOEVENT==0
+}
+
+
+void
+plAttachVirtualThread(uint32_t externalVirtualThreadId)
+{
+    PL_UNUSED(externalVirtualThreadId);
+#if PL_NOEVENT==0
+#if PL_VIRTUAL_THREADS==1
+    plPriv::ThreadContext_t* tCtx = &plPriv::threadCtx;
+
+    // Ensure that the OS thread Id owns an internal Id (for context switches at least)
+    if(tCtx->id==0xFFFFFFFF) plPriv::getThreadId();
+
+    // Get the new virtual thread Id
+    plPriv::hashStr_t hash = (PL_FNV_HASH_OFFSET_^externalVirtualThreadId)*PL_FNV_HASH_PRIME_;
+    uint32_t newThreadId   = 0;
+    if(!plPriv::implCtx.vThreadLkupExtToCtx.find(hash, newThreadId)) {
+        // Create this new internal thread and virtual thread context
+        newThreadId = plPriv::globalCtx.nextThreadId.fetch_add(1);
+        plPriv::implCtx.vThreadLkupExtToCtx.insert(hash, newThreadId);
+        if(newThreadId<PL_MAX_THREAD_QTY) {
+            plPriv::globalCtx.threadPids[newThreadId] = 0xFFFFFFFF; // Prevent OS thread matching for context switches
+        }
+    }
+    if(tCtx->id==newThreadId) return; // Nothing to do
+
+    if(PL_IS_ENABLED_() && tCtx->realRscNameHash!=0 && tCtx->id!=tCtx->realId) {
+        // The worker thread is switched to idle
+        plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), tCtx->realRscNameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
+                            PL_FLAG_TYPE_LOCK_RELEASED, PL_GET_CLOCK_TICK_FUNC());
+    }
+
+    // Overwrite the OS thread Id
+    tCtx->id = newThreadId;
+
+    // The worker thread is now dedicated to this virtual thread (logged on the worker threadId)
+    if(tCtx->realRscNameHash!=0 && PL_IS_ENABLED_()) {
+        plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), tCtx->realRscNameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
+                            PL_FLAG_TYPE_LOCK_ACQUIRED, PL_GET_CLOCK_TICK_FUNC());
+    }
+
+    if(tCtx->id<PL_MAX_THREAD_QTY && plPriv::implCtx.vThreadIsSuspended[tCtx->id] && PL_IS_ENABLED_()) {
+        plPriv::eventLogRaw(PL_STRINGHASH(""), PL_STRINGHASH("Suspended"), PL_EXTERNAL_STRINGS?0:"", "Suspended", 0, 0,
+                            PL_FLAG_TYPE_SOFTIRQ | PL_FLAG_SCOPE_END, PL_GET_CLOCK_TICK_FUNC());
+    }
+
+#else  // if PL_VIRTUAL_THREADS==1
+    plAssert(0, "plAttachVirtualThread is a specific API of the 'virtual thread' feature which is not enabled. Add -DPL_VIRTUAL_THREADS=1 in your compilation options.");
+#endif // if PL_VIRTUAL_THREADS==1
+#endif // if PL_NOEVENT==0
+}
 
 #endif // if USE_PL==1 && PL_IMPLEMENTATION==1

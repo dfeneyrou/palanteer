@@ -9,7 +9,7 @@
 <h1> @@ <a href="#">C++ Instrumentation API</a> </h1>
 
 
-This chapter describes the C++ API of the `Palanteer` instrumentation library. 
+This chapter describes the C++ API of the `Palanteer` instrumentation library.
 
 ## Initialization
 
@@ -153,7 +153,7 @@ The timings are contained in this structure.
 | [plDeclareThread](#pldeclarethread)   | Declares a thread                                                    |               | X                   |
 | [plScope](#plscope)                   | Declares a scope (a named time range with optional children)         | X             | X                   |
 | [plFunction](#plfunction)             | Declares a scope with the current function name                      | X             | X                   |
-| [plBegin and plEnd](#plbeginandplend) | Declares manually the start and the end of a scope (with moderation) | X             |                     |
+| [plBegin and plEnd](#plbeginandplend) | Declares manually the start and the end of a scope (with moderation) | X             | X                   |
 
 
 ### plDeclareThread
@@ -298,6 +298,19 @@ void plgBegin(const char* group, const char* name);
 
 // If the group is enabled, declares the end of a scope with the provided name as static strings
 void plgEnd(const char* group, const char* name);
+
+// Declares the start of a scope with the provided name as a dynamic string
+void plBeginDyn(const char* name);
+
+// Declares the end of a scope with the provided name as a dynamic string
+// The name shall match the begin name, so mismatchs can be detected on viewer side and lead to warnings
+void plEndDyn(const char* name);
+
+// If the group is enabled, declares the start of a scope with the provided name as a dynamic string
+void plgBeginDyn(const char* group, const char* name);
+
+// If the group is enabled, declares the end of a scope with the provided name as a dynamic string
+void plgEndDyn(const char* group, const char* name);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -307,7 +320,7 @@ The instrumentation in this chapter logs string or data of any numeric type insi
 
 !!! warning Important
     Such events **must** be located inside a scope, never at the tree root. <br/>
-    Indeed, they carry only the logged data and are not timestamped. 
+    Indeed, they carry only the logged data and are not timestamped.
 
 Such events can be visualized in the viewer under several forms: text, curve or histogram. <br/>
 They can optionally be associated to a `unit` by ending the event name with `##<unit>`:
@@ -896,7 +909,90 @@ And a way to call it from a Python program with the `Palanteer` scripting module
 palanteer.program_cli("config:setRange min=300 max=500")
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+## Virtual threads
 
+A "virtual thread" is a thread that is not managed by the OS. Some exemples are "fibers", or a simulated OS environment. <br/>
+They require the support of "OS worker threads" which effectively run these virtual threads.
+A running virtual thread can be switched/exchanged with another one usually only at particular points (I/O call, yield call, etc...), and resumed
+later on any of the existing worker threads.
+
+The support of virtual threads requires the following actions:
+  - Use the compilation option [`PL_VIRTUAL_THREADS=1`](instrumentation_configuration_cpp.md.html#pl_virtual_threads) (in all files)
+  - Notify `Palanteer` of any virtual thread switch through the [`plAttachVirtualThread`](#plattachvirtualthread) and [`plDetachVirtualThread`](#pldetachvirtualthread) API
+    - this notification shall be called inside the assigned worker thread for proper association between the virtual thread and the OS worker thread
+    - typically in the virtual thread switch hook of the virtual thread framework
+
+Optionally but recommended, the virtual thread name can be declared with [`plDeclareVirtualThread`](#pldeclarevirtualthread):
+  - Typically in the virtual thread creation hook
+
+The effects of using virtual threads are:
+  - Each virtual thread is seen as a "normal" thread on the server side (viewer or scripting)
+  - All events generated during the execution of a virtual thread are associated to this virtual thread, not to the OS thread.
+    - in the viewer, an interruption of the execution of a virtual thread is indicated as a "SOFTIRQ Suspend" for this thread
+  - Worker threads (OS thread) look "empty"
+    - only the CPU context switches, if enabled, are associated with them
+  - To get an usage overview, a "resource" with the name of each worker thread tracks slices of its time used by virtual threads.
+
+
+### plDeclareVirtualThread
+
+As for [OS threads](#pldeclarethread), a name can be given to virtual threads. <br/>
+This function associates the provided name to the external virtual thread identifier. The name of the OS thread is unchanged.
+
+It can be called from any thread.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// externalVirtualThreadId: a unique external virtual thread identifier. Shall not be 0xFFFFFFFF
+// name: the name of the virtual thread
+void plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* name);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+int fiberId = 37;
+char tmpStr[64];
+snprintf(tmpStr, sizeof(tmpStr), "Fibers/Fiber %d", fiberId+1);
+plDeclareVirtualThread(fiberId, tmpStr);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Also as for OS threads, virtual threads can be grouped.
+
+### plAttachVirtualThread
+
+This function notifies `Palanteer` of a virtual thread attachment to the current OS thread. <br/>
+
+!!! note Important
+    Always detach a thread before attaching a new one, else the resource will not correctly indicate the new virtual thread.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// externalVirtualThreadId: a unique external virtual thread identifier
+void plAttachVirtualThread(uint32_t externalVirtualThreadId);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plAttachVirtualThread(newFiberId);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### plDetachVirtualThread
+
+This function notifies `Palanteer` that the current virtual thread is detached from the current OS thread.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// isSuspended: true if this new virtual thread ID is suspended, false if it completed his previous task
+void plDetachVirtualThread(bool isSuspended);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!!
+    If the state `suspended` is not known, set the boolean to false. <br/>
+    This information is used to display the time slice when the thread is inactive.
+
+Example of usage:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plDetachVirtualThread(false);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ## Troubleshootings
 

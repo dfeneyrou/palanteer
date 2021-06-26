@@ -226,6 +226,7 @@ vwMain::precomputeRecordDisplay(void)
 
     // Update the timeline header width
     _timelineHeaderWidth = 100.; // Minimum value
+    _timelineHeaderWidth = bsMax(_timelineHeaderWidth, ImGui::CalcTextSize("Locks & Resources").x);
     for(const auto& t : _record->threads) {
         if(t.groupNameIdx>=0) {
             _timelineHeaderWidth = bsMax(_timelineHeaderWidth, ImGui::CalcTextSize(_record->getString(t.groupNameIdx).value.toChar()).x);
@@ -1395,7 +1396,7 @@ vwMain::displayTimelineHeader(double yHeader, double yThreadAfterTimeline, int t
         groupNameIdx = _record->threads[threadId].groupNameIdx;
         if(groupNameIdx>=0) groupName  = _record->getString(groupNameIdx).value.toChar();
     }
-    else if(threadId==vwConst::LOCKS_THREADID)      threadName = "Locks";
+    else if(threadId==vwConst::LOCKS_THREADID)      threadName = "Locks & Resources";
     else if(threadId==vwConst::CORE_USAGE_THREADID) threadName = "Cores";
     float threadNameWidth = ImGui::CalcTextSize(threadName).x;
 

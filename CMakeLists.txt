@@ -29,6 +29,7 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Type of build" FORCE)
 endif()
 message("Build type: ${CMAKE_BUILD_TYPE}   (change with -DCMAKE_BUILD_TYPE=<Debug|Release|RelWithDebInfo|MinSizeRel|Asan>)")
+message("Custom configuration flags can be passed with -DCUSTOM_FLAGS=\"<flags>\"")
 
 # Store output in an easy location
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")

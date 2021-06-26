@@ -158,3 +158,21 @@ def test_build_instru24():
 def test_build_instru25():
     """USE_PL=0 PL_IMPL_STACKTRACE=0"""
     build_target("testprogram", test_build_instru25.__doc__)
+
+# Virtual threads feature
+@declare_test("build instrumentation")
+def test_build_instru26():
+    """USE_PL=1 PL_VIRTUAL_THREADS=1"""
+    build_target("testprogram", test_build_instru26.__doc__)
+
+# Virtual threads feature
+@declare_test("build instrumentation")
+def test_build_instru27():
+    """USE_PL=1 PL_NOEVENT=0 PL_VIRTUAL_THREADS=1"""
+    build_target("testprogram", test_build_instru27.__doc__)
+
+# Virtual threads feature
+@declare_test("build instrumentation")
+def test_build_instru28():
+    """USE_PL=0 PL_VIRTUAL_THREADS=1"""
+    build_target("testprogram", test_build_instru28.__doc__)

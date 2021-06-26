@@ -397,8 +397,9 @@ On Windows OS, the display shall be redirected on a MessageBox for graphical pro
 This configuration **must** be consistent in all source files using `Palanteer` (see configuration [strategies](#configurationstrategies)).
 
 | Instrumentation parameters                        | Description                                                   | Default |
-| ---------                                         | -----------                                                   | :----:  |
+|---------------------------------------------------|---------------------------------------------------------------|:-------:|
 | [PL_EXTERNAL_STRINGS](#pl_external_strings)       | Enables external strings                                      | 0       |
+| [PL_VIRTUAL_THREADS](#pl_virtual_threads)         | Enables the virtual threads (=userland threads)               | 0       |
 | [PL_DYN_STRING_MAX_SIZE](#pl_dyn_string_max_size) | Defines the maximum size of a dynamic string                  | 512 B   |
 | [PL_SHORT_STRING_HASH](#pl_short_string_hash)     | Use 32 bits hash rather than 64 bits                          | 0       |
 | [PL_SIMPLE_ASSERT](#pl_simple_assert)             | Disables the assertion enhancements and reverts to basic ones | 0       |
@@ -426,6 +427,19 @@ The default value is:
 
 !!! warning
     Dynamic strings are not concerned by this feature as they cannot be processed at compile time by definition. Another reason to avoid them.
+
+### PL_VIRTUAL_THREADS
+
+The "virtual thread" feature enables the profiling of non-OS threads (userland threads), like "fibers" or in a simulated OS environment.
+
+Some hooks in the non-OS thread framework are required to leverage the non-OS thread switching notification. <br/>
+This [section](instrumentation_api_cpp.md.html#virtualthreads) explains in detail how to use these hooks to make the feature effective.
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_VIRTUAL_THREADS 0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Virtual thread support is not enabled by default due to the additional allocations and processing (minor but non zero).
 
 
 ### PL_DYN_STRING_MAX_SIZE

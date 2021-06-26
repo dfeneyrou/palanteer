@@ -49,7 +49,7 @@ vwMain::SearchAggregatedIterator::init(cmRecord* record, u32 selectedNameIdx, u6
     for(int elemIdx=0; elemIdx<record->elems.size(); ++elemIdx) {
         const cmRecord::Elem& elem = record->elems[elemIdx];
         if(elem.isPartOfHStruct && elem.nameIdx==selectedNameIdx &&               // From H-structure and with our target name
-           (elem.threadBitmap&threadBitmap) && elem.threadId<PL_MAX_THREAD_QTY) { // Only those with a valid non-filtered thread ID
+           (elem.threadBitmap&threadBitmap) && elem.threadId<cmConst::MAX_THREAD_QTY) { // Only those with a valid non-filtered thread ID
             // Store the iterator
             itElems.push_back(cmRecordIteratorElem(record, elemIdx, startTimeNs, 0.));
             // and the first element after the date

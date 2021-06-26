@@ -408,6 +408,31 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
                                       (crashThreadGroupNbr==threadGroupNbr)? crashKind : -1));
     }
 
+#if USE_PL==1 && PL_VIRTUAL_THREADS==1
+    // This stimulation is added only if the "virtual threads" feature is activated.
+    // A "virtual thread" means a thread that is not controlled by the OS kernel but managed in user space. Typical usages are "fibers"
+    // or DES simulations.
+    //
+    // The goal here is to test the specific APIs that enable the feature, and obviously not to implement such framework.
+    // Some OS worker threads are created, they share and run the fake "fibers" (as explained above, no saving of stack context nor registers...)
+    // Jobs are represented by a number, they shall be executed one after the other, in loop.
+    constexpr int WORKER_THREAD_QTY = 2;
+    constexpr int FIBERS_QTY        = 10;  // Caution if you change it: it is also subjected to the thread limitation for tracking, even if not real threads.
+    std::atomic<int>   sharedJobIndex(0);
+    std::vector<Fiber> fiberPool;
+    std::vector<Fiber> fiberWaitingList;
+    for(int i=0; i<FIBERS_QTY; ++i) {
+        Fiber f;
+        f.id = FIBERS_QTY-1-i;  // Small numbers on top, as it is a stack
+        fiberPool.push_back(f);
+    }
+    // Create the  worker threads that will schedule shared jobs in loop. They will stop by themselves.
+    for(int workerThreadNbr=0; workerThreadNbr<WORKER_THREAD_QTY; ++workerThreadNbr) {
+        threads.push_back(std::thread(fiberWorkerTask, workerThreadNbr, &fiberPool, &fiberWaitingList, &sharedJobIndex));
+    }
+
+#endif
+
     // Wait for threads completion
     plLockWait("Global Synchro");
     for(std::thread& t : threads) t.join();
