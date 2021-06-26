@@ -2438,7 +2438,13 @@ namespace plPriv {
     palComSend(uint8_t* buffer, int size) {
         int   qty = 0;
         if     (implCtx.mode==PL_MODE_STORE_IN_FILE) qty = (int)fwrite((void*)buffer, 1, size, implCtx.fileHandle);
-        else if(implCtx.mode==PL_MODE_CONNECTED)     qty = (int)send(implCtx.serverSocket, (const char*)buffer, size, 0);
+        else if(implCtx.mode==PL_MODE_CONNECTED) {
+#ifdef _WIN32
+            qty = (int)send(implCtx.serverSocket, (const char*)buffer, size, 0);
+#else
+            qty = (int)send(implCtx.serverSocket, (const char*)buffer, size, MSG_NOSIGNAL);  // MSG_NOSIGNAL to prevent sending SIGPIPE
+#endif
+        }
         implCtx.stats.sentBufferQty += 1;
         implCtx.stats.sentByteQty   += size;
         return (qty==size);
@@ -4068,6 +4074,7 @@ plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* name)
 void
 plDetachVirtualThread(bool isSuspended)
 {
+    PL_UNUSED(isSuspended);
 #if PL_NOEVENT==0
 #if PL_VIRTUAL_THREADS==1
     plPriv::ThreadContext_t* tCtx = &plPriv::threadCtx;
