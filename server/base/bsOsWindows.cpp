@@ -725,7 +725,7 @@ osProcessInputs(bsOsHandler* handler)
     gGlob.osHandler = handler;
     while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
         if(msg.message==WM_QUIT) {
-            gGlob.osHandler->eventKeyPressed(KC_Escape, {false,false,false,false});
+            gGlob.osHandler->quit();
         }
         TranslateMessage(&msg);
         DispatchMessage(&msg);

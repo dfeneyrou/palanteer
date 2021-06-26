@@ -58,6 +58,7 @@ public:
     virtual void eventWheelScrolled (int x, int y, int steps, bsKeyModState kms) = 0;
     // Others
     virtual bool isVisible(void) const = 0;
+    virtual void quit(void) = 0;
 
 };
 

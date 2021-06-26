@@ -63,6 +63,7 @@ static struct {
     GLXContext  xRenderContext = 0;
     Window      windowHandle;
     GLXWindow   glXWindowHandle;
+    Atom        deleteMessage;
     Cursor      noCursor      = None;
     Cursor      defaultCursor = None;
     Cursor      currentCursor = None;
@@ -233,6 +234,10 @@ osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft,
 
     // Force focus
     XSetInputFocus(gGlob.xDisplay, gGlob.windowHandle, RevertToParent, CurrentTime);
+
+    // Enable the "close window" message
+    gGlob.deleteMessage = XInternAtom(gGlob.xDisplay, "WM_DELETE_WINDOW", False);
+    XSetWMProtocols(gGlob.xDisplay, gGlob.windowHandle, &gGlob.deleteMessage, 1);
 
     // Clipboard init
     gClip.aKind       = XInternAtom(gGlob.xDisplay, "CLIPBOARD", False);
@@ -662,6 +667,10 @@ osProcessInputs(bsOsHandler* handler)
         */
 
         switch(event.type) {
+
+        case ClientMessage:
+            if((Atom)event.xclient.data.l[0]==gGlob.deleteMessage) gGlob.osHandler->quit();
+            break;
 
         case SelectionClear:
             gClip.ownedType = ClipboardType::NONE;
