@@ -155,7 +155,7 @@ Viewer and scripting library:
 Instrumentation libraries:
    - Linux 32 or 64 bits (tested on PC and armv7l)
    - Windows 10
-   - Support for [virtual threads](docs/instrumentation_api_cpp.md.html#c++instrumentationapi/virtualthreads) (userland threads, like fibers)
+   - Support for [virtual threads](https://dfeneyrou.github.io/palanteer/instrumentation_api_cpp.md.html#c++instrumentationapi/virtualthreads) (userland threads, like fibers)
 
 ## Requirements
 
