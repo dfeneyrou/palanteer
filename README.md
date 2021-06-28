@@ -84,8 +84,6 @@ Some C++ performance figures (see [here](https://dfeneyrou.github.io/palanteer/i
   - up to ~3 millions events per second when recording, the bottleneck being on the server processing side
   - up to ~150 000 events per second when processing the flow through a Python script, the bottleneck being on the Python script side
 
-More details and an example of remote script is provided [here](https://dfeneyrou.github.io/palanteer/index.html#overview/commonfeatures/remotecontrol)
-
 ## Python instrumentation example
 
 Execution of unmodified Python programs can be analyzed directly with a syntax similar to the one of `cProfile`, as a large part of the instrumentation is automated by default:
