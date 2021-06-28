@@ -209,7 +209,7 @@ if __name__ == "__main__":
 
 </details>
 
-The execution of this script (on Linux) gives the following output:
+The execution of this script gives the following output:
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 > time ./remoteScript.py example
