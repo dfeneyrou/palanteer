@@ -475,7 +475,7 @@ def displayUsage():
     print("    <Default>: Use remote Palanteer connection")
     print("    '-f'     : Save the record in a file 'example_record.plt'")
     print("    '-n'     : No data collection (event recording not enabled at run time)")
-    print("    '-nc'    : Do not profile the C functions")
+    print("    '-c'     : Do profile the C functions")
     print("")
     print("  Options to configure the program behavior:")
     print("    '-t <1-9>      : Defines the quantity of groups of threads (2 threads per group)")
@@ -506,13 +506,13 @@ def main():
         doDisplayUsage = True
 
     # Get the options
-    mode, buildName, serverPort, with_c_calls, threadGroupQty, durationMultiplier = "connected", None, 59059, True, 1, 1
+    mode, buildName, serverPort, with_c_calls, threadGroupQty, durationMultiplier = "connected", None, 59059, False, 1, 1
     argCount = 2
     while not doDisplayUsage and argCount<len(sys.argv):
         w = sys.argv[argCount]
         if   w in ["--n", "-n"]: mode = "inactive"
         elif w in ["--f", "-f"]: mode = "file storage"
-        elif w in ["--nc", "-nc"]: with_c_calls = False
+        elif w in ["--c", "-c"]: with_c_calls = True
         elif w in ["-b", "--b"] and argCount+1<len(sys.argv):
             buildName = sys.argv[argCount+1]
             argCount += 1

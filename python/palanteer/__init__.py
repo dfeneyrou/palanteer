@@ -80,7 +80,7 @@ def plInitAndStart(app_name,
                    with_exceptions=True,
                    with_memory=True,
                    with_gc=True,
-                   with_c_calls=True):
+                   with_c_calls=False):
     global _old_excepthook, _is_activated, _is_with_functions
     if _is_activated:
         return

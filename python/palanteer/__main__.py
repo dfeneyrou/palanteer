@@ -36,14 +36,14 @@ if __name__ == "__main__":
     # Parse profiling options
     record_filename, server_address, server_port = None, "127.0.0.1", 59059
     do_wait_for_server_connection, idx, do_display_usage = False, 1, False
-    with_functions, with_exceptions, with_memory, with_gc, with_c_calls = True, True, True, True, True
+    with_functions, with_exceptions, with_memory, with_gc, with_c_calls = True, True, True, True, False
     while idx<len(sys.argv):
         if not sys.argv[idx].startswith("-"): break
         if   sys.argv[idx]=="-nf": with_functions  = False
         elif sys.argv[idx]=="-ne": with_exceptions = False
         elif sys.argv[idx]=="-nm": with_memory     = False
         elif sys.argv[idx]=="-ng": with_gc         = False
-        elif sys.argv[idx]=="-nc": with_c_calls    = False
+        elif sys.argv[idx]=="-c":  with_c_calls    = True
         elif sys.argv[idx]=="-w":  do_wait_for_server_connection = True
         elif sys.argv[idx]=="-f" and idx+1<len(sys.argv):
             record_filename = sys.argv[idx+1]
@@ -84,7 +84,7 @@ Options for case (2):
  -ne                    Do not automatically log the exceptions             (default=log exception)
  -nm                    Do not log the memory allocations                   (default=log memory allocations)
  -ng                    Do not automatically log the garbage collector runs (default=log gc)
- -nc                    Do not automatically log the C functions            (default=both python and C functions)
+ -c                     Do automatically log the C functions                (default=only python functions)
  -w                     Wait for server connection (Palanteer viewer or scripting module). Applicable only in case of remote connection.
 
 Note 1: in case of connection to the server and -w is not used and no server is reachable, profiling is simply skipped
