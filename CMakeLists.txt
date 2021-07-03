@@ -56,6 +56,9 @@ find_package(Threads REQUIRED)
 #  * Python developer who does not plan to script: the viewer and the python instrumentation package
 #  * Python developer who wants to script only   : the python scripting package and the python instrumentation package
 
+# Build libpalanteer
+add_subdirectory(c++)
+
 # Build the viewer
 add_subdirectory(server/viewer)
 
