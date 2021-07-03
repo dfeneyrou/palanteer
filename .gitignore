@@ -1,2 +1,6 @@
 ﻿build/*
 server/scripting/palanteer_scripting.egg-info/*
+
+# Visual Studio CMake
+/.vs/*
+/out/*
