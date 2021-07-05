@@ -247,7 +247,7 @@ Instrumentation libraries:
    - Windows 10
    - Support for virtual threads
      - in [C++](https://dfeneyrou.github.io/palanteer/instrumentation_api_cpp.md.html#c++instrumentationapi/virtualthreads) (userland threads, like fibers)
-     - in [Python](https://dfeneyrou.github.io/palanteer/instrumentation_api_python_md.html#virtualthreads) (asyncio / gevent)
+     - in [Python](https://dfeneyrou.github.io/palanteer/instrumentation_api_python.md.html#virtualthreads) (asyncio / gevent)
 
 ## Requirements
 
