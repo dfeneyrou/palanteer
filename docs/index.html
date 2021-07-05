@@ -13,9 +13,11 @@
   - C++:
     - ultra-light single-header cross-platform library
     - very low overhead
+    - support of Fibers / userland threads
   - Python:
     - One module for manual instrumentation
     - Unmodified program can be analyzed as for `cProfile` with `-m` option
+    - Support of asyncio / gevent
 1. Associated with the **interactive viewer**:
    - Internal behaviors become obvious
    - All data can be graphically visualized and manipulated.
@@ -43,6 +45,7 @@
     - Automatic tracking of interpreter memory allocations
     - Automatic tracking of all raised exceptions
     - Automatic tracking of garbage collection runs
+    - Automatic tracking of coroutines
 
 
 </td> <td>
@@ -321,6 +324,7 @@ Python features differ from the C++ ones because of the nature of the language, 
   - No concept of "compile-time"
   - No need for enhanced assertions
   - Built-in profiling API available
+  - More automation possible thanks to looser control on the hardware
   - ...
 
 ### Automatic partial instrumentation
@@ -330,6 +334,7 @@ The CPython interpreter offers dedicated profiling hooks that `Palanteer` levera
  - Raised exception, caught or not
  - Memory allocations (at the interpreter level)
  - Garbage collection runs
+ - Coroutine detection with automatic naming
 
 This means that **unmodified code** can already provide useful insights, by using the same mechanism than the standard `cProfile` module:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none

@@ -14,6 +14,7 @@ Simple code instrumentation, mostly automatic in Python, delivers powerful featu
     - enhanced assertions, stack trace dump...
   - **Python**:
     - Automatic instrumentation of functions enter/leave, memory allocations, raised exceptions, garbage collection runs
+    - Support of asyncio/gevent
 
 <img src="docs/images/views.gif " alt="Palanteer viewer image" width="1000"/>
 
@@ -91,6 +92,7 @@ Execution of unmodified Python programs can be analyzed directly with a syntax s
    - Interpreter memory allocations
    - All raised exceptions
    - Garbage collection runs
+   - Coroutines
 
 In some cases, a manual instrumentation which enhances or replaces the automatic one is desired. <br/>
 The example below is such an equivalent of the C++ one above but in Python:
@@ -243,7 +245,9 @@ Viewer and scripting library:
 Instrumentation libraries:
    - Linux 32 or 64 bits (tested on PC and armv7l)
    - Windows 10
-   - Support for [virtual threads](https://dfeneyrou.github.io/palanteer/instrumentation_api_cpp.md.html#c++instrumentationapi/virtualthreads) (userland threads, like fibers)
+   - Support for virtual threads
+     - in [C++](https://dfeneyrou.github.io/palanteer/instrumentation_api_cpp.md.html#c++instrumentationapi/virtualthreads) (userland threads, like fibers)
+     - in [Python](https://dfeneyrou.github.io/palanteer/instrumentation_api_python_md.html#virtualthreads) (asyncio / gevent)
 
 ## Requirements
 

@@ -382,7 +382,7 @@ void plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* name);
 // This function is specific to the support of the virtual threads
 // It must be called when attaching a virtual threads to the current worker thread.
 // The worker thread shall currently not run any virtual thread ('detach' shall be called between 2 virtual threads)
-void plAttachVirtualThread(uint32_t externalVirtualThreadId);
+bool plAttachVirtualThread(uint32_t externalVirtualThreadId);
 
 // This function is specific to the support of the virtual threads
 // It must be called when a virtual threads is detached from the current worker thread.
@@ -399,7 +399,7 @@ void plDetachVirtualThread(bool isSuspended);
 #define plGetStats() plStats { 0, 0, 0, 0, 0, 0, 0, 0 }
 #define plDeclareVirtualThread(externalVirtualThreadId_, name_)  do { PL_UNUSED(externalVirtualThreadId_); PL_UNUSED(name_); } while(0)
 #define plDetachVirtualThread(isSuspended_) PL_UNUSED(isSuspended_);
-#define plAttachVirtualThread(externalVirtualThreadId_) PL_UNUSED(externalVirtualThreadId_);
+#define plAttachVirtualThread(externalVirtualThreadId_) { PL_UNUSED(externalVirtualThreadId_); return false; }
 
 #endif
 
@@ -1880,6 +1880,24 @@ namespace plPriv {
             unsigned int idx = (unsigned int)hash&_mask;
             while(1) { // Always stops because load factor <= 0.66
                 if(_nodes[idx].hash==hash) { value = _nodes[idx].value; return true; }
+                if(_nodes[idx].hash==0) return false; // Empty node
+                idx = (idx+1)&_mask;
+            }
+            return false; // Never reached
+        }
+        bool exist(hashStr_t hash) {
+            unsigned int idx = (unsigned int)hash&_mask;
+            while(1) { // Always stops because load factor <= 0.66
+                if(_nodes[idx].hash==hash) return true;
+                if(_nodes[idx].hash==0)    return false; // Empty node
+                idx = (idx+1)&_mask;
+            }
+            return false; // Never reached
+        }
+        bool replace(hashStr_t hash, const T& newValue) {
+            unsigned int idx = (unsigned int)hash&_mask;
+            while(1) { // Always stops because load factor <= 0.66
+                if(_nodes[idx].hash==hash) { _nodes[idx].value = newValue; return true; }
                 if(_nodes[idx].hash==0) return false; // Empty node
                 idx = (idx+1)&_mask;
             }
@@ -4083,22 +4101,27 @@ plDetachVirtualThread(bool isSuspended)
     if(tCtx->id==0xFFFFFFFF) plPriv::getThreadId();
 
     if(tCtx->id==tCtx->realId) return; // Nothing to do
-    // Suspension is represented as an interrupting IRQ
-    if(isSuspended && PL_IS_ENABLED_()&& tCtx->id<PL_MAX_THREAD_QTY) {
-        plPriv::eventLogRaw(PL_STRINGHASH(""), PL_STRINGHASH("Suspended"), PL_EXTERNAL_STRINGS?0:"", "Suspended", 0, 0,
-                            PL_FLAG_TYPE_SOFTIRQ | PL_FLAG_SCOPE_BEGIN, PL_GET_CLOCK_TICK_FUNC());
-    }
-    // Save the suspend state
+
     if(tCtx->id<PL_MAX_THREAD_QTY) {
+        // Save the suspend state
         plPriv::implCtx.vThreadIsSuspended[tCtx->id] = isSuspended;
+
+        // Suspension is represented as an interrupting IRQ
+        if(isSuspended && PL_IS_ENABLED_()) {
+            plPriv::eventLogRaw(PL_STRINGHASH(""), PL_STRINGHASH("Suspended"), PL_EXTERNAL_STRINGS?0:"", "Suspended", 0, 0,
+                                PL_FLAG_TYPE_SOFTIRQ | PL_FLAG_SCOPE_BEGIN, PL_GET_CLOCK_TICK_FUNC());
+        }
     }
-    // Switch to OS thread Id
-    tCtx->id = tCtx->realId;
+
     // The worker thread is no more used (logged on the worker threadId)
     if(tCtx->realRscNameHash!=0 && PL_IS_ENABLED_()) {
         plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), tCtx->realRscNameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
                             PL_FLAG_TYPE_LOCK_RELEASED, PL_GET_CLOCK_TICK_FUNC());
     }
+
+    // Switch to OS thread Id
+    tCtx->id = tCtx->realId;
+
 #else  // if PL_VIRTUAL_THREADS==1
     plAssert(0, "plDetachVirtualThread is a specific API of the 'virtual thread' feature which is not enabled. Add -DPL_VIRTUAL_THREADS=1 in your compilation options.");
 #endif // if PL_VIRTUAL_THREADS==1
@@ -4106,10 +4129,11 @@ plDetachVirtualThread(bool isSuspended)
 }
 
 
-void
+bool
 plAttachVirtualThread(uint32_t externalVirtualThreadId)
 {
     PL_UNUSED(externalVirtualThreadId);
+    bool isNewVirtualThread = false;
 #if PL_NOEVENT==0
 #if PL_VIRTUAL_THREADS==1
     plPriv::ThreadContext_t* tCtx = &plPriv::threadCtx;
@@ -4124,11 +4148,12 @@ plAttachVirtualThread(uint32_t externalVirtualThreadId)
         // Create this new internal thread and virtual thread context
         newThreadId = plPriv::globalCtx.nextThreadId.fetch_add(1);
         plPriv::implCtx.vThreadLkupExtToCtx.insert(hash, newThreadId);
+        isNewVirtualThread = true;
         if(newThreadId<PL_MAX_THREAD_QTY) {
             plPriv::globalCtx.threadPids[newThreadId] = 0xFFFFFFFF; // Prevent OS thread matching for context switches
         }
     }
-    if(tCtx->id==newThreadId) return; // Nothing to do
+    if(tCtx->id==newThreadId) return isNewVirtualThread; // Nothing to do
 
     if(PL_IS_ENABLED_() && tCtx->realRscNameHash!=0 && tCtx->id!=tCtx->realId) {
         // The worker thread is switched to idle
@@ -4140,20 +4165,21 @@ plAttachVirtualThread(uint32_t externalVirtualThreadId)
     tCtx->id = newThreadId;
 
     // The worker thread is now dedicated to this virtual thread (logged on the worker threadId)
-    if(tCtx->realRscNameHash!=0 && PL_IS_ENABLED_()) {
-        plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), tCtx->realRscNameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
-                            PL_FLAG_TYPE_LOCK_ACQUIRED, PL_GET_CLOCK_TICK_FUNC());
-    }
-
     if(tCtx->id<PL_MAX_THREAD_QTY && plPriv::implCtx.vThreadIsSuspended[tCtx->id] && PL_IS_ENABLED_()) {
         plPriv::eventLogRaw(PL_STRINGHASH(""), PL_STRINGHASH("Suspended"), PL_EXTERNAL_STRINGS?0:"", "Suspended", 0, 0,
                             PL_FLAG_TYPE_SOFTIRQ | PL_FLAG_SCOPE_END, PL_GET_CLOCK_TICK_FUNC());
+    }
+
+    if(tCtx->realRscNameHash!=0 && PL_IS_ENABLED_()) {
+        plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), tCtx->realRscNameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
+                            PL_FLAG_TYPE_LOCK_ACQUIRED, PL_GET_CLOCK_TICK_FUNC());
     }
 
 #else  // if PL_VIRTUAL_THREADS==1
     plAssert(0, "plAttachVirtualThread is a specific API of the 'virtual thread' feature which is not enabled. Add -DPL_VIRTUAL_THREADS=1 in your compilation options.");
 #endif // if PL_VIRTUAL_THREADS==1
 #endif // if PL_NOEVENT==0
+    return isNewVirtualThread;
 }
 
 #endif // if USE_PL==1 && PL_IMPLEMENTATION==1

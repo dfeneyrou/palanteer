@@ -26,6 +26,7 @@ import sys
 import time
 import math
 import threading
+import asyncio
 
 # If palanteer module is not found, it imports the stub (in ./tools) which defines all APIs as no-op
 # This way, a program can be distributed without any Palanteer installation requirement
@@ -289,17 +290,48 @@ def controlTask(synchro, durationMultipler):
 
 
 # ==============================
+# AsyncIO worker task
+# ==============================
+
+async def baseFunc():
+    busyWait(globalRandomGenerator.get(20, 50))
+    await asyncio.sleep(0.02*globalRandomGenerator.get(1, 3))
+
+async def loadTexture():           await baseFunc()
+async def updateParticules():      await baseFunc()
+async def animateChainsaw():       await baseFunc()
+async def skeletonInterpolation(): await baseFunc()
+async def fogOfWarGeneration():    await baseFunc()
+async def freeArenaMemoryPools():  await baseFunc()
+
+
+async def asyncRunner():
+    jobKinds = (loadTexture, updateParticules, animateChainsaw, skeletonInterpolation, fogOfWarGeneration, freeArenaMemoryPools)
+    for i in range(30):
+        await jobKinds[globalRandomGenerator.get(0, len(jobKinds))]()
+        time.sleep(0.01)
+
+
+async def asyncWaitAllTasks():
+    await asyncio.gather(*(asyncRunner() for i in range(3)))
+
+
+def asyncWorkerTask():
+    asyncio.run(asyncWaitAllTasks())
+
+
+# ==============================
 # CLI handlers
 # ==============================
 
-def asyncAssertThread(condValue):
+def delayedAssertThread(condValue):
     plDeclareThread("Crash thread")
     time.sleep(1.)
     assert condValue, "Assertion called by CLI"
     return 0
 
 def cliHandlerAsyncAssert(condValue):
-    threading.Thread(target=lambda x=condValue: asyncAssertThread(x)).start()
+    threading.Thread(target=lambda x=condValue: delayedAssertThread(x)).start()
     return 0
 
 
@@ -383,9 +415,8 @@ def collectInterestingData(mode, buildName, durationMultiplier, serverPort, with
 
     # Launch some active threads
     threadGroupNames = [ "", "Workers/", "Real time/", "Database Cluster/", "Helpers/", "Engine/", "Compute Grid/", "Hub/", "Idlers/" ]
-
-
     crashThreadGroupNbr = None if crashKind==None else int(time.time())%threadGroupQty  # Random selection of the thread which shall crash
+
     controlThreadList = []
     for threadGroupNbr in range(threadGroupQty):
         groupName    = threadGroupNames[threadGroupNbr]
@@ -398,6 +429,11 @@ def collectInterestingData(mode, buildName, durationMultiplier, serverPort, with
         t2.start()
         controlThreadList.append(t1)
         controlThreadList.append(t2)
+
+    # Add some asynchronous jobs (virtual threads / green threads)
+    tAsync = threading.Thread(target=asyncWorkerTask)
+    tAsync.start()
+    controlThreadList.append(tAsync)
 
     # Wait for threads completion
     for t in controlThreadList:
@@ -510,9 +546,9 @@ def main():
     argCount = 2
     while not doDisplayUsage and argCount<len(sys.argv):
         w = sys.argv[argCount]
-        if   w in ["--n", "-n"]: mode = "inactive"
-        elif w in ["--f", "-f"]: mode = "file storage"
-        elif w in ["--c", "-c"]: with_c_calls = True
+        if   w in ["-n", "--n"]: mode = "inactive"
+        elif w in ["-f", "--f"]: mode = "file storage"
+        elif w in ["-c", "--c"]: with_c_calls = True
         elif w in ["-b", "--b"] and argCount+1<len(sys.argv):
             buildName = sys.argv[argCount+1]
             argCount += 1

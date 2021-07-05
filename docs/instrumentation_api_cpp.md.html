@@ -911,7 +911,7 @@ palanteer.program_cli("config:setRange min=300 max=500")
 
 ## Virtual threads
 
-A "virtual thread" is a thread that is not managed by the OS. Some exemples are "fibers", or a simulated OS environment. <br/>
+A "virtual thread" is a thread that is not managed by the OS. Some examples are "fibers", or a simulated OS environment. <br/>
 They require the support of "OS worker threads" which effectively run these virtual threads.
 A running virtual thread can be switched/exchanged with another one usually only at particular points (I/O call, yield call, etc...), and resumed
 later on any of the existing worker threads.

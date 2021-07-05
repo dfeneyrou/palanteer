@@ -27,7 +27,6 @@ from setuptools import setup, find_packages, Extension
 # Constants
 isDevMode = False  # Enable to speed up development cycles. Shall be False for final installation
 
-
 # Deduce some parameters
 extra_link_args         = []
 extra_compilation_flags = ["-I", os.path.normpath("${CMAKE_CURRENT_SOURCE_DIR}/../c++")]
