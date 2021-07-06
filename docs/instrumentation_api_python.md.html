@@ -466,6 +466,37 @@ And a way to call it from a Python script with the `Palanteer` scripting module 
 palanteer_scripting.program_cli("config:setRange min=300 max=500")
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+## Virtual threads
+
+A "virtual thread" is a thread that is not managed by the OS. Some examples are the usage of asyncio or gevent. <br/>
+As they do not require a kernel call but just a stack+register save/restore, using them can be faster than using OS threads, <br/>
+in particular when many jobs are waiting on I/O (ex: sockets).
+
+In Python, this support is automatic, with the following features:
+  - the worker threads are automatically named `Workers/Async worker` followed by a worker number if more than 1
+  - the coroutines are automatically named after the top function name
+    - A number is added if more than 1 coroutine has the same name
+  - each worker has a dedicated resource line which provides an overview of the worker usage
+    - Note: the worker OS thread contains only the Python glue information, as the events are dispatched on the virtual threads per coroutine
+
+!!!
+    In the viewer, a suspended coroutine is visually represented by a SOFTIRQ with the name "Suspended"
+
+Some functions are automatically filtered out to remove some bloat from supposedly transparent mechanisms. <br/>
+The exaustive list is:
+  - the module `palanteer._cextension` from Palanteer, which is supposed to be transparent
+  - the module `_UnixSelectorEventLoop`, which is the asyncio glue on Linux
+  - the module `ProactorEventLoop`, which is the asyncio glue on Windows
+  - the function `_plFunctionInner` from Palanteer, which is the transparent mechanism for function decorator
+  - the function `_pl_garbage_collector_notif` from Palanteer, which is the transparent mechanism for garbage collector tracking
+  - the function `Thread.run`, which is the top method for each thread and carries no real information
+  - the function and sub-functions of `_find_and_load`, which is a transparent part of the launch of Python
+  - the function and sub-functions of `Thread._bootstrap`, which is a "leave" of a Python thread, as the "enter" is not caught by Palanteer due to the thread bootstrap mechanism
+  - the function and sub-functions of `TimerHandle.cancel`, which is a transparent part of the coroutine mechanism
+  - the function and sub-functions of `_cancel_all_tasks`, which is a transparent part of the coroutine mechanism
+
+!!!
+    The Python test program uses asyncio to demonstrate the result of using virtual threads
 
 ## Troubleshootings
 

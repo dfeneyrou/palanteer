@@ -26,6 +26,9 @@
 #include "vwConfig.h"
 
 // @#TODO P1 Clicking on a timestamp flag event (lock ntf/acquired/released) should not synchronize range to the beginning of the scope
+// @#TODO Timestamped standalone even at root shall be displayed too (ex: lock)
+// @#TODO P0 Click on the start of a scope in text view places the timeline on the middle of the scope. Probably a wrong mix between single and double click.
+// @#TODO P0 Click on the end of a scope in text view places the timeline on the start of the scope
 
 #ifndef PL_GROUP_TEXT
 #define PL_GROUP_TEXT 0

@@ -27,6 +27,7 @@
 
 // System includes
 #include <mutex>
+#include <vector>
 
 // CPython includes
 #include "Python.h"
@@ -34,6 +35,7 @@
 
 // Configure and implement the C++ Palanteer instrumentation
 #define USE_PL 1
+#define PL_VIRTUAL_THREADS 1
 #define PL_IMPLEMENTATION 1
 #define PL_IMPL_OVERLOAD_NEW_DELETE 0    // Overload from a dynamic library does not work
 #define PL_IMPL_MAX_CLI_QTY              1024
@@ -49,34 +51,67 @@ struct ThreadStackElem_t {
     int               lineNbr;
 };
 constexpr int STACK_MAX_DEPTH = 256;
-struct pyThreadContext_t {
-    int               isBootstrap = 1; // First events ending a scope shall be skipped, until another kind of event is received
-    int               stackDepth  = 0;
-    PyFrameObject*    nextExceptionFrame = 0; // To manage unwinding
-    ThreadStackElem_t stack[STACK_MAX_DEPTH]; // 5 KB per thread
+struct pyCommonThreadCtx_t {
+    // Thread common fields
+    PyFrameObject*    nextExceptionFrame = 0;                // To manage unwinding
+    int               filterOutDepth     = STACK_MAX_DEPTH;  // Filtering out from this level and below
+    int               stackDepth         = 0;
+    ThreadStackElem_t stack[STACK_MAX_DEPTH];   // 5 KB per thread
+};
+struct pyOsThreadCtx_t {
+    int            isBootstrap = 1;  // First events ending a scope shall be skipped, until another kind of event is received
+    PyFrameObject* currentCoroutineFrame = 0;
+    int            isWorkerNameDeclared = 0;
+};
+struct CoroutineNaming {
+    int  namingCount = 0;
+    char name[PL_DYN_STRING_MAX_SIZE];
 };
 
 // Module state
-thread_local pyThreadContext_t gThreads;
-plPriv::FlatHashTable<plPriv::hashStr_t> gHashStrLookup;    // Hashed object   -> Palanteer string hash
-plPriv::FlatHashTable<PyObject*>         gCliHandlerLookup; // Hashed CLI name -> Python callable object
-std::mutex       gLkupMutex;
-PyMemAllocatorEx gOldAllocatorRaw;
-PyMemAllocatorEx gNewAllocatorRaw;
-static bool gIsEnabled  = false;
+thread_local static pyOsThreadCtx_t gOsThread;  // State for OS threads
+static std::mutex          gGlobMutex; // Protects all containers below
+static pyCommonThreadCtx_t gThreads[PL_MAX_THREAD_QTY];  // State for all threads (OS and coroutine)
+static plPriv::FlatHashTable<plPriv::hashStr_t> gHashStrLookup;    // Hashed object   -> Palanteer string hash
+static plPriv::FlatHashTable<PyObject*>         gCliHandlerLookup; // Hashed CLI name -> Python callable object
+static std::vector<CoroutineNaming>             gCoroutineNames;     // Array of (name, name usage count)
+static plPriv::FlatHashTable<int>               gCoroutineNameToIdx; // Hashed name  -> coroutine name index in array above
+static plPriv::FlatHashTable<int>               gSuspendedFrames;
+static int                                      gAsyncWorkerCount = 0;
+static PyMemAllocatorEx gOldAllocatorRaw;
+static PyMemAllocatorEx gNewAllocatorRaw;
+static bool gIsEnabled      = false;
 static bool gWithFunctions  = false;
 static bool gWithExceptions = false;
 static bool gWithMemory     = false;
 static bool gWithCCalls     = false;
 
-// Constants
-plPriv::hashStr_t gThisModuleNameHash = PL_STRINGHASH("palanteer._cextension");
-constexpr int gFunctionsToHideQty = 4;
-plPriv::hashStr_t gFunctionsToHide[gFunctionsToHideQty] = {
-    PL_STRINGHASH("Thread._bootstrap"), PL_STRINGHASH("Thread._bootstrap_inner"), // Mask thread creation "leave" events, as "enter" are not seen (cf bootstrap mechanism)
-    PL_STRINGHASH("_plFunctionInner"), // Mask plFunction decorator inner function
-    PL_STRINGHASH("_pl_garbage_collector_notif")
+// Filtering out some automatic instrumentation
+static plPriv::FlatHashTable<int> gFilterOutClassName;    // Used as hashset
+static plPriv::FlatHashTable<int> gFilterOutFunctionName; // Used as hashset
+static plPriv::FlatHashTable<int> gFilterOutObject; // Used as hashset
+
+plPriv::hashStr_t gFilterOutClassDb[] = {
+    PL_STRINGHASH("palanteer._cextension"),
+    PL_STRINGHASH("_UnixSelectorEventLoop"),  // Coroutine mechanism on Linux
+    PL_STRINGHASH("ProactorEventLoop"),       // Coroutine mechanism on Windows
+    0 };
+// Mask function and all sub calls
+plPriv::hashStr_t gFilterOutFunctionAndBelowDb[] = {
+    PL_STRINGHASH("Thread._bootstrap"), PL_STRINGHASH("Thread._bootstrap_inner"), // Mask thread creation "leave" events, as "enter" is not seen (cf bootstrap mechanism)
+    PL_STRINGHASH("_find_and_load"),      // Python bootstrap
+    PL_STRINGHASH("TimerHandle.cancel"),  // Coroutine mechanism
+    PL_STRINGHASH("_cancel_all_tasks"),   // Coroutine mechanism
+    0
 };
+// Mask only these function level, not below
+plPriv::hashStr_t gFilterOutFunctionDb[] = {
+    PL_STRINGHASH("_plFunctionInner"),             // Mask plFunction decorator inner function
+    PL_STRINGHASH("_pl_garbage_collector_notif"),  // Mask the GC tracking glue
+    PL_STRINGHASH("Thread.run"),  // Mask the Thread glue
+    0
+};
+
 
 // Python compatibility
 #if PY_VERSION_HEX<0x031000B1
@@ -109,7 +144,7 @@ plPriv::hashStr_t gFunctionsToHide[gFunctionsToHideQty] = {
 
 inline
 plPriv::hashStr_t
-pyHashString(const void* p) {
+pyHashPointer(const void* p) {
     plPriv::hashStr_t strHash = PL_FNV_HASH_OFFSET_;
     plPriv::hashStr_t s = (uintptr_t)p;
     strHash = (strHash^((s>> 0)&0xFFLL))*PL_FNV_HASH_PRIME_;
@@ -124,7 +159,7 @@ pyHashString(const void* p) {
 }
 
 #define CACHE_STRING(s, outputHash)                                     \
-    strHash    = pyHashString(s);                                       \
+    strHash    = pyHashPointer(s);                                      \
     outputHash = 0;                                                     \
     if(!gHashStrLookup.find(strHash, outputHash)) {                     \
         gHashStrLookup.insert(strHash, plPriv::hashString(s));          \
@@ -147,22 +182,22 @@ pyGetNameFilenameLineNbr(const char* name,
     // Get the filename
     filename = 0; palanteerFilenameStrHash = 0;
     PyCodeObject* objectCode = threadState->frame->f_code;
-    objectFilenameHash       = pyHashString(objectCode->co_filename);
+    objectFilenameHash       = pyHashPointer(objectCode->co_filename);
 
     // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
-    gLkupMutex.lock();
+    gGlobMutex.lock();
     // Get the name hash (or null if it is a new string)
     plPriv::hashStr_t strHash;
     CACHE_STRING(name, palanteerNameStrHash);
     // Get the filename hash
     bool isObjectFoundInCache = gHashStrLookup.find(objectFilenameHash, palanteerFilenameStrHash);
-    gLkupMutex.unlock();
+    gGlobMutex.unlock();
 
     if(!isObjectFoundInCache) {
         filename = PyUnicode_AsUTF8(objectCode->co_filename);
-        gLkupMutex.lock();
+        gGlobMutex.lock();
         gHashStrLookup.insert(objectFilenameHash, plPriv::hashString(filename)); // We let the palanteerFilenameStrHash set to zero because it is a dynamic string
-        gLkupMutex.unlock();
+        gGlobMutex.unlock();
         plAssert(filename);
     }
     else plAssert(palanteerFilenameStrHash);
@@ -205,8 +240,64 @@ pyEventLogRawString(plPriv::hashStr_t filenameHash, plPriv::hashStr_t nameHash, 
 static void
 logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg, bool isEnter, bool calledFromC)
 {
-    // Get infos from Python (filename, name, line nbr)
-    char tmpStr[256];
+    char tmpStr[PL_DYN_STRING_MAX_SIZE+32];  // 32 is margin to avoid truncation in some cases (coroutine name prefix)
+
+    if(gOsThread.isBootstrap) {
+        if(!isEnter) return;        // First "leaving" events are dropped until an "enter" is found
+        gOsThread.isBootstrap = 0;  // End of bootstrap phase
+    }
+
+    // Co-routine management
+    // =====================
+
+#define HASH_FRAME(frame) (uint32_t)((uintptr_t)frame)
+    bool isCoroutineNew = false;
+    bool isCoroutine = (frame->f_code->co_flags & (CO_COROUTINE|CO_ITERABLE_COROUTINE|CO_ASYNC_GENERATOR));
+#if PY_MINOR_VERSION >= 10
+    bool isCoroutineSuspended = isCoroutine && !isEnter && (frame->f_state==FRAME_SUSPENDED);
+#else
+    bool isCoroutineSuspended = isCoroutine && !isEnter && (frame->f_stacktop!=0);
+#endif
+
+
+    plPriv::hashStr_t hashedFrame = 0;
+    if(isCoroutine) {
+        hashedFrame = pyHashPointer(frame);
+        // Set the worker name, if not already done
+        if(!gOsThread.isWorkerNameDeclared) {
+            gOsThread.isWorkerNameDeclared = 1;
+            plDetachVirtualThread(false);
+            gGlobMutex.lock();
+            gAsyncWorkerCount += 1;
+            int count = gAsyncWorkerCount;
+            gGlobMutex.unlock();
+            if(count==1) snprintf(tmpStr, sizeof(tmpStr), "Workers/Async worker");
+            else         snprintf(tmpStr, sizeof(tmpStr), "Workers/Async worker %d", count);
+            plDeclareThreadDyn(tmpStr);
+        }
+
+        // Coroutine switch?
+        if(isEnter && gOsThread.currentCoroutineFrame==0) {
+            plAssert(isEnter);
+            plAssert(plPriv::threadCtx.id==plPriv::threadCtx.realId);
+            isCoroutineNew = plAttachVirtualThread((uint32_t)hashedFrame);
+            gOsThread.currentCoroutineFrame = frame;
+        }
+
+        // Coroutine resumed? If yes, it shall be transparent, so no log
+        int wasSuspended = 0;
+        if(gSuspendedFrames.find(hashedFrame, wasSuspended) && wasSuspended) {
+            gSuspendedFrames.replace(hashedFrame, 0);
+            return; // Not a real entering, just a resuming
+        }
+    }
+
+    if(plPriv::threadCtx.id==0xFFFFFFFF) plPriv::getThreadId();
+    pyCommonThreadCtx_t* pctc = (plPriv::threadCtx.id<PL_MAX_THREAD_QTY)? &gThreads[plPriv::threadCtx.id] : 0;
+
+
+    // Get a information on the function
+    // ==================================
 
     plPriv::hashStr_t palanteerStrHash = 0;
     plPriv::hashStr_t filenameHash = 0;
@@ -214,150 +305,242 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
     const char*       filename = 0;
     const char*       name     = 0;
     int               lineNbr  = 0;
-
-    if(gThreads.isBootstrap) {
-        if(!isEnter) return;      // First "leaving" events are dropped until an "enter" is found
-        gThreads.isBootstrap = 0; // End of bootstrap phase
-    }
+    int               isNewFilterOut = 0;  // 0: not filtered    1: filter also below   2: only current level is filtered
 
     if(calledFromC) { // C function
-        PyCFunctionObject* cfn               = (PyCFunctionObject*)arg;
-        plPriv::hashStr_t objectFilenameHash = pyHashString(cfn->m_ml); // Using cfn is ambiguous, cfn->m_ml is not
-        plPriv::hashStr_t objectNameHash     = pyHashString(cfn->m_ml->ml_name);
+        // Do not get any info if it is filtered. The stack level is enough
+        if(pctc && pctc->stackDepth<pctc->filterOutDepth) {
+            PyCFunctionObject* cfn               = (PyCFunctionObject*)arg;
+            plPriv::hashStr_t objectFilenameHash = pyHashPointer(cfn->m_ml); // Using cfn is ambiguous, cfn->m_ml is not
+            plPriv::hashStr_t objectNameHash     = pyHashPointer(cfn->m_ml->ml_name);
 
-        // Module/filename
-        gLkupMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
-        bool isObjectFoundInCache = gHashStrLookup.find(objectFilenameHash, palanteerStrHash);
-        gLkupMutex.unlock();
+            // Module/filename
+            gGlobMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
+            gFilterOutObject.find(objectNameHash, isNewFilterOut);
+            bool isObjectFoundInCache = (isNewFilterOut==0) && gHashStrLookup.find(objectFilenameHash, palanteerStrHash);
+            gGlobMutex.unlock();
 
-        if(isObjectFoundInCache) {
-            filenameHash = palanteerStrHash; // And filename is still zero (already known by Palanteer, so similar to a static string)
-        } else {
-            // Get module name
-            PyObject* module = cfn->m_module;
-            if(!module) filename = "builtins";
-            else if(PyUnicode_Check(module)) filename = PyUnicode_AsUTF8(module);
-            else if(PyModule_Check(module)) {
-                filename = PyModule_GetName(module);
-                if(!filename) filename = "<unknown module>";
+            if(isNewFilterOut) {
             }
-            else filename = PyUnicode_AsUTF8(PyObject_Str(module));
+            else if(isObjectFoundInCache) {
+                filenameHash = palanteerStrHash; // And filename is still zero (already known by Palanteer, so similar to a static string)
+            }
+            else {
+                // Get module name
+                PyObject* module = cfn->m_module;
+                if(!module) filename = "builtins";
+                else if(PyUnicode_Check(module)) filename = PyUnicode_AsUTF8(module);
+                else if(PyModule_Check(module)) {
+                    filename = PyModule_GetName(module);
+                    if(!filename) filename = "<unknown module>";
+                }
+                else filename = PyUnicode_AsUTF8(PyObject_Str(module));
 
-            // Update the lookup
-            palanteerStrHash = plPriv::hashString(filename);
-            gLkupMutex.lock();
-            gHashStrLookup.insert(objectFilenameHash, palanteerStrHash); // We let the Palanteer filenameHash set to zero because it is a dynamic string
-            gLkupMutex.unlock();
-            Py_INCREF(arg);
-        }
-        if(palanteerStrHash==gThisModuleNameHash) return; // Filter this module
+                // Update the lookup
+                palanteerStrHash = plPriv::hashString(filename);
+                gGlobMutex.lock();
+                gHashStrLookup.insert(objectFilenameHash, palanteerStrHash); // We let the Palanteer filenameHash set to zero because it is a dynamic string
+                gGlobMutex.unlock();
+                Py_INCREF(arg);
+            }
 
-        // Function/name
-        gLkupMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
-        isObjectFoundInCache = gHashStrLookup.find(objectNameHash, palanteerStrHash);
-        gLkupMutex.unlock();
+            // Check if the module name is filtered
+            gFilterOutClassName.find(palanteerStrHash, isNewFilterOut);
 
-        if(isObjectFoundInCache) {
-            nameHash = palanteerStrHash; // And name is still zero (already known by Palanteer)
-        }
-        else {
-            name = cfn->m_ml->ml_name; // And nameHash is still zero (dynamic string for Palanteer)
-            palanteerStrHash = plPriv::hashString(name);
-            gLkupMutex.lock();
-            gHashStrLookup.insert(objectNameHash, palanteerStrHash); // We let the Palanteer nameHash set to zero because it is a dynamic string
-            gLkupMutex.unlock();
-            Py_INCREF(arg);
-        }
+            // Function/name
+            gGlobMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
+            isObjectFoundInCache = gHashStrLookup.find(objectNameHash, palanteerStrHash);
+            gGlobMutex.unlock();
+
+            if(isObjectFoundInCache) {
+                nameHash = palanteerStrHash; // And name is still zero (already known by Palanteer)
+            }
+            else {
+                name = cfn->m_ml->ml_name; // And nameHash is still zero (dynamic string for Palanteer)
+                palanteerStrHash = plPriv::hashString(name);
+                gGlobMutex.lock();
+                if(isNewFilterOut) gFilterOutObject.insert(objectNameHash, isNewFilterOut);
+                else               gHashStrLookup  .insert(objectNameHash, palanteerStrHash); // We let the Palanteer nameHash set to zero because it is a dynamic string
+                gGlobMutex.unlock();
+                Py_INCREF(arg);
+            }
+        } // End of the function info retrieval (skipped if filtered)
     } // End of case of C function
 
-    else { // Python function (or method)
-        PyCodeObject*     objectCode         = frame->f_code;
-        plPriv::hashStr_t objectNameHash     = pyHashString(objectCode);
-        plPriv::hashStr_t objectFilenameHash = pyHashString(objectCode->co_filename);
-        lineNbr                              = objectCode->co_firstlineno;
 
-        gLkupMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
-        bool isObjectFoundInCache = gHashStrLookup.find(objectNameHash, palanteerStrHash);
-        gLkupMutex.unlock();
+    // Python function
+    else {
+        // Do not get any info if it is filtered. The stack level is enough
+        if(pctc && pctc->stackDepth<pctc->filterOutDepth) {
+            PyCodeObject*     objectCode         = frame->f_code;
+            plPriv::hashStr_t objectNameHash     = pyHashPointer(objectCode);
+            plPriv::hashStr_t objectFilenameHash = pyHashPointer(objectCode->co_filename);
+            lineNbr                              = objectCode->co_firstlineno;
 
-        // Function/name
-        if(isObjectFoundInCache) {
-            nameHash = palanteerStrHash; // And name is still zero (already known by Palanteer)
-            for(int i=0; i<gFunctionsToHideQty; ++i) if(nameHash==gFunctionsToHide[i]) return; // Some filtering
-        }
-        else {
-            PyFrame_FastToLocals(frame); // Update locals for access
-            // Try getting the class name only if the first argument is "self"
-            if(objectCode->co_argcount && !strcmp(PyUnicode_AsUTF8(PyTuple_GET_ITEM(objectCode->co_varnames, 0)), "self")) {
-                PyObject* locals = frame->f_locals;
-                if(locals) {
-                    PyObject* self = PyDict_GetItemString(locals, "self");
-                    if(self) {
-                        PyObject* class_obj = PyObject_GetAttrString(self, "__class__");
-                        if(class_obj) {
-                            PyObject* class_name = PyObject_GetAttrString(class_obj, "__name__");
-                            if(class_name) {  // The name is "<class>.<symbol>"
-                                snprintf(tmpStr, sizeof(tmpStr), "%s.%s", PyUnicode_AsUTF8(class_name), PyUnicode_AsUTF8(objectCode->co_name));
-                                name = tmpStr;
-                                Py_DECREF(class_name);
+            // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
+            gGlobMutex.lock();
+            gFilterOutObject.find(objectNameHash, isNewFilterOut);
+            bool isObjectFoundInCache = (isNewFilterOut==0) && gHashStrLookup.find(objectNameHash, palanteerStrHash);
+            gGlobMutex.unlock();
+
+            // Function/name
+            if(isNewFilterOut) {
+            }
+            else if(isObjectFoundInCache) {
+                nameHash = palanteerStrHash; // And name is still zero (already known by Palanteer)
+            }
+            else {
+                PyFrame_FastToLocals(frame); // Update locals for access
+                // Try getting the class name only if the first argument is "self"
+                if(objectCode->co_argcount && !strcmp(PyUnicode_AsUTF8(PyTuple_GET_ITEM(objectCode->co_varnames, 0)), "self")) {
+                    PyObject* locals = frame->f_locals;
+                    if(locals) {
+                        PyObject* self = PyDict_GetItemString(locals, "self");
+                        if(self) {
+                            PyObject* classObj = PyObject_GetAttrString(self, "__class__");
+                            if(classObj) {
+                                PyObject* classNameObj = PyObject_GetAttrString(classObj, "__name__");
+                                if(classNameObj) {  // The name is "<class>.<symbol>"
+                                    const char* classStr = PyUnicode_AsUTF8(classNameObj);
+                                    // Check if this class is filtered out
+                                    gFilterOutClassName.find(plPriv::hashString(classStr), isNewFilterOut);
+                                    // Build the name
+                                    snprintf(tmpStr, sizeof(tmpStr), "%s.%s", classStr, PyUnicode_AsUTF8(objectCode->co_name));
+                                    name = tmpStr;  // Note: tmpStr shall not be reused before logging the enter/leave event
+                                    Py_DECREF(classNameObj);
+                                }
+                                Py_DECREF(classObj);
                             }
-                            Py_DECREF(class_obj);
                         }
                     }
                 }
+
+                // If the class name was not found, then we just use "<symbol>"
+                if(!name) name = PyUnicode_AsUTF8(objectCode->co_name); // And nameHash is still zero (dynamic string for Palanteer)
+                palanteerStrHash = plPriv::hashString(name);
+
+                // Check if the function shall be filtered out
+                if(!isNewFilterOut) {
+                    gFilterOutFunctionName.find(palanteerStrHash, isNewFilterOut);
+                }
+
+                // Update the lookups
+                gGlobMutex.lock();
+                if(isNewFilterOut) gFilterOutObject.insert(objectNameHash, isNewFilterOut);
+                else               gHashStrLookup  .insert(objectNameHash, palanteerStrHash); // We let the Palanteer nameHash set to zero because it is a dynamic string
+                gGlobMutex.unlock();
+                Py_INCREF(objectCode);
             }
 
-            // If the class name was not found, then we just use "<symbol>"
-            if(!name) {
-                name = PyUnicode_AsUTF8(objectCode->co_name); // And nameHash is still zero (dynamic string for Palanteer)
+            // Module/filename
+            gGlobMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
+            isObjectFoundInCache = gHashStrLookup.find(objectFilenameHash, palanteerStrHash);
+            gGlobMutex.unlock();
+
+            if(isObjectFoundInCache) {
+                filenameHash = palanteerStrHash; // And filename is still zero (already known by Palanteer, so similar to a static string)
+            } else {
+                filename         = PyUnicode_AsUTF8(objectCode->co_filename);
+                palanteerStrHash = plPriv::hashString(filename);
+                gGlobMutex.lock();
+                if(!isNewFilterOut) {
+                    gHashStrLookup.insert(objectFilenameHash, palanteerStrHash); // We let the Palanteer filenameHash set to zero because it is a dynamic string
+                }
+                gGlobMutex.unlock();
+                Py_INCREF(objectCode);
+                Py_INCREF(objectCode->co_filename);
             }
-
-            // Update the lookup
-            palanteerStrHash = plPriv::hashString(name);
-            gLkupMutex.lock();
-            gHashStrLookup.insert(objectNameHash, palanteerStrHash); // We let the Palanteer nameHash set to zero because it is a dynamic string
-            gLkupMutex.unlock();
-            Py_INCREF(objectCode);
-            for(int i=0; i<gFunctionsToHideQty; ++i) if(palanteerStrHash==gFunctionsToHide[i]) return; // Some filtering (after hash update)
-        }
-
-
-        // Module/filename
-        gLkupMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
-        isObjectFoundInCache = gHashStrLookup.find(objectFilenameHash, palanteerStrHash);
-        gLkupMutex.unlock();
-
-        if(isObjectFoundInCache) {
-            filenameHash = palanteerStrHash; // And filename is still zero (already known by Palanteer, so similar to a static string)
-        } else {
-            filename         = PyUnicode_AsUTF8(objectCode->co_filename);
-            palanteerStrHash = plPriv::hashString(filename);
-            gLkupMutex.lock();
-            gHashStrLookup.insert(objectFilenameHash, palanteerStrHash); // We let the Palanteer filenameHash set to zero because it is a dynamic string
-            gLkupMutex.unlock();
-            Py_INCREF(objectCode);
-            Py_INCREF(objectCode->co_filename);
-        }
+        }  // End of the function info retrieval (skipped if filtered)
 
         // Update of the stack per thread (used by the manual calls to get location info)
-        if(isEnter) {
-            plAssert(gThreads.stackDepth<STACK_MAX_DEPTH);
-            gThreads.stack[gThreads.stackDepth].filenameHash = palanteerStrHash; // Save scope information
-            gThreads.stack[gThreads.stackDepth].lineNbr      = lineNbr;
-            if(gThreads.stackDepth<STACK_MAX_DEPTH-1) gThreads.stackDepth++;
+        if(pctc) {
+            if(isEnter) {
+                // Update the filtering depth (before updating the stack depth)
+                if(isNewFilterOut==1 && pctc && pctc->filterOutDepth > pctc->stackDepth) {
+                    pctc->filterOutDepth = pctc->stackDepth;
+                }
+
+                // Update the stack and save scope information
+                plAssert(pctc->stackDepth<STACK_MAX_DEPTH);
+                pctc->stack[pctc->stackDepth].filenameHash = palanteerStrHash;  // Null in case of filtering. Not important because filtered so not used
+                pctc->stack[pctc->stackDepth].lineNbr      = lineNbr;
+                if(pctc->stackDepth<STACK_MAX_DEPTH-1) pctc->stackDepth++;
+            }
+            else if(!isCoroutineSuspended && pctc->stackDepth>0) {
+                // Update the stack
+                pctc->stackDepth--;
+            }
         }
-        else if(gThreads.stackDepth>0) gThreads.stackDepth--;
 
     } // End of case of Python function
 
-    // Log
-    const char* sentFilename = filename? plPriv::getDynString(filename) : 0;
-    const char* sentName     = name?     plPriv::getDynString(name) : 0;
-    uint32_t bi = plPriv::globalCtx.bankAndIndex.fetch_add(1);
-    plPriv::eventLogBase(bi, filenameHash, nameHash, sentFilename, sentName, lineNbr,
-                         PL_FLAG_TYPE_DATA_TIMESTAMP | (isEnter? PL_FLAG_SCOPE_BEGIN : PL_FLAG_SCOPE_END))
-        .vU64 = PL_GET_CLOCK_TICK_FUNC();
-    plPriv::eventCheckOverflow(bi);
+
+    // Log the enter/leave of the function
+    // ===================================
+
+    if(!isCoroutineSuspended && pctc && pctc->stackDepth<pctc->filterOutDepth && isNewFilterOut==0) {
+        // Log the Palanteer event
+        plAssert(filename || filenameHash);
+        plAssert(name     || nameHash, isNewFilterOut, isEnter, calledFromC, pctc->stackDepth, pctc->filterOutDepth);
+        const char* sentFilename = filename? plPriv::getDynString(filename) : 0;
+        const char* sentName     = name?     plPriv::getDynString(name) : 0;
+        uint32_t bi = plPriv::globalCtx.bankAndIndex.fetch_add(1);
+        plPriv::eventLogBase(bi, filenameHash, nameHash, sentFilename, sentName, lineNbr,
+                             PL_FLAG_TYPE_DATA_TIMESTAMP | (isEnter? PL_FLAG_SCOPE_BEGIN : PL_FLAG_SCOPE_END)).vU64 = PL_GET_CLOCK_TICK_FUNC();
+        plPriv::eventCheckOverflow(bi);
+    }
+
+    // Reset the filtering rule if the stack depth is back to the initial filtering depth
+    if(pctc && !isEnter && pctc->filterOutDepth!=STACK_MAX_DEPTH && pctc->stackDepth<=pctc->filterOutDepth) {
+        pctc->filterOutDepth = STACK_MAX_DEPTH;
+    }
+
+    // Co-routine management (second part)
+    // ==================================
+
+    if(isCoroutine) {
+
+        // Automatically set the name of the new coroutine, based on the current function name (async function)
+        if(isCoroutineNew && (nameHash || name)) {
+            // Get the coroutine name structure (t o keep track of the multiple same name, which is a probable case)
+            int coroutineNameIdx = -1;
+            plPriv::hashStr_t coroutineNameHash = nameHash? nameHash : plPriv::hashString(name);
+            gGlobMutex.lock();
+            if(!gCoroutineNameToIdx.find(coroutineNameHash, coroutineNameIdx)) {
+                // Create a new entry
+                if(name && gCoroutineNames.size()<PL_MAX_THREAD_QTY) {
+                    coroutineNameIdx = (int)gCoroutineNames.size();
+                    gCoroutineNameToIdx.insert(coroutineNameHash, coroutineNameIdx);
+                    gCoroutineNames.push_back(CoroutineNaming());
+                    snprintf(gCoroutineNames.back().name, PL_DYN_STRING_MAX_SIZE, "%s", name);
+                }
+            }
+
+            // Declare the virtual thread name
+            if(coroutineNameIdx>=0) {
+                CoroutineNaming& cn = gCoroutineNames[coroutineNameIdx];
+                cn.namingCount += 1;
+                if(cn.namingCount==1) snprintf(tmpStr, sizeof(tmpStr), "Async/%s", cn.name);
+                else                  snprintf(tmpStr, sizeof(tmpStr), "Async/%s %d", cn.name, cn.namingCount);
+                plDeclareVirtualThread((uint32_t)hashedFrame, tmpStr);
+            }
+            gGlobMutex.unlock();
+        }
+
+        if(isCoroutineSuspended) {
+            // Flag this frame as suspended
+            if(!gSuspendedFrames.replace(hashedFrame, 1)) {
+                gSuspendedFrames.insert(hashedFrame, 1);
+            }
+        }
+        // Is it the coroutine top frame?
+        if(!isEnter && gOsThread.currentCoroutineFrame==frame) {
+            // Detach the coroutine
+            gOsThread.currentCoroutineFrame = 0;
+            plAssert(plPriv::threadCtx.id!=plPriv::threadCtx.realId);
+            plDetachVirtualThread(isCoroutineSuspended);
+        }
+    } // End of coroutine management
 }
 
 
@@ -405,30 +588,32 @@ traceCallback(PyObject* Py_UNUSED(self), PyFrameObject* frame, int what, PyObjec
     // The "line" info is overkill for profiling, it is skipped also.
     if(what!=PyTrace_EXCEPTION) return 0;
     if(!PL_IS_ENABLED_())  return 0;
+    if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) return 0;
 
     // Save the error state (this function shall be "transparent")
     PyObject *ptype, *pvalue, *ptraceback;
     PyErr_Fetch(&ptype, &pvalue, &ptraceback);
 
     // Only the bottom of the exception stack is processed
-    if(gThreads.nextExceptionFrame!=frame) {
+    pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
+    if(ctc.nextExceptionFrame!=frame && ctc.stackDepth<ctc.filterOutDepth) {
         // Log a marker with the line number (function is the current scope) and the exception text
         PyObject* exceptionRepr = PyObject_Repr(PyTuple_GET_ITEM(arg, 1)); // Representation of the exception "value"
         char msg[256];
         snprintf(msg, sizeof(msg), "line %d: %s", PyFrame_GetLineNumber(frame), PyUnicode_AsUTF8(exceptionRepr));
         plPriv::hashStr_t palanteerCategoryStrHash, palanteerMsgStrHash, strHash;
 
-        gLkupMutex.lock();
+        gGlobMutex.lock();
         CACHE_STRING("Exception", palanteerCategoryStrHash);
         CACHE_STRING(msg,         palanteerMsgStrHash);
-        gLkupMutex.unlock();
+        gGlobMutex.unlock();
         pyEventLogRaw(palanteerMsgStrHash, palanteerCategoryStrHash, msg, "Exception", 0, PL_FLAG_TYPE_MARKER, PL_GET_CLOCK_TICK_FUNC());
         Py_XDECREF(exceptionRepr);
     }
 
     // Store upper level so that we skip it
-    gThreads.nextExceptionFrame = frame->f_back;
-    gThreads.isBootstrap        = 0;
+    ctc.nextExceptionFrame = frame->f_back;
+    gOsThread.isBootstrap = 0;
 
     // Restore the error state
     if(ptype) PyErr_Restore(ptype, pvalue, ptraceback);
@@ -438,15 +623,6 @@ traceCallback(PyObject* Py_UNUSED(self), PyFrameObject* frame, int what, PyObjec
 
 // Manual instrumentation
 // ======================
-
-#define DATA_LOGGING_HEADER()                                           \
-    if(!PL_IS_ENABLED_()) Py_RETURN_NONE;                               \
-    if(gThreads.stackDepth==0) {                                        \
-        PyErr_SetString(PyExc_TypeError, "Data must be logged inside a scope (root here). Either move in a function or use plBegin/plEnd to create a root scope."); \
-        return 0;                                                       \
-    }                                                                   \
-    ThreadStackElem_t& tc = gThreads.stack[gThreads.stackDepth-1]
-
 
 static PyObject*
 pyPlDeclareThread(PyObject* Py_UNUSED(self), PyObject* args)
@@ -461,9 +637,9 @@ pyPlDeclareThread(PyObject* Py_UNUSED(self), PyObject* args)
     }
 
     plPriv::hashStr_t palanteerStrHash, strHash;
-    gLkupMutex.lock();
+    gGlobMutex.lock();
     CACHE_STRING(name, palanteerStrHash);
-    gLkupMutex.unlock();
+    gGlobMutex.unlock();
 
     // Log
     pyEventLogRaw(plPriv::hashString(""), palanteerStrHash, 0, name, 0, PL_FLAG_TYPE_THREADNAME, 0);
@@ -475,7 +651,15 @@ pyPlDeclareThread(PyObject* Py_UNUSED(self), PyObject* args)
 static PyObject*
 pyPlData(PyObject* Py_UNUSED(self), PyObject* args)
 {
-    DATA_LOGGING_HEADER();
+    if(!PL_IS_ENABLED_()) Py_RETURN_NONE;
+    if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) Py_RETURN_NONE;
+    pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
+    if(ctc.stackDepth==0) {
+        PyErr_SetString(PyExc_TypeError, "Data must be logged inside a scope (root here). Either move in a function or use plBegin/plEnd to create a root scope.");
+        return 0;
+    }
+    if(ctc.stackDepth>=ctc.filterOutDepth) Py_RETURN_NONE; // Filtered
+    ThreadStackElem_t& tc = ctc.stack[ctc.stackDepth-1];
 
     // Parse arguments
     char* name = 0;
@@ -484,9 +668,9 @@ pyPlData(PyObject* Py_UNUSED(self), PyObject* args)
 
     // Get the data name
     plPriv::hashStr_t palanteerStrHash, strHash;
-    gLkupMutex.lock();
+    gGlobMutex.lock();
     CACHE_STRING(name, palanteerStrHash);
-    gLkupMutex.unlock();
+    gGlobMutex.unlock();
 
     // Integer case
     uint64_t valueDataU64;
@@ -518,9 +702,9 @@ pyPlData(PyObject* Py_UNUSED(self), PyObject* args)
     else if(PyUnicode_Check(dataObj)) {
         plPriv::hashStr_t palanteerValueStrHash;
         const char* valueStr = PyUnicode_AsUTF8(dataObj);
-        gLkupMutex.lock();
+        gGlobMutex.lock();
         CACHE_STRING(valueStr, palanteerValueStrHash);
-        gLkupMutex.unlock();
+        gGlobMutex.unlock();
         pyEventLogRawString(tc.filenameHash, palanteerStrHash, 0, name, tc.lineNbr, palanteerValueStrHash, valueStr);
     }
 
@@ -539,16 +723,19 @@ static PyObject*
 pyPlMarker(PyObject* Py_UNUSED(self), PyObject* args)
 {
     if(!PL_IS_ENABLED_()) Py_RETURN_NONE;
+    if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) Py_RETURN_NONE;
+    pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
+    if(ctc.stackDepth>=ctc.filterOutDepth) Py_RETURN_NONE; // Filtered
 
     // Parse arguments
     char* category = 0, *msg = 0;
     if(!PyArg_ParseTuple(args, "ss", &category, &msg)) { Py_RETURN_NONE; }
 
     plPriv::hashStr_t palanteerCategoryStrHash, palanteerMsgStrHash, strHash;
-    gLkupMutex.lock();
+    gGlobMutex.lock();
     CACHE_STRING(category, palanteerCategoryStrHash);
     CACHE_STRING(msg,      palanteerMsgStrHash);
-    gLkupMutex.unlock();
+    gGlobMutex.unlock();
 
     pyEventLogRaw(palanteerMsgStrHash, palanteerCategoryStrHash, msg, category, 0, PL_FLAG_TYPE_MARKER, PL_GET_CLOCK_TICK_FUNC());
 
@@ -560,17 +747,19 @@ static PyObject*
 pyPlLockWait(PyObject* Py_UNUSED(self), PyObject* args)
 {
     if(!PL_IS_ENABLED_()) Py_RETURN_NONE;
+    if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) Py_RETURN_NONE;
+    pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
 
     // Parse arguments
     char* name = 0;
     if(!PyArg_ParseTuple(args, "s", &name)) { Py_RETURN_NONE; }
 
-    if(gWithFunctions && gThreads.stackDepth!=0) {
+    if(gWithFunctions && ctc.stackDepth!=0 && ctc.stackDepth<ctc.filterOutDepth) {
         plPriv::hashStr_t palanteerStrHash, strHash;
-        gLkupMutex.lock();
+        gGlobMutex.lock();
         CACHE_STRING(name, palanteerStrHash);
-        gLkupMutex.unlock();
-        ThreadStackElem_t& tc = gThreads.stack[gThreads.stackDepth-1];
+        gGlobMutex.unlock();
+        ThreadStackElem_t& tc = ctc.stack[ctc.stackDepth-1];
         pyEventLogRaw(tc.filenameHash, palanteerStrHash, 0, name, tc.lineNbr, PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_LOCK_WAIT, PL_GET_CLOCK_TICK_FUNC());
     }
     else {
@@ -591,18 +780,20 @@ static PyObject*
 pyPlLockState(PyObject* Py_UNUSED(self), PyObject* args)
 {
     if(!PL_IS_ENABLED_()) Py_RETURN_NONE;
+    if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) Py_RETURN_NONE;
+    pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
 
     // Parse arguments
     char* name  = 0;
     int   state = 0;
     if(!PyArg_ParseTuple(args, "sp", &name, &state)) { Py_RETURN_NONE; }
 
-    if(gWithFunctions && gThreads.stackDepth!=0) {
+    if(gWithFunctions && ctc.stackDepth!=0 && ctc.stackDepth<ctc.filterOutDepth) {
         plPriv::hashStr_t palanteerStrHash, strHash;
-        gLkupMutex.lock();
+        gGlobMutex.lock();
         CACHE_STRING(name, palanteerStrHash);
-        gLkupMutex.unlock();
-        ThreadStackElem_t& tc = gThreads.stack[gThreads.stackDepth-1];
+        gGlobMutex.unlock();
+        ThreadStackElem_t& tc = ctc.stack[ctc.stackDepth-1];
         pyEventLogRaw(tc.filenameHash, palanteerStrHash, 0, name, tc.lineNbr,
                       state? PL_FLAG_TYPE_LOCK_ACQUIRED : PL_FLAG_TYPE_LOCK_RELEASED, PL_GET_CLOCK_TICK_FUNC());
     }
@@ -623,17 +814,19 @@ static PyObject*
 pyPlLockNotify(PyObject* Py_UNUSED(self), PyObject* args)
 {
     if(!PL_IS_ENABLED_()) Py_RETURN_NONE;
+    if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) Py_RETURN_NONE;
+    pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
 
     // Parse arguments
     char* name = 0;
     if(!PyArg_ParseTuple(args, "s", &name)) { Py_RETURN_NONE; }
 
-    if(gWithFunctions && gThreads.stackDepth!=0) {
+    if(gWithFunctions && ctc.stackDepth!=0 && ctc.stackDepth<ctc.filterOutDepth) {
         plPriv::hashStr_t palanteerStrHash, strHash;
-        gLkupMutex.lock();
+        gGlobMutex.lock();
         CACHE_STRING(name, palanteerStrHash);
-        gLkupMutex.unlock();
-        ThreadStackElem_t& tc = gThreads.stack[gThreads.stackDepth-1];
+        gGlobMutex.unlock();
+        ThreadStackElem_t& tc = ctc.stack[ctc.stackDepth-1];
         pyEventLogRaw(tc.filenameHash, palanteerStrHash, 0, name, tc.lineNbr, PL_FLAG_TYPE_LOCK_NOTIFIED, PL_GET_CLOCK_TICK_FUNC());
     }
     else {
@@ -652,6 +845,9 @@ static PyObject*
 pyPlBegin(PyObject* Py_UNUSED(self), PyObject* args)
 {
     if(!PL_IS_ENABLED_()) Py_RETURN_NONE;
+    if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) Py_RETURN_NONE;
+    pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
+    if(ctc.stackDepth>=ctc.filterOutDepth) Py_RETURN_NONE; // Filtered
 
     // Parse arguments
     char* name = 0;
@@ -671,10 +867,10 @@ pyPlBegin(PyObject* Py_UNUSED(self), PyObject* args)
                   PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC());
 
     // Update the stack
-    plAssert(gThreads.stackDepth<STACK_MAX_DEPTH);
-    gThreads.stack[gThreads.stackDepth].filenameHash = palanteerFilenameStrHash? palanteerFilenameStrHash : plPriv::hashString(filename); // Save scope information
-    gThreads.stack[gThreads.stackDepth].lineNbr = lineNbr; // Save scope information
-    if(gThreads.stackDepth<STACK_MAX_DEPTH-1) gThreads.stackDepth++;
+    plAssert(ctc.stackDepth<STACK_MAX_DEPTH);
+    ctc.stack[ctc.stackDepth].filenameHash = palanteerFilenameStrHash? palanteerFilenameStrHash : plPriv::hashString(filename); // Save scope information
+    ctc.stack[ctc.stackDepth].lineNbr = lineNbr; // Save scope information
+    if(ctc.stackDepth<STACK_MAX_DEPTH-1) ctc.stackDepth++;
     Py_RETURN_NONE;
 }
 
@@ -683,11 +879,15 @@ static PyObject*
 pyPlEnd(PyObject* Py_UNUSED(self), PyObject* args)
 {
     if(!PL_IS_ENABLED_()) Py_RETURN_NONE;
-    if(gThreads.stackDepth<=0) {
+    if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) Py_RETURN_NONE;
+    pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
+    if(ctc.stackDepth>=ctc.filterOutDepth) Py_RETURN_NONE; // Filtered
+
+    if(ctc.stackDepth<=0) {
         PyErr_SetString(PyExc_TypeError, "plEnd is called at the scope root. Check that all plBegin get a corresponding plEnd.");
         return 0;
     }
-    ThreadStackElem_t& tc = gThreads.stack[gThreads.stackDepth-1];
+    ThreadStackElem_t& tc = ctc.stack[ctc.stackDepth-1];
 
     // Parse arguments
     char* name = (char*)"";
@@ -697,15 +897,16 @@ pyPlEnd(PyObject* Py_UNUSED(self), PyObject* args)
     }
 
     plPriv::hashStr_t palanteerStrHash, strHash;
-    gLkupMutex.lock();
+    gGlobMutex.lock();
     CACHE_STRING(name, palanteerStrHash);
-    gLkupMutex.unlock();
+    gGlobMutex.unlock();
 
     // Log
     pyEventLogRaw(tc.filenameHash, palanteerStrHash, 0, name, tc.lineNbr, PL_FLAG_SCOPE_END | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC());
 
     // Update the stack
-    gThreads.stackDepth--;
+    ctc.stackDepth--;
+    if(ctc.filterOutDepth!=STACK_MAX_DEPTH && ctc.filterOutDepth>ctc.stackDepth) ctc.filterOutDepth = STACK_MAX_DEPTH;
 
     Py_RETURN_NONE;
 }
@@ -749,7 +950,6 @@ _profiling_bootstrap_callback(PyObject* self, PyObject* args)
 // CLIs
 // ======
 
-
 void
 genericCliHandler(plCliIo& cio)
 {
@@ -758,7 +958,9 @@ genericCliHandler(plCliIo& cio)
 
     // Get back the name and parameters from cio to build the Python call
     PyObject* cliHandlerObj=0;
+    gGlobMutex.lock();
     bool status = gCliHandlerLookup.find(cio.getCliNameHash(), cliHandlerObj);
+    gGlobMutex.unlock();
     plAssert(status);
     PyObject* argTuple = PyTuple_New(cio.getParamQty());
     for(int i=0; i<cio.getParamQty(); ++i) {
@@ -770,7 +972,7 @@ genericCliHandler(plCliIo& cio)
     }
 
     // Call python (and handle the potential errors and exceptions)
-    PyObject* answerObj = PyEval_CallObject(cliHandlerObj, argTuple);
+    PyObject* answerObj = PyObject_CallObject(cliHandlerObj, argTuple);
 
     // Get the answer
     if(!answerObj) {  // Error: no answer object returned so an exception occured
@@ -830,7 +1032,9 @@ pyPlRegisterCli(PyObject* Py_UNUSED(self), PyObject* args)
     Py_INCREF(cliHandlerObj);
 
     // Register the CLI
+    gGlobMutex.lock();
     gCliHandlerLookup.insert(plPriv::hashString(name), cliHandlerObj);
+    gGlobMutex.unlock();
     plPriv::registerCli(genericCliHandler, name, specParams, description,
                         plPriv::hashString(name), plPriv::hashString(specParams), plPriv::hashString(description));
     Py_RETURN_NONE;
@@ -898,6 +1102,7 @@ _profiling_start(PyObject* Py_UNUSED(self), PyObject* args)
         Py_RETURN_NONE;
     }
     gIsEnabled = true;
+    gCoroutineNames.reserve(PL_MAX_THREAD_QTY);
 
     // Get the parameters
     char* appName=0, *buildName=0, *recordFilename=0, *server_address=0;
@@ -926,6 +1131,13 @@ _profiling_start(PyObject* Py_UNUSED(self), PyObject* args)
         gNewAllocatorRaw.free    = pyWrapFree;
         PyMem_SetAllocator(PYMEM_DOMAIN_RAW, &gNewAllocatorRaw);
     }
+
+    // Fill the filtering hashsets
+    gFilterOutClassName.clear();
+    gFilterOutFunctionName.clear();
+    int i=0; while(gFilterOutClassDb[i])            gFilterOutClassName.insert(gFilterOutClassDb[i++],               1);
+    i=0;     while(gFilterOutFunctionAndBelowDb[i]) gFilterOutFunctionName.insert(gFilterOutFunctionAndBelowDb[i++], 1);
+    i=0;     while(gFilterOutFunctionDb[i])         gFilterOutFunctionName.insert(gFilterOutFunctionDb[i++],         2);
 
     if(recordFilename) plSetFilename(recordFilename);
     plSetServer(server_address, server_port);

@@ -1,6 +1,19 @@
 cmake_minimum_required(VERSION 3.11)
 project(palanteer VERSION 1.0.0 DESCRIPTION "Palanteer")
 
+# Options
+
+# All targets are not required for all usages
+#  * C++ developer who does not plan to script   : only the viewer (as the C++ instrumentation library is a header file). No Python required.
+#  * C++ developer who wants to script only      : only the python scripting package
+#  * Python developer who does not plan to script: the viewer and the python instrumentation package
+#  * Python developer who wants to script only   : the python scripting package and the python instrumentation package
+
+option(PALANTEER_BUILD_VIEWER "Build the Server/Viewer" ON)
+option(PALANTEER_BUILD_CPP_EXAMPLE "Build the C++ example program" ON)
+option(PALANTEER_BUILD_PYTHON_INSTRUMENTATION "Build the python instrumentation" ON)
+option(PALANTEER_BUILD_SERVER_SCRIPTING "Build the python scripting package" ON)
+
 # Policies
 cmake_policy(SET CMP0009 NEW) # For GLOB_RECURSE
 cmake_policy(SET CMP0072 NEW) # For OpenGL (Linux)
@@ -50,23 +63,25 @@ find_package(Threads REQUIRED)
 # Palanteer
 # ==========
 
-# All targets are not required for all usages
-#  * C++ developer who does not plan to script   : only the viewer (as the C++ instrumentation library is a header file). No Python required.
-#  * C++ developer who wants to script only      : only the python scripting package
-#  * Python developer who does not plan to script: the viewer and the python instrumentation package
-#  * Python developer who wants to script only   : the python scripting package and the python instrumentation package
-
 # Build libpalanteer
 add_subdirectory(c++)
 
 # Build the viewer
-add_subdirectory(server/viewer)
+if (PALANTEER_BUILD_VIEWER)
+	add_subdirectory(server/viewer)
+endif()
 
 # Build the C++ example
-add_subdirectory(c++/testprogram)
+if (PALANTEER_BUILD_CPP_EXAMPLE)
+	add_subdirectory(c++/testprogram)
+endif()
 
 # Build the python instrumentation package
-add_subdirectory(python)
+if (PALANTEER_BUILD_PYTHON_INSTRUMENTATION)
+	add_subdirectory(python)
+endif()
 
 # Build the python scripting package
-add_subdirectory(server/scripting)
+if (PALANTEER_BUILD_SERVER_SCRIPTING)
+	add_subdirectory(server/scripting)
+endif()

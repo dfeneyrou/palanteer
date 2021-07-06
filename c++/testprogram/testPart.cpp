@@ -254,7 +254,7 @@ fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<
             // And start it
             plBeginDyn(jobNames[fiber.currentJobId]);
             std::this_thread::sleep_for(std::chrono::milliseconds(globalRandomGenerator.get(10, 30)));
-            plData("Worker Id", workerThreadNbr);
+            plData("Worker Id", workerThreadNbr+1);
             plData("Fiber-job Id", fiber.currentJobId);
 
             // Dice roll: 60% chance to end the job without interruption. Else it will go on the waiting list
