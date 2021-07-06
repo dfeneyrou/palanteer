@@ -63,6 +63,9 @@ find_package(Threads REQUIRED)
 # Palanteer
 # ==========
 
+# Build libpalanteer
+add_subdirectory(c++)
+
 # Build the viewer
 if (PALANTEER_BUILD_VIEWER)
 	add_subdirectory(server/viewer)

@@ -73,16 +73,15 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CUSTOM_FLAGS}")
 # ==============
 file(GLOB_RECURSE ZSTD_SRC  CONFIGURE_DEPENDS  ../external/zstd/*.c ../external/zstd/*.h)
 file(GLOB         IMGUI_SRC CONFIGURE_DEPENDS  ../external/imgui/*.cpp ../external/imgui/*.h)
-file(GLOB         PALANTEER_INSTRU_SRC         ../../c++/palanteer.h)
 file(GLOB         BASE_SRC   CONFIGURE_DEPENDS ../base/*.cpp ../base/*.h)
 file(GLOB         COMMON_SRC CONFIGURE_DEPENDS ../common/*.cpp ../common/*.h)
 file(GLOB         VIEWER_SRC CONFIGURE_DEPENDS ../external/*.h *.cpp *.h)
-set(VIEWER_SRC ${PALANTEER_INSTRU_SRC} ${VIEWER_SRC} ${COMMON_SRC} ${BASE_SRC} ${ZSTD_SRC} ${IMGUI_SRC})
+set(VIEWER_SRC ${VIEWER_SRC} ${COMMON_SRC} ${BASE_SRC} ${ZSTD_SRC} ${IMGUI_SRC})
 
 # Viewer executable
 # =================
 add_executable("palanteer" ${WIN_MAIN} ${VIEWER_SRC})
-target_link_libraries("palanteer" ${PALANTEER_LIBS} Threads::Threads)
+target_link_libraries("palanteer" ${PALANTEER_LIBS} Threads::Threads libpalanteer)
 target_include_directories("palanteer" PRIVATE
   ../external/zstd ../external/zstd/common ../external/zstd/compress ../external/zstd/decompress
   ../external/imgui ../external ../../c++  ../base ../common)

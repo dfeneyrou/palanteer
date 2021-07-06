@@ -50,8 +50,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CUSTOM_FLAGS}")
 # Test program executable
 # =======================
 add_executable            ("testprogram"                    testProgram.cpp testPart.cpp testPart.h)
-target_link_libraries     ("testprogram" ${STACKTRACE_LIBS} Threads::Threads)
-target_include_directories("testprogram" PRIVATE            ../../c++)
+target_link_libraries     ("testprogram" ${STACKTRACE_LIBS} Threads::Threads libpalanteer)
+
 if(NOT CUSTOM_FLAGS MATCHES ".*USE_PL=0.*")
   target_compile_options    ("testprogram" PRIVATE            -DUSE_PL=1)
 endif()
@@ -59,6 +59,6 @@ endif()
 # Test program executable with deactivated Palanteer
 # =======================
 add_executable            ("testprogram_disabled"                    testProgram.cpp testPart.cpp testPart.h)
-target_link_libraries     ("testprogram_disabled" ${STACKTRACE_LIBS} Threads::Threads)
+target_link_libraries     ("testprogram_disabled" ${STACKTRACE_LIBS} Threads::Threads libpalanteer)
 target_include_directories("testprogram_disabled" PRIVATE            ../../c++)
 
