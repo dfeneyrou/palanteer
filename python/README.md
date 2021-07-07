@@ -3,21 +3,10 @@ This folder contains the Python instrumentation module.
 Installation
 ============
 
-Requires that `setuptools` is installed (comes with pip).
+Requires that `setuptools` (comes with pip) and `wheel` Python packages are installed (standard installers).
 
-You can either:
-
-1) Install all `Palanteer` components with CMake (see ./INSTALL.md) <br/>
-   Indeed, this library is part of the global installation (target "python_instrumentation"). <br/>
-   The installation in this case is for the current user only, so that no privilege rights are required.
-
-or
-
-2) Run the command below from this folder: <br/>
-     `python setup.py install --user`    (for current user only) <br/>
-or <br/>
-     `python setup.py install`           (for all users, it requires root privilege on Linux) <br/>
-
+A global `Palanteer` installation is described in ./INSTALL.md . <br/>
+The CMake target for this component is "python_instrumentation"
 
 
 Usage

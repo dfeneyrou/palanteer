@@ -60,5 +60,4 @@ endif()
 # =======================
 add_executable            ("testprogram_disabled"                    testProgram.cpp testPart.cpp testPart.h)
 target_link_libraries     ("testprogram_disabled" ${STACKTRACE_LIBS} Threads::Threads libpalanteer)
-target_include_directories("testprogram_disabled" PRIVATE            ../../c++)
 

@@ -20,13 +20,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import io
 import os
 import sys
-from setuptools import setup, find_packages, Extension
+from   setuptools import setup, find_packages, Extension
+
 
 # Constants
 isDevMode = False  # Enable to speed up development cycles. Shall be False for final installation
-
 
 # Deduce some parameters
 extra_link_args         = []
@@ -57,6 +58,10 @@ classifiers_list = [
     'Topic :: Software Development :: Debuggers'
 ]
 
+# Read the content of the readme file
+with io.open('README.md', encoding='UTF-8') as readmeFile:
+    long_description = readmeFile.read()
+
 
 # Build call
 setup(name="palanteer",
@@ -65,9 +70,11 @@ setup(name="palanteer",
       author_email="dfeneyrou@gmail.com",
       license="MIT",
       description="Palanteer instrumentation library for Python language",
+      long_description=long_description,
+      long_description_content_type='text/markdown',
       classifiers=classifiers_list,
       python_requires=">=3.7",
-      #url="",
+      url="https://github.com/dfeneyrou/palanteer",
       packages=find_packages(),
       ext_modules=[
           Extension('palanteer._cextension',

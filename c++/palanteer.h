@@ -2861,7 +2861,7 @@ namespace plPriv {
                 if     (src.threadId!=PL_CSWITCH_CORE_NONE) dst.nameIdx = 0xFFFFFFFF; // Internal thread
                 else if(src.extra==0)                       dst.nameIdx = 0xFFFFFFFE; // Idle
                 else {                                                                // External thread
-                    // @#TODO P5 Retrieve the name of the associated process
+                    // @#TODO Retrieve the name of the associated process
                     hashStr_t strNameHash = hashString("External"); // Runtime hash (as the string is dynamic, no choice)
                     PL_PRIV_PROCESS_STRING(strNameHash, "External", dst.nameIdx);
                 }

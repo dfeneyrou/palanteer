@@ -14,16 +14,16 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
+import io
 import os
 import sys
 import glob
-from setuptools import setup, find_packages, Extension
+from   setuptools import setup, find_packages, Extension
+
 
 # Constants
 isDevMode = False  # Enable to speed up development cycles. Shall be False for final installation
 withStackTrace = False
-
 
 # Deduce some parameters
 np = os.path.normpath
@@ -74,6 +74,10 @@ classifiers_list = [
     'Topic :: Software Development :: Testing'
 ]
 
+# Read the content of the readme file
+with io.open('../../README.md', encoding='UTF-8') as readmeFile:
+    long_description = readmeFile.read()
+
 
 # Build call
 setup(name="palanteer_scripting",
@@ -82,9 +86,11 @@ setup(name="palanteer_scripting",
       author_email="dfeneyrou@gmail.com",
       license="AGPLv3+",
       description="Palanteer scripting module",
+      long_description=long_description,
+      long_description_content_type='text/markdown',
       classifiers=classifiers_list,
       python_requires=">=3.7",
-      #url="",
+      url="https://github.com/dfeneyrou/palanteer",
       packages=find_packages(),
       ext_modules=[
           Extension('palanteer_scripting._cextension',

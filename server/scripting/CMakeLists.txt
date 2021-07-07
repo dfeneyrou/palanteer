@@ -2,7 +2,6 @@
 # Palanteer scripting module
 # ============================
 
-
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
 # Some definitions
@@ -25,10 +24,17 @@ configure_file(${SETUP_PY_IN} ${SETUP_PY})
 # Command which build and install the library.
 # Officially, it creates an artificial "dependency_timestamp" file, which is easier to track than the real output of the build
 add_custom_command(OUTPUT ${FAKE_OUTPUT}
-  COMMAND ${Python3_EXECUTABLE} ${SETUP_PY} install --user
+  COMMAND ${Python3_EXECUTABLE} ${SETUP_PY} bdist_wheel
   COMMAND ${CMAKE_COMMAND} -E touch ${FAKE_OUTPUT}
   DEPENDS ${DEPS}
   )
 
 # Add the target
 add_custom_target(scripting ALL DEPENDS ${FAKE_OUTPUT})
+
+# Add the installation command
+if(WIN32)
+  install(CODE "execute_process(COMMAND ${CMAKE_SOURCE_DIR}/cmake/pip_install_whl_package.bat ${Python3_EXECUTABLE} \"${CMAKE_CURRENT_BINARY_DIR}\")")
+else(WIN32)
+  install(CODE "execute_process(COMMAND ${CMAKE_SOURCE_DIR}/cmake/pip_install_whl_package.sh ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR})")
+endif(WIN32)

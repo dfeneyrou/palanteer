@@ -502,34 +502,21 @@ The exaustive list is:
 
 **CMake installs the Python modules locally, just for my user. I want it to be for all users**
 
-Indeed, CMake installation is local so that there is no need for administrator privilege during standard build.
-
-To install it for all users, just do manually what CMake is doing but:
-  - as root / administrator
-  - without the "--user" flag at the end of the installation command
-
-For Linux, from the `Palanteer` root folder:
+The installation of the Python modules by `cmake` is done with
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
-cd python
-sudo python3 setup.py install
-cd ../server/scripting
-sudo python3 setup.py install
+pip install <wheel package.whl>
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For Windows, from the `Palanteer` root folder, in an "administrator console":
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
-cd python
-python setup.py install
-cd ..\server\scripting
-python setup.py install
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+If the user has the privileges to do so (i.e. root or administrator), `pip` installs the package for all users. Else locally.
+
+The built wheel package location is displayed in the make output.
 
 **Automatic logging really slows down my program, how can I improve this?**
 
 There is at least 2 things to try:
- 1. Automatic instrumentation logs all builtin functions, usually implemented in C, like `print`, `list.append`, etc... <br/>
-    A tight loop using such functions during some time can stress the logging ressources (CPU and network). <br/>
-    If this information is not critical, disabling the C functions instrumentation can help, with `with_c_calls=False` in the call to `plInitAndStart`.
+ 1. Maybe the automatic instrumentation of C functions is enabled (`with_c_calls=False` in the call to `plInitAndStart` or usage of the `-c` option in the command line).
+    As they are widely used by builtins (`print`, `list.append`...), they may lead to heavy logging rate.
+    If this information is not critical, disabling the C functions instrumentation can help.
  1. To get a full control and very low overhead, just disable the automatic logging of functions with `with_functions=False` in the call to `plInitAndStart`.
     Then manually instrument your program on the interesting locations with `plBegin`, `plEnd` and `@plFunction`.
 
