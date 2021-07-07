@@ -43,13 +43,16 @@ endif(WIN32)
 add_definitions(-DPL_EXPORT=1) # Required to get infos from the instrumentation library
 add_definitions(-DUSE_PL=1 -DPL_NOCONTROL=1 -DPL_NOEVENT=1) # Optional: activates Palanteer, at least for the assertions
 
-# Additional checks in debug mode
+# Additional flags depending on the build mode
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_compile_options(-DWITH_GL_CHECK=1 -DPL_NO_COMPRESSION)
 endif(CMAKE_BUILD_TYPE STREQUAL "Debug")
 if(CMAKE_BUILD_TYPE STREQUAL "Asan")
   add_compile_options(-DWITH_GL_CHECK=1 -DPL_NO_COMPRESSION)
 endif(CMAKE_BUILD_TYPE STREQUAL "Asan")
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  add_compile_options(-DPL_GROUP_BSVEC=0)  # Force deactivation of array bound check
+endif(CMAKE_BUILD_TYPE STREQUAL "Release")
 
 if(MSVC)
   # I gave up trying to have a nice way to force /W4 and /GR-

@@ -840,20 +840,20 @@ The results for Linux (Debian 10 in a VirtualBox VM with gcc) are:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
 > ./bin/testprogram perf
 Mode 'connected'
-Collection duration : 20.36 ms for 1000000 events
-Collection unit cost: 20 ns
-Processing duration : 383.57 ms (w/ transmission and server processing)
-Processing rate     : 2.607 million event/s
+Collection duration : 19.12 ms for 1000000 events
+Collection unit cost: 19 ns
+Processing duration : 285.86 ms (w/ transmission and server processing)
+Processing rate     : 3.498 million event/s
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The results for Windows 10 (with MSVC 2019) are:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
 λ bin\testprogram.exe perf
 Mode 'connected'
-Collection duration : 26.74 ms for 1000000 events
-Collection unit cost: 27 ns
-Processing duration : 259.98 ms (w/ transmission and server processing)
-Processing rate     : 3.846 million event/s
+Collection duration : 22.95 ms for 1000000 events
+Collection unit cost: 23 ns
+Processing duration : 240.71 ms (w/ transmission and server processing)
+Processing rate     : 4.154 million event/s
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! note Synthesis
@@ -867,8 +867,8 @@ Processing rate     : 3.846 million event/s
     }
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     - We see that the bottleneck is clearly the server side, by a factor 10
-    - The event logging cost is roughly 30% higher on Windows than on Linux
-    - The full processing is 50% faster on Windows than on Linux, but this is probably due to the lack of CPU on Linux virtual machine (software GL renderer taking at least 1 CPU)
+    - The event logging unit cost is roughly 20% higher on Windows than on Linux
+    - The full processing is 20% faster on Windows than on Linux, but this is probably due to the test setup which lacks CPU power in the Linux VM (software GL renderer taking at least 1 CPU)
 
 !!! warning Important
    In case of running out of instrumentation resources, namely free space in event collection buffer or dynamic string from the pre-allocated pool,

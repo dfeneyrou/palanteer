@@ -31,7 +31,7 @@ r = "../"
 src_list = [r+"base/bsString.cpp", r+"base/bsOsLinux.cpp", r+"base/bsOsWindows.cpp"] + \
     glob.glob(r+"common/*.cpp") + glob.glob("palanteer_scripting/_cextension/*.cpp")
 extra_link_args         = []
-extra_compilation_flags = ["-DUSE_PL=1", "-DPL_EXPORT=1", "-DBS_NO_GRAPHIC"] #, "-DPL_NOCONTROL=1", "-DPL_NOEVENT=1",
+extra_compilation_flags = ["-DUSE_PL=1", "-DPL_EXPORT=1", "-DBS_NO_GRAPHIC", "-DPL_NOCONTROL=1", "-DPL_NOEVENT=1"]
 extra_compilation_flags.extend(["-I",  np(r+"../c++"), "-I", np(r+"base"), "-I", np(r+"common")])
 extra_compilation_flags.extend(["-I", np(r+"external/zstd"), "-I", np(r+"external/zstd/common"), "-I", np(r+"external/zstd/compress"), "-I", np(r+"external/zstd/decompress")])
 for folder in ["common", "compress", "decompress"]:
@@ -45,6 +45,8 @@ if isDevMode:
         extra_link_args.append('/DEBUG')
     else:
         extra_compilation_flags.append("-O0")
+else:
+    extra_compilation_flags.append("-DPL_GROUP_BSVEC=0")  # Force deactivation of array bound check
 
 if withStackTrace:
     extra_compilation_flags.append("-DPL_IMPL_STACKTRACE=1")
