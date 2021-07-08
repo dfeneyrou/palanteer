@@ -1,7 +1,7 @@
 Global installation
 ===================
 
-## Clone the GIT repository, if not already done
+## Clone the GIT repository
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
 git clone https://github.com/dfeneyrou/palanteer
@@ -23,7 +23,7 @@ make -j$(nproc) install
 
 Output:
   - `./bin/palanter` (viewer)
-  - `./bin/testprogram` (example program)
+  - `./bin/testprogram` (C++ example program)
   - the installation of the Python module `palanteer` (Python instrumentation)
   - the installation of the Python module `palanteer_scripting` (scripting module)
 
@@ -42,7 +42,7 @@ nmake install
 
 Output:
   - `bin\palanter.exe` (viewer)
-  - `bin\testprogram.exe` (example program)
+  - `bin\testprogram.exe` (C++ example program)
   - the installation of the Python module `palanteer` (Python instrumentation)
   - the installation of the Python module `palanteer_scripting` (scripting module)
 
