@@ -1257,7 +1257,7 @@ public:
 namespace plPriv {
 
     // Event structure for immediate storage in buffer
-    // Max size is 7*8= 56 bytes on 64 bits,  8*4=32 bytes on 32 bits arch
+    // Max size is 8*8= 64 bytes on 64 bits,  9*4=36 bytes on 32 bits arch
     struct EventInt {
         hashStr_t   filenameHash;
         hashStr_t   nameHash;
@@ -1274,8 +1274,10 @@ namespace plPriv {
             uint64_t vU64;
             float    vFloat;
             double   vDouble;
-            plString_t vString;
+            plString_t vString;  // Contains 1 pointer and 1 hashStr_t
         };
+        uint32_t magic;  // Used to detect that the event writing is really done
+        // For 64bits arch, an additional uint32_t padding is implicitely added
     };
 
     // Event collection service context
@@ -1286,7 +1288,7 @@ namespace plPriv {
     struct GlobalContext_t {
         GlobalContext_t(int dynStringQty) : bankAndIndex(0), nextThreadId(0), isBufferSaturated(0), isDynStringPoolEmpty(0),
                                             dynStringPool(dynStringQty, &isDynStringPoolEmpty) { }
-        alignas(64) std::atomic<uint32_t> bankAndIndex = { 0 }; // Force this often used (R/W) atomic in its own cache line (64 is conservative) for performance reasons
+        alignas(64) std::atomic<uint32_t> bankAndIndex = { 0 }; // Force this oftently used (R/W) atomic in its own cache line (64 is conservative) for performance reasons
         alignas(64) std::atomic<uint32_t> nextThreadId = { 0 };
         EventInt* collectBuffers[2]       = { 0, 0 };
         bool     enabled                  = false;
@@ -1392,8 +1394,13 @@ namespace plPriv {
         return allocStr;
     }
 
+    // Some masks
+    constexpr uint32_t EVTBUFFER_MASK_INDEX = 0x00FFFFFF;  // Event index in the current buffer bank
+    constexpr uint32_t EVTBUFFER_MASK_MAGIC = 0x7F000000;  // Magic to ensure that the event is fully written
+    constexpr uint32_t EVTBUFFER_MASK_BANK  = 0x80000000;  // Bank index
+
     inline EventInt& eventLogBase(uint32_t bi, hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_, int lineNbr_, int flags_) {
-        EventInt& e = globalCtx.collectBuffers[bi>>31][bi&0x7FFFFFFF];
+        EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
         e.filenameHash = filenameHash_;
         e.nameHash     = nameHash_;
         e.filename     = filename_;
@@ -1405,9 +1412,9 @@ namespace plPriv {
     }
 
     inline void eventCheckOverflow(uint32_t bi) {
-        if((int)(bi&0x7FFFFFFF)>=globalCtx.collectBufferMaxEventQty) {
-            while((int)(globalCtx.bankAndIndex.load()&0x7FFFFFFF)>=globalCtx.collectBufferMaxEventQty) {
-                globalCtx.isBufferSaturated.store(1); std::this_thread::yield(); /* Busy loop */
+        if((int)(bi&EVTBUFFER_MASK_INDEX)>=globalCtx.collectBufferMaxEventQty) {
+            while((int)(globalCtx.bankAndIndex.load()&EVTBUFFER_MASK_INDEX)>=globalCtx.collectBufferMaxEventQty) {
+                globalCtx.isBufferSaturated.store(1); std::this_thread::yield();
             }
         }
     }
@@ -1415,7 +1422,9 @@ namespace plPriv {
     inline void eventLogRaw(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                             int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, flags_).vU64 = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, flags_);
+        e.vU64  = v;
+        e.magic = bi;  // Contains the unique magic value that proves that the event is written
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1423,14 +1432,18 @@ namespace plPriv {
                                    int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
         const char* allocStr = getDynString(name_);
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, 0, filename_, allocStr, lineNbr_, flags_).vU64 = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, 0, filename_, allocStr, lineNbr_, flags_);
+        e.vU64  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogRawDynName(hashStr_t filenameHash_, const char* filename_, plString_t name_,
                                    int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, name_.hash? name_.hash:1, filename_, name_.value, lineNbr_, flags_).vU64 = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, name_.hash? name_.hash:1, filename_, name_.value, lineNbr_, flags_);
+        e.vU64  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1438,7 +1451,9 @@ namespace plPriv {
                                    int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
         const char* allocStr = getDynString(filename_);
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, 0, nameHash_? nameHash_:1, allocStr, name_, lineNbr_, flags_).vU64 = v;
+        EventInt& e = eventLogBase(bi, 0, nameHash_? nameHash_:1, allocStr, name_, lineNbr_, flags_);
+        e.vU64  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1450,14 +1465,18 @@ namespace plPriv {
         const char* allocStr = getDynString(""); // We know exactly the allocated size for this pointer
         snprintf((char*)allocStr, PL_DYN_STRING_MAX_SIZE, format_, args...);
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, 0, nameHash_? nameHash_:1, allocStr, name_, lineNbr_, flags_).vU64 = v;
+        EventInt& e = eventLogBase(bi, 0, nameHash_? nameHash_:1, allocStr, name_, lineNbr_, flags_);
+        e.vU64  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogRawDynFile(hashStr_t nameHash_, plString_t filename_,const char* name_,
                                    int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filename_.hash? filename_.hash:1, nameHash_? nameHash_:1, filename_.value, name_, lineNbr_, flags_).vU64 = v;
+        EventInt& e = eventLogBase(bi, filename_.hash? filename_.hash:1, nameHash_? nameHash_:1, filename_.value, name_, lineNbr_, flags_);
+        e.vU64  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1468,13 +1487,19 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), PL_EXTERNAL_STRINGS?0:"", PL_EXTERNAL_STRINGS?0:"", 0, PL_FLAG_TYPE_ALLOC_PART);
         e.extra = size;
         e.vU64  = (uint64_t)ptr;
+        e.magic = bi;
         // Second part: location name and date
         ThreadContext_t* tCtx = &threadCtx;
         bi = globalCtx.bankAndIndex.fetch_add(1);
-        if(tCtx->memLocQty==0) eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), "", "", 0, PL_FLAG_TYPE_ALLOC).vS64 = PL_GET_CLOCK_TICK_FUNC();
-        else {
+        if(tCtx->memLocQty==0) {
+            EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), "", "", 0, PL_FLAG_TYPE_ALLOC);
+            e2.vS64  = PL_GET_CLOCK_TICK_FUNC();
+            e2.magic = bi;
+        } else {
             const MemLocation& ml = tCtx->memLocStack[tCtx->memLocQty-1];
-            eventLogBase(bi, PL_STRINGHASH(""), ml.memHash, "", ml.memStr, 0, PL_FLAG_TYPE_ALLOC).vS64 = PL_GET_CLOCK_TICK_FUNC();
+            EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), ml.memHash, "", ml.memStr, 0, PL_FLAG_TYPE_ALLOC);
+            e2.vS64  = PL_GET_CLOCK_TICK_FUNC();
+            e2.magic = bi;
         }
         eventCheckOverflow(bi);
     }
@@ -1486,13 +1511,19 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), PL_EXTERNAL_STRINGS?0:"", PL_EXTERNAL_STRINGS?0:"", 0, PL_FLAG_TYPE_DEALLOC_PART);
         e.extra = 0;
         e.vU64  = (uint64_t)ptr;
+        e.magic = bi;
         // Second part: location name and date
         ThreadContext_t* tCtx = &threadCtx;
         bi = globalCtx.bankAndIndex.fetch_add(1);
-        if(tCtx->memLocQty==0) eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), "", "", 0, PL_FLAG_TYPE_DEALLOC).vS64 = PL_GET_CLOCK_TICK_FUNC();
-        else {
+        if(tCtx->memLocQty==0) {
+            EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), "", "", 0, PL_FLAG_TYPE_DEALLOC);
+            e2.vS64  = PL_GET_CLOCK_TICK_FUNC();
+            e2.magic = bi;
+        } else {
             const MemLocation& ml = tCtx->memLocStack[tCtx->memLocQty-1];
-            eventLogBase(bi, PL_STRINGHASH(""), ml.memHash, "", ml.memStr, 0,PL_FLAG_TYPE_DEALLOC).vS64 = PL_GET_CLOCK_TICK_FUNC();
+            EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), ml.memHash, "", ml.memStr, 0,PL_FLAG_TYPE_DEALLOC);
+            e2.vS64  = PL_GET_CLOCK_TICK_FUNC();
+            e2.magic = bi;
         }
         eventCheckOverflow(bi);
     }
@@ -1502,7 +1533,7 @@ namespace plPriv {
     // Internal process: threadId!=PL_CSWITCH_CORE_NONE and sysThreadID=N/A
     inline void eventLogCSwitch(int threadId_, int sysThreadId_, int oldCoreId_, int newCoreId_, int64_t timestamp_) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        EventInt& e = globalCtx.collectBuffers[bi>>31][bi&0x7FFFFFFF];
+        EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
         e.filenameHash = PL_STRINGHASH("");
         e.nameHash     = PL_STRINGHASH("");
         e.filename     = "";
@@ -1512,62 +1543,79 @@ namespace plPriv {
         e.flags        = PL_FLAG_TYPE_CSWITCH;
         e.extra        = sysThreadId_;
         e.vS64         = timestamp_;
+        e.magic        = bi;  // Contains the unique magic value that proves that the event is written
         eventCheckOverflow(bi);
     }
 
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, int32_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_S32).vInt = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_S32);
+        e.vInt  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, uint32_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U32).vU32 = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U32);
+        e.vU32  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, int64_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64).vS64 = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64);
+        e.vS64  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, uint64_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64).vU64 = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64);
+        e.vU64  = v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, float v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_FLOAT).vFloat = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_FLOAT);
+        e.vFloat = v;
+        e.magic  = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, double v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_DOUBLE).vDouble = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_DOUBLE);
+        e.vDouble = v;
+        e.magic   = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, void* v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64).vU64 = (uintptr_t)v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64);
+        e.vU64  = (uintptr_t)v;
+        e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, const plString_t& v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_STRING).vString = v;
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_STRING);
+        e.vString = v;
+        e.magic   = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1578,6 +1626,7 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_STRING);
         e.vString.hash  = 0;
         e.vString.value = allocStr;
+        e.magic         = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -2219,6 +2268,7 @@ namespace plPriv {
         EventInt*     allocCollectBuffer = 0;
         FlatHashTable<uint32_t> lkupStringToIndex;
         uint32_t      stringUniqueId = 0;
+        uint32_t      magic = 1;
         double        maxSendingLatencyNs = 100000000.;
         // Communication buffers
 #if PL_NOCONTROL==0
@@ -2813,7 +2863,7 @@ namespace plPriv {
         uint64_t dateTick =  PL_GET_CLOCK_TICK_FUNC();
         if(!doForce &&
            ic.tickToNs*(dateTick-ic.lastSentEventBufferTick)<ic.maxSendingLatencyNs &&
-           (int)(globalCtx.bankAndIndex.load()&0x7FFFFFFF)<globalCtx.collectBufferMaxEventQty/8 &&
+           (int)(globalCtx.bankAndIndex.load()&EVTBUFFER_MASK_INDEX)<globalCtx.collectBufferMaxEventQty/8 &&
            globalCtx.dynStringPool.getUsed()<globalCtx.dynStringPool.getSize()/8) {
             plgEnd(PL_VERBOSE, "collectEvents");
             return false; // No need to recollect another time with short loop
@@ -2824,7 +2874,8 @@ namespace plPriv {
         // The destination buffer is the same as the source buffer, shifted by 1 input event. This ok because the collection buffers
         //   are shifted by 1 event vs the allocation, in order to allow this. This is memory efficient, cache friendly and safe as
         //   the output event is smaller than the input one
-        uint32_t eventQty         = globalCtx.prevBankAndIndex&0x7FFFFFFF;
+        uint32_t eventQty         = globalCtx.prevBankAndIndex&EVTBUFFER_MASK_INDEX;
+        uint32_t magic            = globalCtx.prevBankAndIndex&EVTBUFFER_MASK_MAGIC;
         uint8_t* srcBuffer        = (uint8_t*)(globalCtx.collectBuffers[(globalCtx.prevBankAndIndex>>31)&1]);
         uint8_t* dstBuffer        = srcBuffer-sizeof(EventInt); // Ok, as allocation is shifted accordingly
         uint32_t srcByteToCopyQty = eventQty*sizeof(EventInt);
@@ -2846,6 +2897,12 @@ namespace plPriv {
             // There is no overlap thanks to the src/dst buffer start shift and smaller size of EventExt
             const EventInt& src = ((EventInt*)srcBuffer)[evtIdx];
             EventExt&       dst = ((EventExt*)(dstBuffer+8))[evtIdx]; // 8B header offset, the header will be filled before sending
+
+            // Check the magic
+            if((src.magic&EVTBUFFER_MASK_MAGIC)!=magic) {
+                volatile const EventInt& waitSrc = ((EventInt*)srcBuffer)[evtIdx];
+                while((waitSrc.magic&EVTBUFFER_MASK_MAGIC)!=magic) std::this_thread::yield();
+            }
 
             // Memory case (special because many infos to fit)
             if(src.flags==PL_FLAG_TYPE_ALLOC_PART || src.flags==PL_FLAG_TYPE_DEALLOC_PART) {
@@ -2871,7 +2928,7 @@ namespace plPriv {
                 { // Filename processing
                     hashStr_t strHash = src.filenameHash;
                     bool  isDynString = (strHash==0);
-                    if(isDynString) strHash = hashString(src.filename); // Runtime hash (as the string is dynamic, no choice) @#CRASH seg fault here once.
+                    if(isDynString) strHash = hashString(src.filename); // Runtime hash (as the string is dynamic, no choice)
                     PL_PRIV_PROCESS_STRING(strHash, src.filename, dst.filenameIdx);
                     if(isDynString) globalCtx.dynStringPool.release((DynString_t*)src.filename);
                 }
@@ -2908,9 +2965,10 @@ namespace plPriv {
         sendEvents (eventQty, dstBuffer);  // Event buffer is sent even without events. No event is an information by itself ("a collection loop was done")
         if(eventQty || stringQty) plgEnd(PL_VERBOSE, "sending scopes");
 
-        // Swap the banks
+        // Swap the banks: Toggle the bank bit + put the next magic + reset the index
         std::atomic<uint32_t>& bi = globalCtx.bankAndIndex;
-        globalCtx.prevBankAndIndex = bi.exchange((bi.load()^0x80000000)&0x80000000); // Keep only toggled last bit
+        uint32_t initValue = ((bi.load()^EVTBUFFER_MASK_BANK)&EVTBUFFER_MASK_BANK) | (((ic.magic++)&0x7F)<<24);
+        globalCtx.prevBankAndIndex = bi.exchange(initValue);
 
         // Some saturation are detected?
         int isSaturated = globalCtx.isBufferSaturated.exchange(0);
@@ -3766,6 +3824,9 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
 
     // Allocate the 2 collection banks (in one chunk, with a slight shift for a more efficient collectEvents())
     plPriv::globalCtx.collectBufferMaxEventQty = PL_IMPL_COLLECTION_BUFFER_BYTE_QTY/sizeof(plPriv::EventInt);
+#if PL_NOEVENT==0
+    plAssert((uint32_t)plPriv::globalCtx.collectBufferMaxEventQty<plPriv::EVTBUFFER_MASK_INDEX, "The collection buffer is too large");
+#endif
     const int realBufferEventQty = plPriv::globalCtx.collectBufferMaxEventQty + (1+PL_MAX_THREAD_QTY)+64; // 64=margin for the collection thread
     ic.allocCollectBuffer = new plPriv::EventInt[2*realBufferEventQty];
     memset(ic.allocCollectBuffer, 0, 2*realBufferEventQty*sizeof(plPriv::EventInt));
