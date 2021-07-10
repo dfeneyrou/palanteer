@@ -746,7 +746,7 @@ vwMain::drawErrorMsg(void)
 
     if(!isOneWindowOpen && !_safeErrorMsg.msg.empty()) {
         _safeErrorMsg.msg.clear(); // Unblocks the processing of other inter-thread messages
-        plAssert(_actionMode==ERROR_DISPLAY);
+        plAssert(_actionMode==ERROR_DISPLAY, _actionMode);
         _actionMode = READY;
         plData("Action mode", plMakeString("Ready"));
     }
@@ -1000,10 +1000,10 @@ vwMain::draw(void)
     }
 
     // End a record
-    MsgRecord* msg = 0;
-    if(_actionMode==READY && (msg=_msgRecordEnded.getReceivedMsg())) {
+    bool* isEndedRecordOkPtr = 0;
+    if(_actionMode==READY && (isEndedRecordOkPtr=_msgRecordEnded.getReceivedMsg())) {
         plData("Action mode", plMakeString("End of record"));
-        (void)msg; // Only the presence of the msg is important
+        bool isEndedRecordOk = *isEndedRecordOkPtr;
         plAssert(_underRecordRecIdx>=0);
         bsString recordPath = _cmRecordInfos[_underRecordAppIdx].records[_underRecordRecIdx].path;
         updateRecordList(); // Populate with updated record list
@@ -1024,6 +1024,10 @@ vwMain::draw(void)
                 for(RecordInfos& ri : _cmRecordInfos[appIdx].records)
                     if(ri.nickname[0]==0 && --keepOnlyLastRecordQty<0) _recordsToDelete.push_back(ri.path);
             }
+        }
+        // Display an error message if needed
+        if(!isEndedRecordOk) {
+            notifyErrorForDisplay(ERROR_GENERIC, bsString("The recording was interrupted due to detected stream data corruption."));
         }
         plData("Action mode", plMakeString("Ready"));
     }
@@ -1220,10 +1224,10 @@ vwMain::notifyNewString(const bsString& newString, u64 hash)
 }
 
 
-void
+bool
 vwMain::notifyNewEvents(plPriv::EventExt* events, int eventQty)
 {
-    _recording->storeNewEvents(events, eventQty);
+    return _recording->storeNewEvents(events, eventQty);
 }
 
 
@@ -1244,7 +1248,7 @@ vwMain::createDeltaRecord(void)
 
 // Called by client reception thread
 void
-vwMain::notifyRecordEnded(void)
+vwMain::notifyRecordEnded(bool isRecordOk)
 {
     plData("Subaction", plMakeString("Notif record ended"));
     // Stop the recording
@@ -1253,9 +1257,13 @@ vwMain::notifyRecordEnded(void)
     // Request consecutive load after end of record
     _msgRecordLoad.t1GetFreeMsg()->recordPath = _recording->getRecordPath(); // The path of the last recorded record
 
-    // Send
-    _msgRecordEnded.t1Send(); // End record message (no parameter)
-    _msgRecordLoad.t1Send();  // Send load request
+     // Send the end record message, with the status as a parameter
+    *(_msgRecordEnded.t1GetFreeMsg()) = isRecordOk;
+    _msgRecordEnded.t1Send();
+
+    if(isRecordOk) {
+        _msgRecordLoad.t1Send();  // Send load request
+    }
     dirty();
 }
 

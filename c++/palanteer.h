@@ -3563,6 +3563,13 @@ namespace plPriv {
 
         } // End of reception loop
 
+        // In case of server connection failure, the program shall be started anyway
+        if(!ic.rxIsStarted) {
+            std::lock_guard<std::mutex> lk(ic.threadInitMx);
+            ic.rxIsStarted = true;
+            ic.threadInitCv.notify_one();
+        }
+
         plgMarker(PL_VERBOSE, "threading", "End of Palanteer reception loop");
     }
 

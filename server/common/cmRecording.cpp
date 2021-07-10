@@ -1107,7 +1107,7 @@ cmRecording::doPauseStoring(bool state)
 }
 
 
-void
+bool
 cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
 {
     plScope("storeNewEvents");
@@ -1173,6 +1173,22 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
         // Core event case (stop processing if it concerns an external process, else continue for the ctx switch processing)
         if(eType==PL_FLAG_TYPE_CSWITCH) {
             if(!processCoreUsageEvent(evtx)) continue;
+        }
+
+        // String integrity check (data corruption). Should never happen with "good" client.
+        if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {  // 1st part of memory events do not use strings
+            // Check that nameIdx is properly declared
+            if(evtx.nameIdx>=(u32)_recStrings.size()) {
+                return false; // Means corruption
+            }
+            // Check that filenameIdx is properly declared
+            if(eType!=PL_FLAG_TYPE_CSWITCH && eType!=PL_FLAG_TYPE_SOFTIRQ && evtx.filenameIdx>=(u32)_recStrings.size()) {
+                return false; // Means corruption
+            }
+            // Check that the string data value is properly declared
+            if(eType==PL_FLAG_TYPE_DATA_STRING && evtx.vStringIdx>=(u32)_recStrings.size()) {
+                return false; // Means corruption
+            }
         }
 
         // Get the associated thread context
@@ -1330,6 +1346,8 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
         }
 
     } // End of loop on events
+
+    return true;
 }
 
 

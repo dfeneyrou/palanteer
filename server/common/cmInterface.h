@@ -38,14 +38,17 @@ class cmInterface {
 #endif
         = 0;
 
+    // Recording pipeline readiness
+    virtual bool isRecordProcessingAvailable(void) const = 0;
+
     // Notifications for recording and remote control
     virtual bool notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeNsOrigin, double tickToNs,
                                      bool areStringsExternal, bool isStringHashShort, bool isControlEnabled) = 0;
-    virtual void notifyRecordEnded(void) = 0;
+    virtual void notifyRecordEnded(bool isRecordOk) = 0;
     virtual void notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx) = 0;
     virtual void notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg) = 0;
     virtual void notifyNewString(const bsString& newString, u64 hash) = 0;
-    virtual void notifyNewEvents(plPriv::EventExt* events, int eventQty) = 0;
+    virtual bool notifyNewEvents(plPriv::EventExt* events, int eventQty) = 0;
     virtual void notifyNewRemoteBuffer(bsVec<u8>& buffer) = 0;
     virtual bool createDeltaRecord(void) = 0;
     virtual void notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answer) = 0;

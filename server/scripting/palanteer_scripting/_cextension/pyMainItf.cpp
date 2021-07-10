@@ -169,10 +169,10 @@ pyMainItf::notifyRecordStarted(const bsString& appName, const bsString& buildNam
 }
 
 
-void
+bool
 pyMainItf::notifyNewEvents(plPriv::EventExt* events, int eventQty)
 {
-    _recording->storeNewEvents(events, eventQty);
+    return _recording->storeNewEvents(events, eventQty);
 }
 
 
@@ -266,8 +266,10 @@ pyMainItf::createDeltaRecord(void)
 
 
 void
-pyMainItf::notifyRecordEnded(void)
+pyMainItf::notifyRecordEnded(bool isRecordOk)
 {
+    (void) isRecordOk;
+
     // Stop the recording
     _recording->endRecord();
 

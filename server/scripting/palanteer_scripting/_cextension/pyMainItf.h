@@ -56,13 +56,14 @@ public:
         __attribute__ ((format (printf, 3, 4))) // Check format at compile time
 #endif
         ;
+    bool isRecordProcessingAvailable(void) const { return true; }
     bool notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeNsOrigin, double tickToNs,
                              bool areStringsExternal, bool isStringHashShort, bool isControlEnabled);
-    void notifyRecordEnded(void);
+    void notifyRecordEnded(bool isRecordOk);
     void notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx);
     void notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg);
     void notifyNewString(const bsString& newString, u64 hash);
-    void notifyNewEvents(plPriv::EventExt* events, int eventQty);
+    bool notifyNewEvents(plPriv::EventExt* events, int eventQty);
     void notifyNewRemoteBuffer(bsVec<u8>& buffer);
     bool createDeltaRecord(void);
     void notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answer);

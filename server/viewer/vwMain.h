@@ -64,13 +64,14 @@ public:
     void updateRecordList(void);
 
     // Interface for the record library
+    bool isRecordProcessingAvailable(void) const { return _actionMode==READY; }
     bool notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeNsOrigin, double tickToNs,
                              bool areStringsExternal, bool isStringHashShort, bool isControlEnabled);
-    void notifyRecordEnded(void);
+    void notifyRecordEnded(bool isRecordOk);
     void notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx);
     void notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg);
     void notifyNewString(const bsString& newString, u64 hash);
-    void notifyNewEvents(plPriv::EventExt* events, int eventQty);
+    bool notifyNewEvents(plPriv::EventExt* events, int eventQty);
     void notifyNewRemoteBuffer(bsVec<u8>& buffer);
     bool createDeltaRecord(void);
     void notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answer);
@@ -981,11 +982,11 @@ private:
     // Inter-thread messages
     struct MsgRecord { bsString recordPath; };
     struct MsgError  { cmErrorKind kind; bsString msg; };
-    bsMsgExchanger<cmRecord*> _msgRecordStarted;
-    bsMsgExchanger<MsgRecord>  _msgRecordEnded;
+    bsMsgExchanger<cmRecord*>  _msgRecordStarted;
+    bsMsgExchanger<bool>       _msgRecordEnded;
     bsMsgExchanger<MsgRecord>  _msgRecordLoad;
     bsMsgExchanger<MsgError>   _msgRecordErrorDisplay;
     bsMsgExchanger<cmRecord::Delta> _msgRecordDelta;
-    MsgError _safeErrorMsg;
+    MsgError   _safeErrorMsg;
     MsgRecord* _recordLoadSavedMsg = 0; // 2 steps load automata
 };

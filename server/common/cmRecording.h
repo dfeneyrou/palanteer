@@ -39,7 +39,7 @@ public:
     void endRecord(void);
     bool isRecording(void) { return _recFd!=0; }
     const bsString& storeNewString(const bsString& newString, u64 hash);
-    void storeNewEvents(plPriv::EventExt* events, int eventQty);
+    bool storeNewEvents(plPriv::EventExt* events, int eventQty);
     void createDeltaRecord(cmRecord::Delta* delta);
     const bsString& getRecordPath(void) const { return _recordPath; }
 

@@ -242,6 +242,9 @@ cmCnx::runRxFromClient(void)
     plgText(CLIENTRX, "State", "Start the server loop");
     while(!_doStopThreads.load()) {
 
+        // Prevent busy-looping
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
         if(!isWaitingDisplayed) {
             isWaitingDisplayed = true;
             plgText(CLIENTRX, "State", "Waiting for a client");
@@ -282,7 +285,9 @@ cmCnx::runRxFromClient(void)
                 // Error message is already handled inside main
                 fclose(fd); continue;
             }
+
             plgText(CLIENTRX, "State", "Start data reception");
+            bool isRecordOk = true;
             while(!_doStopThreads.load()) {
                 // Manage the periodic live display update
                 bsUs_t currentTime = bsGetClockUs();
@@ -296,14 +301,17 @@ cmCnx::runRxFromClient(void)
                 else if(!parseTransportLayer(_recBuffer, (int)qty)) { // Parse the received content
                     _itf->log(LOG_ERROR, "Error in parsing the imported data");
                     plgText(CLIENTRX, "State", "Error in parsing the received data");
+                    isRecordOk = false;
                     break;
                 }
             }
             plgText(CLIENTRX, "State", "End of data reception");
             fclose(fd);
-            _itf->notifyRecordEnded();
+            _itf->notifyRecordEnded(isRecordOk);
             _itf->log(LOG_DETAIL, "End of import from file");
             plgText(CLIENTRX, "State", "End of recording");
+
+            // The import is finished, back to the main loop
             continue;
         }
 
@@ -314,7 +322,6 @@ cmCnx::runRxFromClient(void)
         int selectRet = select(sockfd+1, &fds, NULL, NULL, &tv);
         plgEnd(CLIENTRX, "Check socket activity");
         if(selectRet==0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             continue;
         }
         if(selectRet==-1 || !FD_ISSET(sockfd, &fds)) {
@@ -322,6 +329,19 @@ cmCnx::runRxFromClient(void)
             plgText(CLIENTRX, "State", "Error, failed to set the timeout");
         }
         _clientSocket = (bsSocket_t)accept(sockfd, (sockaddr*)&clientAddress, &sosize);
+
+        // If the record processing pipeline is not available, just close the socket
+        if(!_itf->isRecordProcessingAvailable()) {
+#if _WIN32
+            closesocket(_clientSocket);
+#else
+            close(_clientSocket);
+#endif
+            _clientSocket = bsSocketError;
+            continue;
+        }
+
+
         if(bsIsSocketValid(_clientSocket)) {
             plgScope(CLIENTRX, "New client transport");
             plgData(CLIENTRX, "Socket ID", _clientSocket);
@@ -355,13 +375,17 @@ cmCnx::runRxFromClient(void)
             }
 
             plgText(CLIENTRX, "State", "Start reception from client");
+            bool isRecordOk         = true;
+            bool areNewDataReceived = false;
             while(!_doStopThreads.load()) {
+
                 // Manage the periodic live display update
                 bsUs_t currentTime = bsGetClockUs();
-                if(currentTime-_lastDeltaRecordTime>=cmConst::DELTARECORD_PERIOD_US) {
+                if(areNewDataReceived && (currentTime-_lastDeltaRecordTime)>=cmConst::DELTARECORD_PERIOD_US) {
                     if(_itf->createDeltaRecord()) {
                         _lastDeltaRecordTime = currentTime;
                     }
+                    areNewDataReceived = false;
                 }
 
                 // Read the data
@@ -371,12 +395,15 @@ cmCnx::runRxFromClient(void)
                 else if(!parseTransportLayer(_recBuffer, qty)) {             // Parse the received content
                     _itf->log(LOG_ERROR, "Client reception: Error in parsing the received data");
                     plgText(CLIENTRX, "State", "Error in parsing the received data");
+                    isRecordOk = false; // Corrupted record
                     break;
                 }
+                else areNewDataReceived = true;
+
             } // End of reception loop
             plgText(CLIENTRX, "State", "End of reception from client");
 
-            _itf->notifyRecordEnded();
+            _itf->notifyRecordEnded(isRecordOk);
 #if _WIN32
             closesocket(_clientSocket);
 #else
@@ -693,14 +720,18 @@ cmCnx::parseTransportLayer(unsigned char* buf, int qty)
                 qty -= usedQty;
                 if(s.size()==sizeof(plPriv::EventExt)) {
                     _parseEventLeft -= 1;
-                    _itf->notifyNewEvents((plPriv::EventExt*)&s[0], 1);
+                    if(!_itf->notifyNewEvents((plPriv::EventExt*)&s[0], 1)) {
+                       return false; // Event corruption
+                    }
                     s.clear();
                 }
             }
             int eventQty = qty/sizeof(plPriv::EventExt);
             if(eventQty>_parseEventLeft) eventQty = _parseEventLeft;
             if(eventQty) {
-                _itf->notifyNewEvents((plPriv::EventExt*)buf, eventQty);
+                if(!_itf->notifyNewEvents((plPriv::EventExt*)buf, eventQty)) {
+                    return false; // Event corruption
+                }
                 buf += eventQty*sizeof(plPriv::EventExt);
                 qty -= eventQty*sizeof(plPriv::EventExt);
                 _parseEventLeft -= eventQty;
