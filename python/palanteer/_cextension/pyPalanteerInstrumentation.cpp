@@ -214,7 +214,9 @@ pyEventLogRaw(plPriv::hashStr_t filenameHash, plPriv::hashStr_t nameHash, const 
     const char* allocFileStr = filenameHash? 0 : plPriv::getDynString(filename);
     const char* allocNameStr = nameHash?     0 : plPriv::getDynString(name);
     uint32_t bi = plPriv::globalCtx.bankAndIndex.fetch_add(1);
-    plPriv::eventLogBase(bi, filenameHash, nameHash, filenameHash? 0 : allocFileStr, nameHash? 0 : allocNameStr, lineNbr, flags).vU64 = v;
+    plPriv::EventInt& e = plPriv::eventLogBase(bi, filenameHash, nameHash, filenameHash? 0 : allocFileStr, nameHash? 0 : allocNameStr, lineNbr, flags);
+    e.vU64  = v;
+    e.magic = bi;
     plPriv::eventCheckOverflow(bi);
 }
 
@@ -233,6 +235,7 @@ pyEventLogRawString(plPriv::hashStr_t filenameHash, plPriv::hashStr_t nameHash, 
     plPriv::EventInt& e = plPriv::eventLogBase(bi, filenameHash, nameHash, filenameHash? 0 : allocFileStr, nameHash? 0 : allocNameStr, lineNbr, PL_FLAG_TYPE_DATA_STRING);
     e.vString.hash  = valueStrHash;
     e.vString.value = allocValueStr;
+    e.magic = bi;
     plPriv::eventCheckOverflow(bi);
 }
 
@@ -485,8 +488,10 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
         const char* sentFilename = filename? plPriv::getDynString(filename) : 0;
         const char* sentName     = name?     plPriv::getDynString(name) : 0;
         uint32_t bi = plPriv::globalCtx.bankAndIndex.fetch_add(1);
-        plPriv::eventLogBase(bi, filenameHash, nameHash, sentFilename, sentName, lineNbr,
-                             PL_FLAG_TYPE_DATA_TIMESTAMP | (isEnter? PL_FLAG_SCOPE_BEGIN : PL_FLAG_SCOPE_END)).vU64 = PL_GET_CLOCK_TICK_FUNC();
+        plPriv::EventInt& e = plPriv::eventLogBase(bi, filenameHash, nameHash, sentFilename, sentName, lineNbr,
+                                                   PL_FLAG_TYPE_DATA_TIMESTAMP | (isEnter? PL_FLAG_SCOPE_BEGIN : PL_FLAG_SCOPE_END));
+        e.vU64  = PL_GET_CLOCK_TICK_FUNC();
+        e.magic = bi;
         plPriv::eventCheckOverflow(bi);
     }
 
