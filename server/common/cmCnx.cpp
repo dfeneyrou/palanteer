@@ -574,6 +574,15 @@ cmCnx::initializeTransport(FILE* fd)
             // Get the application name
             _appName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
             if(!_appName.empty() && _appName.back()==0) _appName.pop_back();
+            // Filter out the problematic characters
+            int i=0;
+            for(u8 c : _appName) {
+                if(c<0x1F || c==0x7F || c=='"' || c=='*' || c=='/' || c=='\\' ||
+                   c==':' || c=='<' || c=='>' || c=='?' || c=='|') continue;
+                _appName[i++] = c;
+            }
+            _appName.resize(i);
+            // Some logging
             _itf->log(LOG_DETAIL, "Application name is '%s'", _appName.toChar());
             plgData(CLIENTRX, "Application name", _appName.toChar());
         }

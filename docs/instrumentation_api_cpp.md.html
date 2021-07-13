@@ -1060,6 +1060,18 @@ Recording on a file reduces this requirement to: at least the required quantity 
 The system can handle up to 254 threads and 2 billion events. <br/>
 The estimated size of the record would be ~20 GB, still displayed smoothly.
 
+<br/>
+**The stacktrace is not displayed on Windows**
+
+On Windows, the stacktrace decoding requires some initialization which cannot be safely done at crash time.
+
+The following points shall be checked:
+  - the compilation flag `USE_PL` is set to 1.
+    - If only the stacktrace feature is desired, set all `USE_PL`, `PL_NOEVENT` and `PL_NOCONTROL` to 1
+  - the compilation flag `PL_IMPL_STACKTRACE` is not explicitely set to zero (it is set to 1 by default on Windows)
+  - the function `plInitAndStart` is called
+    - If no event recording is desired, the mode `PL_MODE_INACTIVE` can be used.
+
 
 <h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>
 <h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>

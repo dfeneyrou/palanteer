@@ -654,8 +654,8 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
         _recMemAllocLkup.insert(lc.lastAllocPtr, { evtx.threadId, lc.lastAllocSize, allocMIdx, currentScopeIdx } );
 
         // Update stats
-        ++_recMemEventQty;
-        ++tc.memEventQty;
+        _recMemEventQty += 2;
+        tc.memEventQty  += 2;
         tc.sumAllocQty  += 1;
         tc.sumAllocSize += lc.lastAllocSize;
         lc.lastAllocPtr = 0;
@@ -701,8 +701,8 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
             while(!tcAlloc->memSSCurrentAlloc.empty() && tcAlloc->memSSCurrentAlloc.back()==PL_INVALID) tcAlloc->memSSCurrentAlloc.pop_back(); // Shrink the content array if possible
 
             // Update stats
-            ++_recMemEventQty;
-            ++tcAlloc->memEventQty;
+            _recMemEventQty         += 2;
+            tcAlloc->memEventQty    += 2;
             tcAlloc->sumDeallocQty  += 1;
             tcAlloc->sumDeallocSize += allocElems.size;
             allocQtyElemId  = cmConst::MEMORY_DEALLOCQTY_NAMEIDX;
