@@ -710,11 +710,11 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double hea
                         if((bool)elem.isPartOfHStruct==_plotMenuIsPartOfHStruct && elem.threadId==threadId && elem.nameIdx==pmi.nameIdx && elem.flags==pmi.flags) {
                             bool isPresent = false;  // Need to check if already present due to the "all names"
                             for(const vwMain::PlotCurve& c : _plots[plotWindowIdx].curves) if(c.elemIdx==elemIdx) isPresent = true;
-                            if(!isPresent) _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.hashPath, elemIdx, true } );
+                            if(!isPresent) _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.partialHashPath, elemIdx, true } );
                         }
                     }
                 }
-                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].hashPath, pmi.elemIdx, true } );
+                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, pmi.elemIdx, true } );
             }
             // Case creation of a new plot window
             else if(pmi.comboSelectionNewIdx>=0) {
@@ -726,11 +726,11 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double hea
                     for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
                         const cmRecord::Elem& elem = _record->elems[elemIdx];
                         if((bool)elem.isPartOfHStruct==_plotMenuIsPartOfHStruct && elem.threadId==threadId && elem.nameIdx==pmi.nameIdx && elem.flags==pmi.flags) {
-                            _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.hashPath, elemIdx, true } );
+                            _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.partialHashPath, elemIdx, true } );
                         }
                     }
                 }
-                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].hashPath, pmi.elemIdx, true } );
+                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, pmi.elemIdx, true } );
             }
         }
         plMarker("user", "Add plot(s)");
@@ -826,8 +826,8 @@ vwMain::displayHistoContextualMenu(double headerWidth, double comboWidth)
 
         // Create new histograms
         for(auto& pmi : _plotMenuItems) {
-            if     (pmi.comboHistoSelectionIdx==0) addHistogram(getId(), _plotMenuThreadUniqueHash, _record->elems[pmi.elemIdx].hashPath, 0, _record->durationNs);
-            else if(pmi.comboHistoSelectionIdx==1) addHistogram(getId(), _plotMenuThreadUniqueHash, _record->elems[pmi.elemIdx].hashPath, pmi.startTimeNs, pmi.timeRangeNs);
+            if     (pmi.comboHistoSelectionIdx==0) addHistogram(getId(), _plotMenuThreadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, 0, _record->durationNs);
+            else if(pmi.comboHistoSelectionIdx==1) addHistogram(getId(), _plotMenuThreadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, pmi.startTimeNs, pmi.timeRangeNs);
         }
     }
 

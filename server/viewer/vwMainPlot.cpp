@@ -65,7 +65,6 @@ vwMain::preparePlot(PlotWindow& p)
     // Discover the potentially missing elem IDs (init and live)
     if(p.isFirstRun || _liveRecordUpdated) {
         p.isFirstRun = false;
-
         for(PlotCurve& c : p.curves) {
             if(c.elemIdx>=0) continue; // ElemId already known
 
@@ -76,7 +75,7 @@ vwMain::preparePlot(PlotWindow& p)
                 break;
             }
             if(threadHash==0) continue; // Thread is not resolved yet
-            u64 hashPathWithThread = bsHashStepChain(threadHash, c.hashPath);
+            u64 hashPathWithThread = bsHashStep(threadHash, c.hashPath);
 
             for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
                 cmRecord::Elem& elem = _record->elems[elemIdx];

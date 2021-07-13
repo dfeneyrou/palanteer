@@ -73,18 +73,20 @@ vwMain::_computeChunkHistogram(Histogram& h)
     if(h.elemIdx<0 && (h.isFirstRun || _liveRecordUpdated)) {
         h.isFirstRun = false;
 
-        bool isThreadFound = false;
+        u64 threadHash = 0;
         for(cmRecord::Thread& t : _record->threads) {
             if(t.threadUniqueHash!=h.threadUniqueHash) continue;
-            isThreadFound = true;
+            threadHash = t.threadHash;
             break;
         }
-        if(!isThreadFound) return true; // Thread is not resolved yet
+        if(threadHash==0) return true; // Thread is not resolved yet
+        u64 hashPathWithThread = bsHashStep(threadHash, h.hashPath);
 
         // Find the elem
         for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
             cmRecord::Elem& elem = _record->elems[elemIdx];
-            if(elem.hashPath!=h.hashPath) continue;
+            if(( elem.isThreadHashed && elem.hashPath!=hashPathWithThread) ||
+               (!elem.isThreadHashed && elem.hashPath!=h.hashPath)) continue;
             // Complete the histogram initialization
             char tmpStr[256];
             snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", _record->getString(elem.nameIdx).value.toChar(), getFullThreadName(elem.threadId));
@@ -906,7 +908,7 @@ vwMain::drawHistogram(int histogramIdx)
             for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
                 const cmRecord::Elem& elem2 = _record->elems[elemIdx];
                 if(elem2.threadId==elem.threadId && elem2.nameIdx==elem.nameIdx) {
-                    pw.curves.push_back( { h.threadUniqueHash, elem2.hashPath, elemIdx, true } );
+                    pw.curves.push_back( { h.threadUniqueHash, elem2.partialHashPath, elemIdx, true } );
                 }
             }
             setFullScreenView(-1);

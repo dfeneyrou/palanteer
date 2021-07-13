@@ -109,6 +109,7 @@ private:
 
     struct ElemBuild {
         u64 hashPath;
+        u64 partialHashPath;  // Does not include the thread hash, if "isThreadHashed".
         u64 threadBitmap;
         u32 hashKey;
         u32 prevElemIdx; // (u32)-1 if none

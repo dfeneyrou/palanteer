@@ -545,7 +545,7 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
     for(int i=elems.size(); i<delta->elems.size(); ++i) {
         const Elem& src = delta->elems[i];
         elemPathToId.insert(src.hashPath, src.hashKey, i);
-        elems.push_back({src.hashPath, src.threadBitmap, src.hashKey, src.prevElemIdx, src.threadId, src.nestingLevel,
+        elems.push_back({src.hashPath, src.partialHashPath, src.threadBitmap, src.hashKey, src.prevElemIdx, src.threadId, src.nestingLevel,
                 src.nameIdx, src.hlNameIdx, src.flags, src.isPartOfHStruct, src.isThreadHashed, src.absYMin, src.absYMax});
     }
     plAssert(elems.size()==delta->elems.size());
@@ -634,7 +634,7 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     // Format version
     int formatVersion = 0;
     READ_INT(formatVersion, "read the format version");
-    if(formatVersion!=0) LOAD_ERROR("handle the unsupported format version"); // Later, it can be used to support several versions
+    if(formatVersion!=PL_RECORD_FORMAT_VERSION) LOAD_ERROR("handle the unsupported format version."); // Later, it can be used to support several versions
     // Application name
     READ_INT(length, "read the app name size");
     if(length<=0 || length>1024) LOAD_ERROR("handle the abnormal app name size"); // Cannot be empty because set to "<no name>" in this case in cmCnx
@@ -875,8 +875,9 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     for(u32 elemIdx=0; elemIdx<elemQty; ++elemIdx) {
         cmRecord::Elem& elem = record->elems[elemIdx];
         // Base information
-        if((int)fread(&elem.hashPath,     8, 1, recFd)!=1) LOAD_ERROR("read the elem path");
-        if((int)fread(&elem.threadBitmap, 8, 1, recFd)!=1) LOAD_ERROR("read the elem thread bitmap");
+        if((int)fread(&elem.hashPath,        8, 1, recFd)!=1) LOAD_ERROR("read the elem path");
+        if((int)fread(&elem.partialHashPath, 8, 1, recFd)!=1) LOAD_ERROR("read the elem path");
+        if((int)fread(&elem.threadBitmap,    8, 1, recFd)!=1) LOAD_ERROR("read the elem thread bitmap");
         READ_INT(elem.hashKey,      "read the elem hash key");
         READ_INT(elem.prevElemIdx,  "read the elem previous elem Id");
         if(elem.prevElemIdx!=PL_INVALID && elem.prevElemIdx>=elemQty) LOAD_ERROR("handle the abnormal elem previous elem Id");

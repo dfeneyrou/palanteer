@@ -238,7 +238,8 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     u64  itemHashPath = bsHashStepChain(tc.threadHash, cmConst::MARKER_NAMEIDX);
     int* elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::MARKER_NAMEIDX, (u32)-1, evtx.threadId, -1, evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true, 1., 1. } );
+        _recElems.push_back( { itemHashPath, bsHashStep(cmConst::MARKER_NAMEIDX), 0, cmConst::MARKER_NAMEIDX, (u32)-1, evtx.threadId, -1,
+                evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true, 1., 1. } );
         _recElemPathToId.insert(itemHashPath, cmConst::MARKER_NAMEIDX, _recElems.size()-1);
     }
     int elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
@@ -249,7 +250,8 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     itemHashPath = bsHashStep(cmConst::MARKER_NAMEIDX);
     elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::MARKER_NAMEIDX, (u32)-1, -1, -1, evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, false, 1., 1. } );
+        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::MARKER_NAMEIDX, (u32)-1, -1, -1,
+                evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, false, 1., 1. } );
         _recElemPathToId.insert(itemHashPath, cmConst::MARKER_NAMEIDX, _recElems.size()-1);
     }
     elemIdx     = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
@@ -257,10 +259,12 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     INSERT_IN_ELEM(elem2, elemIdx, lIdx, evtx.vS64, 1., 1LL<<evtx.threadId);
 
     // Elem 3: Per thread and per nameIdx (=category), for plot & histogram
-    itemHashPath = bsHashStepChain(tc.threadHash, evtx.nameIdx, cmConst::MARKER_NAMEIDX);
+    u64 partialItemHashPath = bsHashStepChain(evtx.nameIdx, cmConst::MARKER_NAMEIDX);
+    itemHashPath = bsHashStep(tc.threadHash, partialItemHashPath);
     elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::MARKER_NAMEIDX, (u32)-1, evtx.threadId, -1, evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true } );
+        _recElems.push_back( { itemHashPath, partialItemHashPath, 0, cmConst::MARKER_NAMEIDX, (u32)-1, evtx.threadId, -1,
+                evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true } );
         _recElemPathToId.insert(itemHashPath, cmConst::MARKER_NAMEIDX, _recElems.size()-1);
         if(_doForwardEvents && doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, evtx.flags);
     }
@@ -292,7 +296,8 @@ cmRecording::processLockNotifyEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int
     u64 itemHashPath = bsHashStepChain(tc.threadHash, cmConst::LOCK_NTF_NAMEIDX);
     int* elemIdxPtr  = _recElemPathToId.find(itemHashPath, cmConst::LOCK_NTF_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::LOCK_NTF_NAMEIDX, (u32)-1, evtx.threadId, -1, evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true, 0., cmConst::MAX_THREAD_QTY } );
+        _recElems.push_back( { itemHashPath, bsHashStep(cmConst::LOCK_NTF_NAMEIDX), 0, cmConst::LOCK_NTF_NAMEIDX, (u32)-1, evtx.threadId, -1,
+                evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true, 0., cmConst::MAX_THREAD_QTY } );
         _recElemPathToId.insert(itemHashPath, cmConst::LOCK_NTF_NAMEIDX, _recElems.size()-1);
     }
     int elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
@@ -303,7 +308,8 @@ cmRecording::processLockNotifyEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int
     itemHashPath = bsHashStepChain(_recStrings[evtx.nameIdx].hash, cmConst::LOCK_NTF_NAMEIDX);
     elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOCK_NTF_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::LOCK_NTF_NAMEIDX, (u32)-1, evtx.threadId, -1, evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, false, 1., 1. } );
+        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::LOCK_NTF_NAMEIDX, (u32)-1, evtx.threadId, -1,
+                evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, false, 1., 1. } );
         _recElemPathToId.insert(itemHashPath, cmConst::LOCK_NTF_NAMEIDX, _recElems.size()-1);
         if(_doForwardEvents && doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, evtx.flags);
     }
@@ -357,8 +363,8 @@ cmRecording::processLockWaitEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int l
     u64  itemHashPath = bsHashStepChain(tc.threadHash, cmConst::LOCK_WAIT_NAMEIDX);
     int* elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOCK_WAIT_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::LOCK_WAIT_NAMEIDX, (u32)-1, evtx.threadId, 0, evtx.nameIdx, evtx.nameIdx,
-                (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, true, 0., 1. } );
+        _recElems.push_back( { itemHashPath, bsHashStep(cmConst::LOCK_WAIT_NAMEIDX), 0, cmConst::LOCK_WAIT_NAMEIDX, (u32)-1, evtx.threadId, 0,
+                evtx.nameIdx, evtx.nameIdx, (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, true, 0., 1. } );
         _recElemPathToId.insert(itemHashPath, cmConst::LOCK_WAIT_NAMEIDX, _recElems.size()-1);
     }
     int elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
@@ -375,7 +381,8 @@ cmRecording::processLockUseEvent(plPriv::EventExt& evtx, bool& doInsertLockWaitE
     u64  itemHashPath = bsHashStepChain(_recStrings[evtx.nameIdx].hash, cmConst::LOCK_USE_NAMEIDX);
     int* elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOCK_USE_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::LOCK_USE_NAMEIDX, (u32)-1, -1, -1, evtx.nameIdx, evtx.nameIdx, PL_FLAG_TYPE_LOCK_ACQUIRED, true, false, false, 0., 1. } );
+        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::LOCK_USE_NAMEIDX, (u32)-1, -1, -1,
+                evtx.nameIdx, evtx.nameIdx, PL_FLAG_TYPE_LOCK_ACQUIRED, true, false, false, 0., 1. } );
         _recElemPathToId.insert(itemHashPath, cmConst::LOCK_USE_NAMEIDX, _recElems.size()-1);
         if(_doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, PL_FLAG_TYPE_LOCK_ACQUIRED);
         // Create the lock
@@ -434,11 +441,12 @@ cmRecording::processLockUseEvent(plPriv::EventExt& evtx, bool& doInsertLockWaitE
         lock.usingStartTimeNs   = evtx.vS64;
     }
     int threadId = lock.usingStartThreadId;
-    itemHashPath = bsHashStepChain(_recThreads[evtx.threadId].threadHash, _recStrings[evtx.nameIdx].hash, cmConst::LOCK_USE_NAMEIDX);
+    u64 partialItemHashPath = bsHashStepChain(_recStrings[evtx.nameIdx].hash, cmConst::LOCK_USE_NAMEIDX);
+    itemHashPath = bsHashStep(_recThreads[evtx.threadId].threadHash, partialItemHashPath);
     elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOCK_USE_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::LOCK_USE_NAMEIDX, (u32)-1, threadId, -1, evtx.nameIdx, evtx.nameIdx,
-                PL_FLAG_TYPE_LOCK_ACQUIRED, false, false, true } );
+        _recElems.push_back( { itemHashPath, partialItemHashPath, 0, cmConst::LOCK_USE_NAMEIDX, (u32)-1, threadId, -1,
+                evtx.nameIdx, evtx.nameIdx, PL_FLAG_TYPE_LOCK_ACQUIRED, false, false, true } );
         _recElemPathToId.insert(itemHashPath, cmConst::LOCK_USE_NAMEIDX, _recElems.size()-1);
         if(_doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, threadId, PL_FLAG_TYPE_LOCK_ACQUIRED);
     }
@@ -480,7 +488,8 @@ cmRecording::processCtxSwitchEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     u64 itemHashPath = bsHashStepChain(evtx.threadId, cmConst::CTX_SWITCH_NAMEIDX);
     int* elemIdxPtr  = _recElemPathToId.find(itemHashPath, cmConst::CTX_SWITCH_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::CTX_SWITCH_NAMEIDX, (u32)-1, evtx.threadId, 0, PL_INVALID, PL_INVALID, (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, false } );
+        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::CTX_SWITCH_NAMEIDX, (u32)-1, evtx.threadId, 0,
+                PL_INVALID, PL_INVALID, (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, false } );
         _recElemPathToId.insert(itemHashPath, cmConst::CTX_SWITCH_NAMEIDX, _recElems.size()-1);
     }
 
@@ -525,7 +534,8 @@ cmRecording::processSoftIrqEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     u64 itemHashPath = bsHashStepChain(evtx.threadId,      cmConst::SOFTIRQ_NAMEIDX);
     int* elemIdxPtr  = _recElemPathToId.find(itemHashPath, cmConst::SOFTIRQ_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::SOFTIRQ_NAMEIDX, (u32)-1, evtx.threadId, 0, PL_INVALID, PL_INVALID, (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, false } );
+        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::SOFTIRQ_NAMEIDX, (u32)-1, evtx.threadId, 0,
+                PL_INVALID, PL_INVALID, (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, false } );
         _recElemPathToId.insert(itemHashPath, cmConst::SOFTIRQ_NAMEIDX, _recElems.size()-1);
     }
 
@@ -577,7 +587,8 @@ cmRecording::processCoreUsageEvent(plPriv::EventExt& evtx)
     u64  itemHashPath = bsHashStepChain(coreId, cmConst::CORE_USAGE_NAMEIDX);
     int* elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::CORE_USAGE_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, 0, cmConst::CORE_USAGE_NAMEIDX, (u32)-1, coreId, 0, PL_INVALID, PL_INVALID, PL_FLAG_TYPE_CSWITCH, true, false, false } );
+        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::CORE_USAGE_NAMEIDX, (u32)-1, coreId, 0,
+                PL_INVALID, PL_INVALID, PL_FLAG_TYPE_CSWITCH, true, false, false } );
         _recElemPathToId.insert(itemHashPath, cmConst::CORE_USAGE_NAMEIDX, _recElems.size()-1);
     }
 
@@ -593,7 +604,8 @@ cmRecording::processCoreUsageEvent(plPriv::EventExt& evtx)
         itemHashPath = bsHashStepChain(cmConst::CPU_CURVE_NAMEIDX);
         elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::CPU_CURVE_NAMEIDX);
         if(!elemIdxPtr) {
-            _recElems.push_back( { itemHashPath, 0, cmConst::CPU_CURVE_NAMEIDX, (u32)-1, -1, 0, PL_INVALID, PL_INVALID, PL_FLAG_TYPE_CSWITCH, false, false, false } );
+            _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::CPU_CURVE_NAMEIDX, (u32)-1, -1, 0,
+                    PL_INVALID, PL_INVALID, PL_FLAG_TYPE_CSWITCH, false, false, false } );
             _recElemPathToId.insert(itemHashPath, cmConst::CPU_CURVE_NAMEIDX, _recElems.size()-1);
         }
 
@@ -747,7 +759,8 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     u64 sizeKindHashPath = bsHashStepChain(tcAlloc->threadHash, cmConst::MEMORY_ALLOCSIZE_NAMEIDX);
     int* elemIdxPtr      = _recElemPathToId.find(sizeKindHashPath, cmConst::MEMORY_ALLOCSIZE_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { sizeKindHashPath, 0, cmConst::MEMORY_ALLOCSIZE_NAMEIDX, (u32)-1, allocThreadId, 0, PL_INVALID, PL_INVALID, PL_FLAG_TYPE_ALLOC, false, false, true } );
+        _recElems.push_back( { sizeKindHashPath, bsHashStep(cmConst::MEMORY_ALLOCSIZE_NAMEIDX), 0, cmConst::MEMORY_ALLOCSIZE_NAMEIDX, (u32)-1, allocThreadId, 0,
+                PL_INVALID, PL_INVALID, PL_FLAG_TYPE_ALLOC, false, false, true } );
         _recElemPathToId.insert(sizeKindHashPath, cmConst::MEMORY_ALLOCSIZE_NAMEIDX, _recElems.size()-1);
     }
     int elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
@@ -761,7 +774,8 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     u64 qtyKindHashPath = bsHashStepChain(tcAlloc->threadHash, allocQtyElemId);
     elemIdxPtr          = _recElemPathToId.find(qtyKindHashPath, allocQtyElemId);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { qtyKindHashPath, 0, allocQtyElemId, (u32)-1, allocThreadId, 0, PL_INVALID, PL_INVALID, PL_FLAG_TYPE_ALLOC, false, false, true } );
+        _recElems.push_back( { qtyKindHashPath, bsHashStep(allocQtyElemId), 0, allocQtyElemId, (u32)-1, allocThreadId, 0,
+                PL_INVALID, PL_INVALID, PL_FLAG_TYPE_ALLOC, false, false, true } );
         _recElemPathToId.insert(qtyKindHashPath, allocQtyElemId, _recElems.size()-1);
     }
     elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
@@ -942,12 +956,13 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
         // Get the elem from the path hash
         int hashFlags    = (evtx.flags&PL_FLAG_SCOPE_END)? ((evtx.flags&PL_FLAG_TYPE_MASK)|PL_FLAG_SCOPE_BEGIN) : evtx.flags; // Replace END scope with BEGIN scope (1 plot for both)
         u64 hashPath     = bsHashStep(_recStrings[evtx.nameIdx].hash, lc.hashPath);
-        u64 itemHashPath = bsHashStep(hashFlags, hashPath);
-        itemHashPath     = bsHashStep(tc.threadHash, itemHashPath);
+        u64 partialItemHashPath = bsHashStep(hashFlags, hashPath);
+        u64 itemHashPath = bsHashStep(tc.threadHash, partialItemHashPath);
         int* elemIdxPtr  = _recElemPathToId.find(itemHashPath, evtx.nameIdx);
         if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
             u32 hlNameIdx = ((evtx.flags&PL_FLAG_SCOPE_MASK)==0 && level>0)? tc.levels[level].parentNameIdx : evtx.nameIdx;
-            _recElems.push_back( { itemHashPath, 0, evtx.nameIdx, lc.prevElemIdx, evtx.threadId, level, evtx.nameIdx, hlNameIdx, evtx.flags, false, true, true } );
+            _recElems.push_back( { itemHashPath, partialItemHashPath, 0, evtx.nameIdx, lc.prevElemIdx, evtx.threadId,
+                    level, evtx.nameIdx, hlNameIdx, evtx.flags, false, true, true } );
             _recElemPathToId.insert(itemHashPath, evtx.nameIdx, _recElems.size()-1);
             if(_doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, lc.prevElemIdx, evtx.threadId, evtx.flags);
         }
@@ -998,11 +1013,12 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
             if(eType==PL_FLAG_TYPE_DATA_STRING) {
                 // Get the elem from the path hash
                 u64 hashPath2     = bsHashStep(_recStrings[evtx.vStringIdx].hash, lc.hashPath);
-                u64 itemHashPath2 = bsHashStep(evtx.flags, hashPath2);
-                itemHashPath2     = bsHashStep(tc.threadHash, itemHashPath2);
+                u64 partialItemHashPath2 = bsHashStep(evtx.flags, hashPath2);
+                u64 itemHashPath2 = bsHashStep(tc.threadHash, partialItemHashPath2);
                 int* elemIdxPtr2  = _recElemPathToId.find(itemHashPath2, evtx.vStringIdx);
                 if(!elemIdxPtr2) { // If this Elem does not exist yet, let's create it
-                    _recElems.push_back( { itemHashPath2, 0, evtx.vStringIdx, lc.prevElemIdx, evtx.threadId, level, evtx.vStringIdx, tc.levels[level].parentNameIdx, evtx.flags, false, true, true } );
+                    _recElems.push_back( { itemHashPath2, partialItemHashPath2, 0, evtx.vStringIdx, lc.prevElemIdx, evtx.threadId,
+                            level, evtx.vStringIdx, tc.levels[level].parentNameIdx, evtx.flags, false, true, true } );
                     _recElemPathToId.insert(itemHashPath2, evtx.vStringIdx, _recElems.size()-1);
                 }
                 int elemIdx2 = elemIdxPtr2? *elemIdxPtr2:_recElems.size()-1;
@@ -1034,10 +1050,12 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
             // Save inversed Elem (filenameIdx=message) to be used by search on message content
             // Get the elem from the path hash
             u64 hashPath2     = bsHashStep(_recStrings[evtx.filenameIdx].hash, lc.hashPath);
-            u64 itemHashPath2 = bsHashStep(evtx.flags, hashPath2);
+            u64 partialItemHashPath2 = bsHashStep(evtx.flags, hashPath2);
+            u64 itemHashPath2 = bsHashStep(tc.threadHash, partialItemHashPath2);
             int* elemIdxPtr2  = _recElemPathToId.find(itemHashPath2, evtx.filenameIdx);
             if(!elemIdxPtr2) { // If this Elem does not exist yet, let's create it
-                _recElems.push_back( { itemHashPath2, 0, evtx.filenameIdx, lc.prevElemIdx, evtx.threadId, level, evtx.filenameIdx, tc.levels[level].parentNameIdx, evtx.flags, false, true, true } );
+                _recElems.push_back( { itemHashPath2, partialItemHashPath2, 0, evtx.filenameIdx, lc.prevElemIdx, evtx.threadId,
+                        level, evtx.filenameIdx, tc.levels[level].parentNameIdx, evtx.flags, false, true, true } );
                 _recElemPathToId.insert(itemHashPath2, evtx.filenameIdx, _recElems.size()-1);
             }
             int elemIdx2 = elemIdxPtr2? *elemIdxPtr2:_recElems.size()-1;
@@ -1752,7 +1770,7 @@ cmRecording::endRecord(void)
     // ==================
 
     plgText(REC, "Stage", "Write the record format version");
-    u32 tmp = 0;
+    u32 tmp = PL_RECORD_FORMAT_VERSION;
     fwrite(&tmp, 4, 1, _recFd);
 
     plgText(REC, "Stage", "Write the application name");
@@ -1975,6 +1993,7 @@ cmRecording::endRecord(void)
 
         // Write some elem information
         fwrite(&elem.hashPath,        8, 1, _recFd);
+        fwrite(&elem.partialHashPath, 8, 1, _recFd);
         fwrite(&elem.threadBitmap,    8, 1, _recFd);
         fwrite(&elem.hashKey,         4, 1, _recFd);
         fwrite(&elem.prevElemIdx,     4, 1, _recFd);
@@ -2204,7 +2223,7 @@ cmRecording::createDeltaRecord(cmRecord::Delta* delta)
     // New elems
     for(int i=delta->elems.size(); i<_recElems.size(); ++i) {
         const ElemBuild& src = _recElems[i];
-        delta->elems.push_back({src.hashPath, src.threadBitmap, src.hashKey, src.prevElemIdx, src.threadId, src.nestingLevel,
+        delta->elems.push_back({src.hashPath, src.partialHashPath, src.threadBitmap, src.hashKey, src.prevElemIdx, src.threadId, src.nestingLevel,
                 src.nameIdx, src.hlNameIdx, src.flags, src.isPartOfHStruct, src.isThreadHashed, src.absYMin, src.absYMax});
     }
 

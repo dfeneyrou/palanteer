@@ -1666,13 +1666,12 @@ vwMain::createLayoutViews(const vwConfig::ScreenLayout& layout)
             while(*s && *s!=' ') ++s;
             while(*s==' ') ++s;
             while(1) {
-                if(sscanf(s, "%" PRIX64 " %" PRIX64, &hash, &hash2)!=1) break;
+                if(sscanf(s, "%" PRIX64 " %" PRIX64, &hash, &hash2)!=2) break;
                 while(*s && *s!=' ') ++s;  // Skip the number and its space separation
                 while(*s==' ') ++s;
                 elemHashPaths.push_back(hash); // Thread Unique Hash
                 elemHashPaths.push_back(hash2); // Element hashPath
             }
-
             // Create the plot window
             if(!elemHashPaths.empty()) {
                 _plots.push_back( { } );

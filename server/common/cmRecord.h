@@ -35,6 +35,7 @@ constexpr static int cmElemChunkSize = 32/4*cmChunkSize; // Chunk elem quantity.
 constexpr static int cmMRElemSize    = 16;    // Size of the elem pyramid subsampling (in memory)
 constexpr static u32 PL_INVALID      = 0xFFFFFFFF;
 constexpr static int PL_MEMORY_SNAPSHOT_EVENT_INTERVAL = 10000; // Smaller value consumes disk space, bigger value increases reactivity time when accessing detailed allocations
+constexpr static int PL_RECORD_FORMAT_VERSION = 1;
 
 // Chunk location (=offset and size) in the big event file
 typedef u64 chunkLoc_t;
@@ -123,6 +124,7 @@ public:
     struct Elem {
         // Path
         u64 hashPath;
+        u64 partialHashPath;  // Does not include the thread hash, if "isThreadHashed".
         u64 threadBitmap;
         u32 hashKey;
         u32 prevElemIdx; // (u32)-1 if root
