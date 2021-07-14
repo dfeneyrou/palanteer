@@ -25,10 +25,7 @@
 #include "vwConst.h"
 #include "vwConfig.h"
 
-// @#TODO P1 Clicking on a timestamp flag event (lock ntf/acquired/released) should not synchronize range to the beginning of the scope
 // @#TODO Timestamped standalone even at root shall be displayed too (ex: lock)
-// @#TODO P0 Click on the start of a scope in text view places the timeline on the middle of the scope. Probably a wrong mix between single and double click.
-// @#TODO P0 Click on the end of a scope in text view places the timeline on the start of the scope
 
 #ifndef PL_GROUP_TEXT
 #define PL_GROUP_TEXT 0
@@ -137,8 +134,13 @@ vwMain::prepareText(Text& t)
         if(!it.getItem(nestingLevel, lIdx, evt, scopeEndTimeNs)) break;
         int flags = evt.flags;
 
+        // End of scope: update level and the scope end time, not set in this case
+        if((flags&PL_FLAG_SCOPE_MASK)==PL_FLAG_SCOPE_END) {
+            --level;
+            scopeEndTimeNs = evt.vS64;
+        }
+
         // Compute the elemIdx
-        if((flags&PL_FLAG_SCOPE_MASK)==PL_FLAG_SCOPE_END) --level;
         u64 hashPath     = bsHashStep(_record->getString(evt.nameIdx).hash, hashPathPerLevel[level]);
         int hashFlags    = (flags&PL_FLAG_SCOPE_END)? ((flags&PL_FLAG_TYPE_MASK)|PL_FLAG_SCOPE_BEGIN) : flags; // Replace END scope with BEGIN scope (1 plot for both)
         u64 itemHashPath = bsHashStep(hashFlags, hashPath);
@@ -155,7 +157,8 @@ vwMain::prepareText(Text& t)
         }
 
         // Update the "last date", used to display the time footprint in the timelines
-        if(flags&PL_FLAG_SCOPE_MASK) t.lastTimeNs = evt.vS64;
+        int eType = (flags&PL_FLAG_TYPE_MASK);
+        if((flags&PL_FLAG_SCOPE_MASK) || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) t.lastTimeNs = evt.vS64;
 
         // Next
         bool isHidden = (flags&PL_FLAG_SCOPE_BEGIN) && t.isHidden(nestingLevel, _record->getString(evt.nameIdx).hash);
@@ -501,6 +504,9 @@ vwMain::drawText(Text& t)
             li.scopeStartTimeNs = evt.vS64;
             li.scopeEndTimeNs   = scopeEndTimeNs;
         }
+        if(flags&PL_FLAG_SCOPE_END) {
+            levelElems[nestingLevel].scopeEndTimeNs = scopeEndTimeNs;
+        }
 
         if(flags&PL_FLAG_SCOPE_MASK) {
             auto& li = levelElems[nestingLevel];
@@ -540,7 +546,11 @@ vwMain::drawText(Text& t)
                 getSynchronizedRange(t.syncMode, syncStartTimeNs, syncTimeRangeNs);
 
                 // Click: set timeline position at middle screen only if outside the center third of screen
-                double targetTimeNs = li.scopeStartTimeNs + ((li.scopeEndTimeNs<0.)? 0. : 0.5*(li.scopeEndTimeNs-li.scopeStartTimeNs));
+                double targetTimeNs = li.scopeStartTimeNs; // + ((1 || li.scopeEndTimeNs<0.)? 0. : 0.5*(li.scopeEndTimeNs-li.scopeStartTimeNs));
+                if((flags&PL_FLAG_SCOPE_END) && li.scopeEndTimeNs>=0.) targetTimeNs = li.scopeEndTimeNs;
+                else if((flags&PL_FLAG_TYPE_MASK)>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && (flags&PL_FLAG_TYPE_MASK)<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST) {
+                    targetTimeNs = evt.vS64;
+                }
                 if((ImGui::IsMouseReleased(0) && ImGui::GetMousePos().x<winX+winWidth) || tlWheelCounter) {
                     synchronizeNewRange(t.syncMode, bsMax(0., targetTimeNs-0.5*syncTimeRangeNs), syncTimeRangeNs);
                     ensureThreadVisibility(t.syncMode, t.threadId);
