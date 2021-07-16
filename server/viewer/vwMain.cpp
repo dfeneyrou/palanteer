@@ -1012,6 +1012,7 @@ vwMain::draw(void)
         _msgRecordEnded.releaseMsg();
         // Reset the delta record
         _msgRecordDelta.getRawData()->reset();
+        osSetWindowTitle("Palanteer");
         // Enforce the keeping of only the last N records
         int appIdx, recIdx;
         findRecord(recordPath, appIdx, recIdx);
@@ -1365,7 +1366,7 @@ vwMain::clearRecord(void)
     if(getConfig().getWindowCatalogVisibility()) _catalogWindow.isWindowSelected = true;
 
     // Update the window
-    osSetWindowTitle("Palanteer - viewer");
+    osSetWindowTitle("Palanteer");
     dirty();
 }
 

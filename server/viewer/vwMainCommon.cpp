@@ -1517,6 +1517,7 @@ vwMain::displayTimelineHeaderPopup(TimeRangeBase& trb, int tId, bool openAsGroup
         // Draw the popup menu
         ImGui::TextColored(vwConst::grey, "%s", _record->getString(_record->threads[tId].nameIdx).value.toChar());
         ImGui::Separator();
+        ImGui::Separator();
 
         // Text menu
         if(ImGui::MenuItem("View as text")) { addText(getId(), tId); ImGui::CloseCurrentPopup(); }

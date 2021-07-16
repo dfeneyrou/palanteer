@@ -447,6 +447,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
                     // Plot & histogram
                     if(!main->_plotMenuItems.empty()) {
                         ImGui::Separator();
+                        ImGui::Separator();
                         if(!main->displayPlotContextualMenu(cl.e.threadId, "Plot", headerWidth)) ImGui::CloseCurrentPopup();
                         ImGui::Separator();
                         if(!main->displayHistoContextualMenu(headerWidth)) ImGui::CloseCurrentPopup();
@@ -546,6 +547,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
                 // Plot & histogram
                 if(!main->_plotMenuItems.empty()) {
                     ImGui::Separator();
+                    ImGui::Separator();
                     if(!main->displayPlotContextualMenu(cl.e.threadId, "Plot", headerWidth)) ImGui::CloseCurrentPopup();
                     ImGui::Separator();
                     if(!main->displayHistoContextualMenu(headerWidth)) ImGui::CloseCurrentPopup();
@@ -629,6 +631,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
                 ImGui::TextColored(vwConst::grey, "<lock notified> [%s]", record->getString(ntf.e.nameIdx).value.toChar());
                 // Plot & histogram
                 if(!main->_plotMenuItems.empty()) {
+                    ImGui::Separator();
                     ImGui::Separator();
                     if(!main->displayPlotContextualMenu(ntf.e.threadId, "Plot", headerWidth)) ImGui::CloseCurrentPopup();
                     ImGui::Separator();
@@ -808,6 +811,7 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
             // Plot & histogram
             if(!main->_plotMenuItems.empty()) {
                 ImGui::Separator();
+                ImGui::Separator();
                 if(!main->displayPlotContextualMenu(tId, "Plot", headerWidth)) ImGui::CloseCurrentPopup();
                 ImGui::Separator();
                 if(!main->displayHistoContextualMenu(headerWidth))             ImGui::CloseCurrentPopup();
@@ -956,6 +960,7 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
         double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
         // Scope title
         ImGui::TextColored(vwConst::grey, "Scope '%s'", record->getString(tl->ctxScopeNameIdx).value.toChar());
+        ImGui::Separator();
         ImGui::Separator();
 
         // Plot & histogram

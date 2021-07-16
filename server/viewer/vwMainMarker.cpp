@@ -463,6 +463,7 @@ vwMain::drawMarker(Marker& mkr)
         double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
         ImGui::TextColored(vwConst::grey, "Marker [%s]", _record->getString(mkr.ctxNameIdx).value.toChar());
         ImGui::Separator();
+        ImGui::Separator();
 
         // Plot & histogram menu
         if(!displayPlotContextualMenu(mkr.ctxThreadId, "Plot", headerWidth)) ImGui::CloseCurrentPopup();

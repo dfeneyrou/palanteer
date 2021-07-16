@@ -1287,6 +1287,7 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
                                getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0), getNiceTime(mw.allocBlockEndTimeNs, timeRangeNs, 1));
         }
         ImGui::Separator();
+        ImGui::Separator();
         if(ImGui::MenuItem("Show allocation table"))  {
             // Create a new window to show the detailed scope list
             _memDetails.push_back( { mw.allocBlockThreadId, getId(), mw.allocBlockStartTimeNs, mw.allocBlockEndTimeNs,

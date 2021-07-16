@@ -752,6 +752,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
         // Title
         ImGui::TextColored(vwConst::grey, "Curve '%s'", _record->getString(elem.nameIdx).value.toChar());
         ImGui::Separator();
+        ImGui::Separator();
 
         // Plot move/removal
         if(!displayPlotContextualMenu(elem.threadId, "Move", headerWidth, widgetWidth)) {

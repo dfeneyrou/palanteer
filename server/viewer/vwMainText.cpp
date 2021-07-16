@@ -660,6 +660,7 @@ vwMain::drawText(Text& t)
         ImGui::TextColored(vwConst::grey, "%s", _record->getString(t.ctxNameIdx).value.toChar());
 
         ImGui::Separator();
+        ImGui::Separator();
         if(!(t.ctxFlags&PL_FLAG_SCOPE_BEGIN) && ImGui::MenuItem("Go to start of scope")) {
             t.setStartPosition((t.ctxFlags&PL_FLAG_SCOPE_MASK)? t.ctxNestingLevel:t.ctxNestingLevel-1, t.ctxScopeLIdx&(~1));
         }

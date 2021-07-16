@@ -889,6 +889,7 @@ vwMain::drawHistogram(int histogramIdx)
         // Title
         ImGui::TextColored(vwConst::grey, "Histogram '%s'", h.name.toChar());
         ImGui::Separator();
+        ImGui::Separator();
 
         // Color
         std::function<void(int)> curveSetColor = [&h, this] (int colorIdx) { getConfig().setCurveColorIdx(h.elemIdx, colorIdx); };
