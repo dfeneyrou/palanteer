@@ -1195,17 +1195,22 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
 
         // String integrity check (data corruption). Should never happen with "good" client.
         if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {  // 1st part of memory events do not use strings
-            // Check that nameIdx is properly declared
-            if(evtx.nameIdx>=(u32)_recStrings.size()) {
-                return false; // Means corruption
+            if(eType!=PL_FLAG_TYPE_CSWITCH) {
+                // Check that nameIdx is properly declared
+                if(evtx.nameIdx>=(u32)_recStrings.size()) {
+                    return false; // Means corruption
+                }
+                // Check that filenameIdx is properly declared
+                if(eType!=PL_FLAG_TYPE_SOFTIRQ && evtx.filenameIdx>=(u32)_recStrings.size()) {
+                    return false;
+                }
+                // Check that the string data value is properly declared
+                if(eType==PL_FLAG_TYPE_DATA_STRING && evtx.vStringIdx>=(u32)_recStrings.size()) {
+                    return false;
+                }
             }
-            // Check that filenameIdx is properly declared
-            if(eType!=PL_FLAG_TYPE_CSWITCH && eType!=PL_FLAG_TYPE_SOFTIRQ && evtx.filenameIdx>=(u32)_recStrings.size()) {
-                return false; // Means corruption
-            }
-            // Check that the string data value is properly declared
-            if(eType==PL_FLAG_TYPE_DATA_STRING && evtx.vStringIdx>=(u32)_recStrings.size()) {
-                return false; // Means corruption
+            else if(evtx.nameIdx!=0xFFFFFFFF && evtx.nameIdx!=0xFFFFFFFE && evtx.nameIdx>=(u32)_recStrings.size()) {
+                return false;  // Context switch process name is corrupted
             }
         }
 
