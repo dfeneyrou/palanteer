@@ -934,6 +934,7 @@ private:
         ImGuiID newDockId        = 0xFFFFFFFF;   // 0xFFFFFFFF: use the automatic one
         bool    isNew            = true;
         bool    isWindowSelected = true;
+        int     headerAction     = 0;  // 1=open  2=close
     };
     CatalogWindow _catalogWindow;
 

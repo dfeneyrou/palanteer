@@ -35,7 +35,6 @@
 
 // @#BUG P2 Key 'F' does not work on record window on error table. KB focus issue? Is this true for all tables?
 // @#TODO Support multiselection (handly to delete a bunch of old records, all with a build name)
-// @#TODO Display on top the storage folder and its global estimated size (=sum of all records)
 
 void
 vwMain::drawRecord(void)
@@ -338,9 +337,12 @@ vwMain::drawCatalog(void)
         ImGui::End();
         return;
     }
+
     // Loop on all profiled application names
-    bsDate now = osGetDate();
-    bool isAnItemHovered = false;
+    bsDate now                = osGetDate();
+    int    allRecordTotalSize = 0;
+    int    nextHeaderAction   = 0;  // No action
+    bool   isAnItemHovered    = false;
     for(AppRecordInfos& appInfo : _cmRecordInfos) {
 
         if(appInfo.idx==_forceOpenAppIdx) {
@@ -357,15 +359,29 @@ vwMain::drawCatalog(void)
         bool doOpenDeleteAppAllwoNick = false;
         bool doOpenKeepLast           = false;
         int  countAppWithNickname = 0;
+        int  appRecordTotalSize   = 0;
         bool keepOnlyLastRecordState;
         int  keepOnlyLastRecordQty;
+
         getConfig().getKeepOnlyLastNRecord(appInfo.name, keepOnlyLastRecordState, keepOnlyLastRecordQty);
-        for(RecordInfos& ri : appInfo.records) if(ri.nickname[0]!=0) ++countAppWithNickname;
+        for(RecordInfos& ri : appInfo.records) {
+            if(ri.nickname[0]!=0) ++countAppWithNickname;
+            appRecordTotalSize += ri.size;
+        }
+        allRecordTotalSize += appRecordTotalSize;
 
         ImGui::PushID(appInfo.idx);
+        if(_catalogWindow.headerAction==1) ImGui::SetNextItemOpen(true);
+        if(_catalogWindow.headerAction==2) ImGui::SetNextItemOpen(false);
+
         if(ImGui::TreeNodeEx(appInfo.name.toChar(), ImGuiTreeNodeFlags_Framed | ImGuiTreeNodeFlags_NoAutoOpenOnLog)) {
             if(ImGui::IsItemClicked(2)) doOpenAppMenu = true;
-            if(ImGui::IsItemHovered()) isAnItemHovered = true;
+            if(ImGui::IsItemHovered()) {
+                isAnItemHovered = true;
+                if(getLastMouseMoveDurationUs()>500000) {
+                    ImGui::SetTooltip("Total size: %s", getNiceByteSize(appRecordTotalSize));
+                }
+            }
 
             // Loop on record files for this application
             for(RecordInfos& ri : appInfo.records) {
@@ -388,6 +404,7 @@ vwMain::drawCatalog(void)
                 bool doOpenDeletePopup = false;
                 if(ImGui::BeginPopupContextItem("Record file menu", 2)) {
                     ImGui::TextColored(vwConst::gold, "%s", getNiceDate(ri.date, now));
+                    ImGui::Separator();
 
                     // Load the record
                     ImGui::Separator();
@@ -486,7 +503,12 @@ vwMain::drawCatalog(void)
             } // End of loop on records
             ImGui::TreePop();
         }
-        else if(ImGui::IsItemClicked(2)) doOpenAppMenu = true;
+        else {
+            if(ImGui::IsItemClicked(2)) doOpenAppMenu = true;
+            if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) {
+                ImGui::SetTooltip("Total size: %s", getNiceByteSize(appRecordTotalSize));
+            }
+        }
 
 
         // Application menu
@@ -494,9 +516,11 @@ vwMain::drawCatalog(void)
 
         if(doOpenAppMenu) ImGui::OpenPopup("Record app menu");
         if(ImGui::BeginPopup("Record app menu", ImGuiWindowFlags_AlwaysAutoResize)) {
+
             // Header
             ImGui::TextColored(vwConst::gold, "%s", appInfo.name.toChar()); ImGui::SameLine();
             ImGui::Text(" (%d records)", appInfo.records.size());
+            ImGui::Separator();
             ImGui::Separator();
 
             // External string
@@ -525,6 +549,14 @@ vwMain::drawCatalog(void)
                 if(ImGui::MenuItem(tmpStr)) doOpenKeepLast = true;
             }
             if(ImGui::MenuItem("Delete all records")) doOpenDeleteAppAll = true;
+
+
+            // Collapse/open headers
+            ImGui::Separator();
+            ImGui::Separator();
+            if(ImGui::MenuItem("Open all headers"))     nextHeaderAction = 1;
+            if(ImGui::MenuItem("Collapse all headers")) nextHeaderAction = 2;
+
             ImGui::EndPopup();
         }
 
@@ -607,6 +639,13 @@ vwMain::drawCatalog(void)
         ImGui::PopID();
         if(doHighlight) ImGui::PopStyleColor();
     } // End of loop on applications
+
+    _catalogWindow.headerAction = nextHeaderAction;
+
+    // Display the total size of all records
+    ImGui::Spacing();
+    ImGui::TextColored(vwConst::grey, "Total record size: %s", getNiceByteSize(allRecordTotalSize));
+    if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s", _storagePath.toChar());
 
     // Refresh menu
     if(!isAnItemHovered && ImGui::IsWindowHovered() && !ImGui::IsPopupOpen("refresh menu") && ImGui::IsMouseReleased(2)) {
