@@ -12,10 +12,11 @@ from palanteer_scripting import *  # Palanteer API
 # These tests does some performance measurement
 
 # C++ program to evaluate performances
-C_CODE = r"""#include <cstdlib>
+PERF_CODE = r"""#include <cstdlib>
 #define PL_IMPLEMENTATION 1
 #define PL_IMPL_COLLECTION_BUFFER_BYTE_QTY 60000000
 #include "palanteer.h"
+
 int main(int argc, char** argv)
 {
     plInitAndStart("measure_event_size_and_timing", PL_MODE_STORE_IN_FILE);
@@ -33,12 +34,21 @@ int main(int argc, char** argv)
 }
 """
 
-def _evaluate_perf_program(eval_content, flags, loop=3):
+# C++ program to evaluate the cost of the header instrumentation library
+HEADER_CODE = r"""#include <cstdlib>
+%s
+
+int main(int argc, char** argv) {
+    return 0;
+}
+"""
+
+def _evaluate_perf_program(eval_content, flags, loop=3, code=PERF_CODE):
     LOG("Experiment with evaluation '%s' and flags '%s'" % (eval_content, " ".join(flags)))
 
     # Create the source file
     fh = open("test_performance.cpp", "w")
-    fh.write(C_CODE % eval_content)
+    fh.write(code % eval_content)
     fh.close()
 
     # Measure the build time
@@ -66,13 +76,20 @@ def _evaluate_perf_program(eval_content, flags, loop=3):
         exec_time_sec = min(exec_time_sec, time.time()-start_sec)
 
     # Return the performances
-    LOG("    build time=%.1f, program size=%d bytes, exec time=%.1f s" % (build_time_sec, program_size, exec_time_sec))
+    LOG("    build time=%.2f, program size=%d bytes, exec time=%.2f s" % (build_time_sec, program_size, exec_time_sec))
     return build_time_sec, program_size, exec_time_sec
 
 
 @declare_test("performance")
 def measure_event_size_and_timing():
     """Measure code size, build time and execution time of some specific parts of Palanteer """
+
+    # Cost of including the header
+    inc0_built_time_sec, inc0_program_size, inc0_exec_time_sec = _evaluate_perf_program("", [], code=HEADER_CODE)
+    inc1_built_time_sec, inc1_program_size, inc1_exec_time_sec = _evaluate_perf_program('#include "palanteer.h"', [], code=HEADER_CODE)
+    inc2_built_time_sec, inc2_program_size, inc2_exec_time_sec = _evaluate_perf_program('#include "palanteer.h"', ["-DUSE_PL=1"], code=HEADER_CODE)
+    inc3_built_time_sec, inc3_program_size, inc3_exec_time_sec = _evaluate_perf_program('#define PL_IMPLEMENTATION 1\n#include "palanteer.h"', ["-DUSE_PL=1"], code=HEADER_CODE)
+    inc4_built_time_sec, inc4_program_size, inc4_exec_time_sec = _evaluate_perf_program('#include "palanteer.h"\n#include <thread>', [], code=HEADER_CODE)
 
     # Fully disabled Palanteer
     noplO_build_time_sec, noplO_program_size, noplO_exec_time_sec = _evaluate_perf_program("plVar(abcdefghij);", ["-DUSE_PL=0", "-O2"])
@@ -107,3 +124,8 @@ def measure_event_size_and_timing():
     KPI("Palanteer code size - Total (-O2)", "%d bytes" % int(refO_program_size-noplO_program_size))
     KPI("Palanteer code size - Context switch (-O2)", "%d bytes" % int(refO_program_size-ref1O_program_size))
     KPI("Palanteer code size - Control part (-O2)", "%d bytes" % int(refO_program_size-ref2O_program_size))
+
+    KPI("Palanteer include - USE_PL=0", "%.3f s"            % (inc1_built_time_sec-inc0_built_time_sec))
+    KPI("Palanteer include - USE_PL=1", "%.3f s"            % (inc2_built_time_sec-inc0_built_time_sec))
+    KPI("Palanteer include - USE_PL=1 + impl.", "%.3f s"    % (inc3_built_time_sec-inc0_built_time_sec))
+    KPI("Palanteer include - USE_PL=0 + <thread>", "%.3f s" % (inc4_built_time_sec-inc0_built_time_sec))

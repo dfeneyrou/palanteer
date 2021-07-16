@@ -74,12 +74,12 @@ This weakness would however still be present and at an equivalent level (but wit
 Manipulating memory shall be done with care and control, especially with current CPUs where memory access is the performance bottleneck.
 
 Wild usage of smart pointers can be dangerous:
- - it makes us lazy about thinking about memory
+ - it makes us lazy when thinking about memory
    - Control of where we allocate and deallocate shall not be fuzzy but deterministic
    - Overallocating has a performance cost
  - it is an abstraction which masks the hardware reality. Processors work with raw pointers.
  - smart pointers can also be misused
- - address sanitizers are very efficient against memory leaks
+ - address sanitizers are very efficient against memory leaks, among other things
 
 
 ### No STL container
@@ -97,7 +97,7 @@ Some reasons behind are:
 An implementation of (`Palanteer` specific, not generic...) vector, list and dense hashmap are proposed in the `./server/base` folder (MIT license).
 
 !!! warning Important
-    These implementations match the need of the `Palanteer` project. They are not a generic replacement of the ones of the standard library. <br/>
+    These implementations match the need of the `Palanteer` project. They are not a generic replacement of the standard library. <br/>
     If you want to use them in a project, please read carefully the limitations on top of the files and do not hesitate to modify them to fit your needs.
 
 
@@ -302,12 +302,12 @@ The list of "porting points" are:
 
  1. Getter of high resolution timer
     * Override the macro `PL_GET_CLOCK_TICK_FUNC` to point on the new clock getter. <br/>
-    * The returned value shall be monotonic (no wrap) and that the frequency will be measured/calibrated at program startup time.
-      The C++ function from `&lt;chrono&gt;` is a possibility.
+    * The returned value shall be monotonic (no wrap), the frequency will be measured/calibrated at program startup time. <br/>
+      The C++ function from `&lt;chrono&gt;` is a possibility. <br/>
       The main constraint comes from the compatibility of this clock with the one for the context switches collection (if any).
  1. Getter of the current system thread unique identifier
     * Override the macro `PL_GET_SYS_THREAD_ID` to point on the new current thread ID getter.
-    * The main constraint comes from the compatibility of this thread ID getter with the ones processed in the context switches collection (if any).
+    * The main constraint comes from the compatibility of this thread ID getter with the ones processed in the context switches collection (if any), as they shall match.
  1. Program exit
     * Override the macro `PL_IMPL_CRASH_EXIT_FUNC` to point on the new program exit function.
     * The default and standard C++ `quick_exit(1)` value should work for most system, except maybe the embeded ones.
@@ -427,9 +427,10 @@ This section is an unordered collection of "pieces of advice", mostly common sen
 
 - In this test jungle, the key idea is to **maximize the probability to find a bug during a finite given time slice**
   - The "bouquet" of tests shall be designed with this goal in mind. If a large time slice is available, good for you.
-  - Bugs can be weighted versus the impact on the business
+  - Bugs shall be weighted in relation to the impact on the business
 
-- As **only the bugs impacting customers matter**, the collection of their real usage scenario is critical to create an efficient testing coverage.
+- As **only the bugs impacting the customers matter**, the collection of the real customer usage scenario is critical to create an efficient testing coverage.
+  - Of course, to create a great product, the working environment shall also be "bug-free" and efficient. These kind of bugs impact indirectly the customers through the quality of the product.
 
 
 ### A way to manage TODOs

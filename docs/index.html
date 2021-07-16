@@ -780,9 +780,9 @@ Assessing the characteristics of the instrumentation library is not straightforw
 However, two kinds of performance indicators are provided.
 
 **1) A selection of measurements has been implemented inside the self tests** <br/>
-The "performance" test suite was run on a laptop with a Core I7 for Linux and Windows 10 .
+The `Palanteer` internal "performance" test suite was run on a laptop with a Core I7-7600U on both Linux (gcc) and Windows 10 (MSVC).
 
-!!!
+!!! tip
     Results are approximates, they just give an idea on the real figures. <br/>
     Code sizes vary with the quantization of the executable sizes. A precise measure should be based on the machine code, but it is harder to automate.
 
@@ -799,6 +799,10 @@ Event logging runtime                      | 6.1 ns                       |
 Palanteer code size - Context switch (-O2) | 12320 bytes                  |
 Palanteer code size - Control part (-O2)   | 28696 bytes                  |
 Palanteer code size - Total (-O2)          | 66152 bytes                  |
+Palanteer include - USE_PL=0               | 0.006 s                      |
+Palanteer include - USE_PL=0 + <thread>    | 0.237 s                      |
+Palanteer include - USE_PL=1               | 0.262 s                      |
+Palanteer include - USE_PL=1 + impl.       | 0.773 s                      |
 ===========================================================================
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -815,22 +819,38 @@ Event logging runtime                      | 4.3 ns                       |
 Palanteer code size - Context switch (-O2) | 2560 bytes                   |
 Palanteer code size - Control part (-O2)   | 40448 bytes                  |
 Palanteer code size - Total (-O2)          | 313344 bytes                 |
+Palanteer include - USE_PL=0               | 0.146 s                      |
+Palanteer include - USE_PL=0 + <thread>    | 0.318 s                      |
+Palanteer include - USE_PL=1               | 0.328 s                      |
+Palanteer include - USE_PL=1 + impl.       | 0.648 s                      |
 ===========================================================================
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some details on the test:
- * `abcdefghij` and `i` are integers. <br/>
- * The tested assertions are `plAssert(abcdefghij++)` and `plAssert(abcdefghij++, abcdefghij, i)`. <br/>
- * The tested event logging is `plVar(abcdefghij)`.
+ * `abcdefghij` and `i` are integers
+ * The tested assertions are `plAssert(abcdefghij++)` and `plAssert(abcdefghij++, abcdefghij, i)`
+ * The tested event logging is `plVar(abcdefghij)`
 
-!!! note Synthesis
-    * The cost of a basic event logging is around 5 ns (very optimistic figure, probably due to the used small loop) for ~65 bytes of code size (on x64 instructions set)
-      * The few nanosecond time ensures that logging performances are accurate
-      * Note: it does not mean that the system is able to log 200 million event/s, the bottleneck is the event processing on server side (see next indicator).
-    * The debug compilation speed of at least ~900 event/s is acceptable even for an heavily instrumented file, especially compared to the usual C++ compilation speed.
-      * the timings with an optimized build are 4 times slower but are consistent with the global compilation slow down, nothing specific to `Palanteer`.
-    * The asserts and event logging code size and duration are roughly consistent across OSes.
-      * the core instrumentation code size is not
+
+**Synthesis of the results**
+
+* **Logging cost**: around 5 ns (very optimistic figure, probably due to the used small loop) for ~65 bytes of code size (on x64 instructions set)
+  * The few nanosecond timing ensures that logging performances are accurate
+  * Note: it does not mean that the system is able to log 200 million event/s, the bottleneck is the event processing on server side (see next indicator (2)).
+
+* **Compilation speed**: at least ~900 event/s in debug mode. This is acceptable even for an heavily instrumented file, especially compared to the usual C++ compilation speed.
+  * the timings with an optimized build are 4 times slower but are consistent with the global compilation slow down, nothing specific to `Palanteer`.
+
+* **Include cost on Linux**:
+  * Include of disabled instrumentation library is costless (few milliseconds)
+  * Include of enabled instrumentation library is very close to the cost of the inner inclusion of `#include <thread>`
+    * Using the C++ standard library in a project may fully mask the build cost of including the `Palanteer` instrumentation library
+* **Include cost on Windows**:
+  * Unlike on Linux, the include of disabled instrumentation library is not fully transparent (~150 ms)
+  * As for Linux, the cost of including the enabled instrumentation library is very close to the cost of the inner inclusion of `#include <thread>`, and depending on the other includes of the C++ standard library, this cost may be masked.
+
+* The asserts and event logging code size and duration are roughly consistent across OSes.
+   * the core instrumentation code size is not
 
 
 **2) Another kind of run-time speed measurement is done via the launch of the provided C++ example program "`testprogram perf`" with connection to the viewer.** <br/>
@@ -840,10 +860,10 @@ The results for Linux (Debian 10 in a VirtualBox VM with gcc) are:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
 > ./bin/testprogram perf
 Mode 'connected'
-Collection duration : 19.12 ms for 1000000 events
-Collection unit cost: 19 ns
-Processing duration : 285.86 ms (w/ transmission and server processing)
-Processing rate     : 3.498 million event/s
+Collection duration : 25.04 ms for 1000000 events
+Collection unit cost: 25 ns
+Processing duration : 216.90 ms (w/ transmission and server processing)
+Processing rate     : 4.610 million event/s
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The results for Windows 10 (with MSVC 2019) are:
@@ -867,8 +887,6 @@ Processing rate     : 4.154 million event/s
     }
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     - We see that the bottleneck is clearly the server side, by a factor 10
-    - The event logging unit cost is roughly 20% higher on Windows than on Linux
-    - The full processing is 20% faster on Windows than on Linux, but this is probably due to the test setup which lacks CPU power in the Linux VM (software GL renderer taking at least 1 CPU)
 
 !!! warning Important
    In case of running out of instrumentation resources, namely free space in event collection buffer or dynamic string from the pre-allocated pool,

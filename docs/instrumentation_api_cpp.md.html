@@ -267,7 +267,7 @@ void plgFunctionDyn(const char* group);
 
 !!! error Important consequences of `plFunction` using the preprocessor constant `__FUNCTION__`
     GCC considers `__FUNCTION__` as `constexpr` only since version 9.1. Before it, the more costly `plFunctionDyn()` shall be used. <br/>
-    Only GCC>=9.1 and CLANG>=3.6 can use the simpler `plFunction()` to mark the scope of a function. <br/>
+    Only GCC>=9.1 and CLANG>=6.0 can use the simpler `plFunction()` to mark the scope of a function. <br/>
     If the preprocessor rants verbosely on such command, this is probably the issue. <br/>
     In case of 'too old' compiler or for portability reasons, it is then recommended to use instead `plScope("&lt;function name&gt;")` where you manually insert the function name yourself.
 
@@ -999,10 +999,19 @@ plDetachVirtualThread(false);
 **I get a lot of preprocessor errors...**
 
 The usage of cascaded macros in `Palanteer`, only practical way to do some introspection in C++, has the bad effect of creating a cascade of errors... <br/>
-Try to isolate the faulty line from your sources, and check:
+In such case, try to isolate the faulty line from your sources, and check:
  - that the group is indeed defined, if you use groups
  - that the string is really static, if you use an API which requires a static string
  - that the logged variable is indeed one of the loggable type (i.e. C-string or a numerical value)
+
+<br>
+**plFunction does not compile**
+
+You probably hit the issue described in [plFunction](#plfunction): the (not recent) C++ compiler does not consider `__FUNCTION__` as  `constexpr`. <br>
+In such case, either:
+  - switch to `plFunctionDyn()`, with the drawback of the non optimal dynamic string management
+  - use `plScope("manually copied function name")`
+  - use a more recent compiler
 
 <br/>
 **I use clang with ASAN and the memory allocations are not logged...**
@@ -1022,7 +1031,7 @@ Data events (text, numerical value) are not timestamped. <br/>
 Outside a time scope, which means only at the root level of the tree, they cannot be associated to any dated element (the knowledge that they are after the last one and before the next one is not used). <br/>
 The fix is to move them inside a scope, or create a scope to hold them.
 
-Note that markers and lock notifications do not have this constraint and can be located at the root level.
+Note that markers and lock notifications do not have this constraint and can be located at the root level because they contain a timestamp.
 
 <br/>
 **What is the name of the function to break in when investigating a crash under a debugger?**
