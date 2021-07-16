@@ -294,8 +294,10 @@ def controlTask(synchro, durationMultipler):
 # ==============================
 
 async def baseFunc():
-    busyWait(globalRandomGenerator.get(20, 50))
-    await asyncio.sleep(0.02*globalRandomGenerator.get(1, 3))
+    busyWait(globalRandomGenerator.get(10, 25))
+    await asyncio.sleep(0.01*globalRandomGenerator.get(1, 3))
+    busyWait(globalRandomGenerator.get(10, 25))
+    await asyncio.sleep(0.01*globalRandomGenerator.get(1, 3))
 
 async def loadTexture():           await baseFunc()
 async def updateParticules():      await baseFunc()

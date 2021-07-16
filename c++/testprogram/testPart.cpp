@@ -237,13 +237,15 @@ fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<
         }
         // From here, we have a fiber (to start using or interrupted)
 
-        // Switch to this "fiber" =
-        plAttachVirtualThread(fiber.id);  // ==> First API under check
+        // Give a name to this fiber
         if(!fiber.isNameAlreadyDeclared) {
             snprintf(tmpStr, sizeof(tmpStr), "Fibers/Fiber %d", fiber.id);
             plDeclareVirtualThread(fiber.id, tmpStr);  // ==> Second API under check
             fiber.isNameAlreadyDeclared = true;
         }
+
+        // Switch to this "fiber"
+        plAttachVirtualThread(fiber.id);  // ==> First API under check
 
         // Job start?
         bool doEndJob = true;

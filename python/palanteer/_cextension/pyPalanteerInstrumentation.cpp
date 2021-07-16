@@ -299,8 +299,8 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
     pyCommonThreadCtx_t* pctc = (plPriv::threadCtx.id<PL_MAX_THREAD_QTY)? &gThreads[plPriv::threadCtx.id] : 0;
 
 
-    // Get a information on the function
-    // ==================================
+    // Get information on the function
+    // ================================
 
     plPriv::hashStr_t palanteerStrHash = 0;
     plPriv::hashStr_t filenameHash = 0;
@@ -380,7 +380,7 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
             plPriv::hashStr_t objectFilenameHash = pyHashPointer(objectCode->co_filename);
             lineNbr                              = objectCode->co_firstlineno;
 
-            // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
+            // Note: We shall not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
             gGlobMutex.lock();
             gFilterOutObject.find(objectNameHash, isNewFilterOut);
             bool isObjectFoundInCache = (isNewFilterOut==0) && gHashStrLookup.find(objectNameHash, palanteerStrHash);
@@ -436,7 +436,7 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
             }
 
             // Module/filename
-            gGlobMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
+            gGlobMutex.lock(); // Note: We shall not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
             isObjectFoundInCache = gHashStrLookup.find(objectFilenameHash, palanteerStrHash);
             gGlobMutex.unlock();
 
@@ -507,7 +507,7 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
 
         // Automatically set the name of the new coroutine, based on the current function name (async function)
         if(isCoroutineNew && (nameHash || name)) {
-            // Get the coroutine name structure (t o keep track of the multiple same name, which is a probable case)
+            // Get the coroutine name structure (to keep track of the multiple same name, which is a probable case)
             int coroutineNameIdx = -1;
             plPriv::hashStr_t coroutineNameHash = nameHash? nameHash : plPriv::hashString(name);
             gGlobMutex.lock();
@@ -528,6 +528,21 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
                 if(cn.namingCount==1) snprintf(tmpStr, sizeof(tmpStr), "Async/%s", cn.name);
                 else                  snprintf(tmpStr, sizeof(tmpStr), "Async/%s %d", cn.name, cn.namingCount);
                 plDeclareVirtualThread((uint32_t)hashedFrame, tmpStr);
+
+                // Log the previously skipped "begin" event on the worker thread (because name was not set)
+                plPriv::ThreadContext_t* tCtx = &plPriv::threadCtx;
+                uint32_t vThreadId = tCtx->id;
+                if(vThreadId<PL_MAX_THREAD_QTY && PL_IS_ENABLED_()) {
+                    plPriv::VirtualThreadCtx& vc = plPriv::implCtx.vThreadCtx[vThreadId];
+                    if(vc.nameHash!=0 && !vc.isBeginSent) {
+                        tCtx->id = tCtx->realId; // Switch to the OS thread
+                        plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), vc.nameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
+                                            PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC());
+                        vc.isBeginSent = true;
+                        tCtx->id = vThreadId;
+                    }
+                }
+
             }
             gGlobMutex.unlock();
         }
