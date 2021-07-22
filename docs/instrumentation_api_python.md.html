@@ -84,7 +84,7 @@ def plInitAndStart(app_name,                                   # Name of the pro
                    with_exceptions = True,                     # If True, exception are automatically instrumented (as a marker)
                    with_memory     = True,                     # If True, the memory allocations/deallocations are logged
                    with_gc         = True,                     # If True, garbage collection is automatically instrumented (as a lock)
-                   with_c_calls    = True                      # If True, the C calls are logged. Set it to False if builtins calls are too verbose
+                   with_c_calls    = False                      # If True, the C calls are logged. Set it to False if builtins calls are too verbose
                    )
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -107,7 +107,7 @@ Almost all memory allocations of the `Palanteer` services are done in this funct
 
 !!! warning Important
     The `with_c_calls` variable controls the automatic logging of functions implemented in C, which includes many intensively used builtin ones like `print`, list `append` etc... <br/>
-    If not really useful, it may be worth considering turning it off, to reduce the resource usage (CPU, network and record size).
+    If not really useful, it may be worth considering keeping it off, to reduce the resource usage (CPU, network and record size).
 
 
 ### plStopAndUninit
@@ -469,15 +469,15 @@ palanteer_scripting.program_cli("config:setRange min=300 max=500")
 ## Virtual threads
 
 A "virtual thread" is a thread that is not managed by the OS. Some examples are the usage of asyncio or gevent. <br/>
-As they do not require a kernel call but just a stack+register save/restore, using them can be faster than using OS threads, <br/>
-in particular when many jobs are waiting on I/O (ex: sockets).
+As they do not require a kernel call but just a stack+register save/restore, using them can be faster than using OS threads
+when many jobs need to wait on I/O (ex: sockets).
 
-In Python, this support is automatic, with the following features:
+In the Python instrumentation, this support is automatic:
   - the worker threads are automatically named `Workers/Async worker` followed by a worker number if more than 1
   - the coroutines are automatically named after the top function name
     - A number is added if more than 1 coroutine has the same name
   - each worker has a dedicated resource line which provides an overview of the worker usage
-    - Note: the worker OS thread contains only the Python glue information, as the events are dispatched on the virtual threads per coroutine
+    - Note: the worker OS thread contains also scopes showing the running coroutines, in addition of the worker resource
 
 !!!
     In the viewer, a suspended coroutine is visually represented by a SOFTIRQ with the name "Suspended"
@@ -489,8 +489,8 @@ The exaustive list is:
   - the module `ProactorEventLoop`, which is the asyncio glue on Windows
   - the function `_plFunctionInner` from Palanteer, which is the transparent mechanism for function decorator
   - the function `_pl_garbage_collector_notif` from Palanteer, which is the transparent mechanism for garbage collector tracking
-  - the function `Thread.run`, which is the top method for each thread and carries no real information
-  - the function and sub-functions of `_find_and_load`, which is a transparent part of the launch of Python
+  - the function `Thread.run`, which is the top method for each thread and does not carry any useful information
+  - the function and sub-functions of `_find_and_load`, which is a transparent part of the launch of the CPython interpreter
   - the function and sub-functions of `Thread._bootstrap`, which is a "leave" of a Python thread, as the "enter" is not caught by Palanteer due to the thread bootstrap mechanism
   - the function and sub-functions of `TimerHandle.cancel`, which is a transparent part of the coroutine mechanism
   - the function and sub-functions of `_cancel_all_tasks`, which is a transparent part of the coroutine mechanism
@@ -504,7 +504,7 @@ The exaustive list is:
 
 The installation of the Python modules by `cmake` is done with
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
-pip install <wheel package.whl>
+pip install &lt;wheel package.whl&gt;
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If the user has the privileges to do so (i.e. root or administrator), `pip` installs the package for all users. Else locally.
@@ -514,11 +514,11 @@ The built wheel package location is displayed in the make output.
 **Automatic logging really slows down my program, how can I improve this?**
 
 There is at least 2 things to try:
- 1. Maybe the automatic instrumentation of C functions is enabled (`with_c_calls=False` in the call to `plInitAndStart` or usage of the `-c` option in the command line).
-    As they are widely used by builtins (`print`, `list.append`...), they may lead to heavy logging rate.
+ 1. Maybe the automatic instrumentation of C functions is enabled (`with_c_calls=True` in the call to `plInitAndStart`, or usage of the `-c` option in the command line). <br/>
+    As they are widely used in builtins (`print`, `list.append`...), they may lead to heavy logging. <br/>
     If this information is not critical, disabling the C functions instrumentation can help.
- 1. To get a full control and very low overhead, just disable the automatic logging of functions with `with_functions=False` in the call to `plInitAndStart`.
-    Then manually instrument your program on the interesting locations with `plBegin`, `plEnd` and `@plFunction`.
+ 1. To get a full control and very low overhead, typically for long run monitoring in production, just disable the automatic logging of functions with `with_functions=False` in the call to `plInitAndStart`. <br/>
+    Then manually instrument your program on the interesting locations with `plBegin`, `plEnd` and `@plFunction` decorator.
 
 **I manually instrumented my program, how can I share it without forcing users to install Palanteer?**
 
