@@ -4,7 +4,7 @@ Content
 =======
 
 - `palanteer.h`: the single header C++ instrumentation library
-- `testprogram`: folder containing the C++ test program. Part of the global installation with CMake
+- `testprogram`: folder containing the C++ test program. Part of the global build with CMake
 - `test`: folder containing the tests for the C++ instrumentation library
 
 
