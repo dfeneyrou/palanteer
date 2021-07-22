@@ -761,12 +761,17 @@ APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _I
 
 // strcasestr does not exists on windows
 const char*
-strcasestr(const char* s, const char* sToFind)
+strcasestr(const char* s1, const char* s2)
 {
-    if(!*s || !*sToFind) return s;
+    if(!s1 || !s2) return 0;  // Sanity
 
-    while(*s && strcasecmp(s, sToFind)) ++s;
-    return s;
+    while(*s1) {
+        const char *ss1=s1, *ss2=s2;
+        while(*ss1 && *ss2 && tolower(*ss1)==tolower(*ss2)) { ++ss1; ++ss2; }
+        if(!*ss2) return s1; // Found!
+        ++s1; // Try next character of s1 as a start
+    }
+    return 0; // s2 not found
 }
 
 
