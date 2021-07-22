@@ -2438,7 +2438,7 @@ namespace plPriv {
 
         // Get the addresses of the stacktrace
         PVOID stacktrace[64]; // 64 levels of depth should be enough for everyone
-        int   foundStackDepth = implCtx.rtlWalkFrameChain? 0 : implCtx.rtlWalkFrameChain(stacktrace, 64, 0);
+        int   foundStackDepth = implCtx.rtlWalkFrameChain? implCtx.rtlWalkFrameChain(stacktrace, 64, 0) : 0;
 
         // Some required windows structures for the used APIs
         IMAGEHLP_LINE64 line; line.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
