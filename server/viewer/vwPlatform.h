@@ -36,7 +36,7 @@ class vwMain;
 class vwPlatform : public bsOsHandler {
 public:
     // Constructor & destructor
-    vwPlatform(int rxPort, bool doLoadLastFile);
+    vwPlatform(int rxPort, bool doLoadLastFile, const bsString& overrideStoragePath);
     virtual ~vwPlatform(void);
     void run(void);
 

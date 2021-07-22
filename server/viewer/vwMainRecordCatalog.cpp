@@ -33,7 +33,7 @@
 #include "vwFileDialog.h"
 
 
-// @#BUG P2 Key 'F' does not work on record window on error table. KB focus issue? Is this true for all tables?
+// @#BUG Key 'F' does not work on record window on error table. KB focus issue? Is this true for all tables?
 // @#TODO Support multiselection (handly to delete a bunch of old records, all with a build name)
 
 void

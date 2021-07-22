@@ -672,7 +672,7 @@ cmRecordIteratorMemScope::cmRecordIteratorMemScope(const cmRecord* record, int t
         currentAllocMIdxs->clear();
     }
 
-    // Find the snapshot @#OPTIM P9 Replace the linear search with binary search
+    // Find the snapshot @#OPTIM Replace the linear search with binary search
     const bsVec<cmRecord::MemSnapshot>& memSnapshotIndexes = _record->threads[_threadId].memSnapshotIndexes;
     int snapshotIdx = 0;
     while(snapshotIdx<memSnapshotIndexes.size() && memSnapshotIndexes[snapshotIdx].timeNs<=timeNs) ++snapshotIdx;

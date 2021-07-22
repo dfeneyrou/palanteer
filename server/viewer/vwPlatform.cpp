@@ -200,6 +200,7 @@ bsBootstrap(int argc, char* argv[])
     bool doLoadLastFile = true;
     bool doDisplayHelp = false;
     plMode palanteerMode = PL_MODE_INACTIVE; (void)palanteerMode;
+    bsString overrideStoragePath;
     int i = 1;
     while(i<argc) {
         // Port
@@ -233,6 +234,11 @@ bsBootstrap(int argc, char* argv[])
             palanteerMode = PL_MODE_CONNECTED;
             plSetServer("127.0.0.1", debugPort);
         }
+        else if((!strcmp(argv[i], "-tmpdb") || !strcmp(argv[i], "--tmpdb") || !strcmp(argv[i], "/tmpdb")) && i<argc-1) {
+            overrideStoragePath = argv[i+1];
+            printf("Overriden record database root path: %s\n", overrideStoragePath.toChar());
+            ++i;
+        }
         else if(!strcmp(argv[i], "-nl") || !strcmp(argv[i], "--nl") || !strcmp(argv[i], "/nl")) {
             doLoadLastFile = false;
         }
@@ -259,28 +265,41 @@ bsBootstrap(int argc, char* argv[])
         printf("Palanteer: a tool to profile and view internals of your application\n");
         printf(" Syntax :  palanteer [options]\n");
         printf(" Options:\n");
-        printf("  -port <port>   listen record from this port (default: %d)\n", rxPort);
-        printf("  -nl            do not load the last record after launch\n");
-        printf("  -f              record the tool's internal Palanteer data in a file\n");
-        printf("  -c <debug port> record the tool's internal Palanteer data remotely.\n");
-        printf("                  <debug port> shall be different from the listening <port> to avoid Larsen effect.\n");
-        printf("  -h or --help   dumps this help\n");
+        printf("  -port <port>      listen to programs on this port (default: %d)\n", rxPort);
+        printf("  -nl               do not load the last record, after launch\n");
+        printf("  -f                saves the viewer's instrumentation data in a file\n");
+        printf("  -c <debug port>   send  the viewer's instrumentation data remotely.\n");
+        printf("                    <debug port> shall be different from the listening <port> to avoid Larsen effect.\n");
+        printf("  -tmpdb <path>     non persistent root path for the record database. Typically used for testing\n");
+        printf("  -h or --help      dumps this help\n");
         exit(1);
     }
 
     // Init
     plInitAndStart("Palanteer viewer", palanteerMode);
     plDeclareThread("Main");
-    { plScope("Initialize OS layer"); osCreateWindow("Palanteer", "palanteer", 0.03, 0.03, 0.95, 0.95); }
+    {
+        plScope("Initialize OS layer");
+        osCreateWindow("Palanteer", "palanteer", 0.03, 0.03, 0.95, 0.95);
+    }
     vwPlatform* platform = 0;
-    { plScope("Create platform");     platform = new vwPlatform(rxPort, doLoadLastFile); }
+    {
+        plScope("Create platform");
+        platform = new vwPlatform(rxPort, doLoadLastFile, overrideStoragePath);
+    }
 
     // Run application
     platform->run();
 
     // Clean
-    { plScope("Destroy Platform"); delete platform; }
-    { plScope("Destroy OS layer"); osDestroyWindow(); }
+    {
+        plScope("Destroy Platform");
+        delete platform;
+    }
+    {
+        plScope("Destroy OS layer");
+        osDestroyWindow();
+    }
     plStopAndUninit();
     return 0;
 }
@@ -290,7 +309,7 @@ bsBootstrap(int argc, char* argv[])
 // Wrapper on the OS and ImGUI
 // ==============================================================================================
 
-vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile)
+vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& overrideStoragePath)
     : _doExit(0), _isVisible(0), _dirtyRedrawCount(VW_REDRAW_PER_NTF)
 {
     // Update ImGui
@@ -300,7 +319,7 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile)
     cmInitChunkCompress();
 
     // Creation of the main application
-    _main = new vwMain(this, rxPort);
+    _main = new vwMain(this, rxPort, overrideStoragePath);
 
     // Setup ImGui
     ImGui::CreateContext();

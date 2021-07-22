@@ -49,7 +49,7 @@ struct TimelineDrawHelper;
 class vwMain : public cmInterface {
 public:
     // Constructor & destructor
-    vwMain(vwPlatform* platform, int rxPort);
+    vwMain(vwPlatform* platform, int rxPort, const bsString& overrideStoragePath);
     ~vwMain(void);
     void notifyStart(bool doLoadLastFile);
 

@@ -436,7 +436,7 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
     // Wait for threads completion
     plLockWait("Global Synchro");
     for(std::thread& t : threads) t.join();
-    plMarker("Threading", "All tasks are completed! Joy!");
+    plMarker("threading", "All tasks are completed! Joy!");
     plLockState("Global Synchro", false); // End of waiting, no lock used
 
     // Stop the recording

@@ -30,7 +30,7 @@
 #define PL_GROUP_FDIAG 0
 #endif
 
-// @#TBC P3 Add a forward/backward navigation?
+// @#TBC Add a forward/backward navigation?
 
 
 vwFileDialog::vwFileDialog(const bsString& title, Mode mode, const bsVec<bsString>& typeFilters) :

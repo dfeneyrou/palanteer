@@ -52,7 +52,7 @@ public:
     struct Evt {
         // Navigation or memory fields
         union {
-            struct { // Generic event
+            struct { // Hierarchical event
                 u32 parentLIdx;  // lIdx of the parent, at level-1
                 u32 linkLIdx;    // lIdx of the first child at level+1 for scope start, or the next element at same level for other kinds
             };

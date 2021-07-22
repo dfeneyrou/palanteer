@@ -104,7 +104,7 @@ static const unsigned int icon_data[2388/4] =
 // Main application
 // ==============================================================================================
 
-vwMain::vwMain(vwPlatform* platform, int rxPort) :
+vwMain::vwMain(vwPlatform* platform, int rxPort, const bsString& overrideStoragePath) :
     _platform(platform)
 {
     // Initialise some fields
@@ -119,6 +119,10 @@ vwMain::vwMain(vwPlatform* platform, int rxPort) :
     // Internals
     _config    = new vwConfig(this, osGetProgramDataPath());
     _storagePath = getConfig().getRecordStoragePath();
+    if(!overrideStoragePath.empty()) {
+        _storagePath = overrideStoragePath;
+        if(_storagePath.back()!=PL_DIR_SEP_CHAR) _storagePath.push_back(PL_DIR_SEP_CHAR);
+    }
     _recording = new cmRecording(this, _storagePath, false);
     _clientCnx = new cmCnx(this, rxPort);
     _live      = new cmLiveControl(this, _clientCnx);
