@@ -32,7 +32,8 @@
 
 
 import sys
-if sys.version_info.major<3:
+
+if sys.version_info.major < 3:
     print("ERROR: This tool requires python3 (not python2)", file=sys.stderr)
     sys.exit(1)
 import re
@@ -41,30 +42,42 @@ import re
 # Main entry
 # ==========
 
+
 def main(argv):
 
     # Help
-    if len(argv)!=2:
-        print("This tool is a part of Palanteer and useful for the 'external string' feature.", file=sys.stderr)
-        print("It takes one argument, the 'external string' file lookup, replaces detected hashed strings from stdin and outputs the decoded version in stdout.", file=sys.stderr)
+    if len(argv) != 2:
+        print(
+            "This tool is a part of Palanteer and useful for the 'external string' feature.",
+            file=sys.stderr,
+        )
+        print(
+            "It takes one argument, the 'external string' file lookup, replaces detected hashed strings from stdin and outputs the decoded version in stdout.",
+            file=sys.stderr,
+        )
         print("\n  Syntax: %s <string file lookup>\n" % argv[0], file=sys.stderr)
         print("Typical usage is decoding assertion messages.")
-        print("Example: cat 'pointer @@894920843EBC824C@@' | %s myHashedStringLookup" % argv[0])
+        print(
+            "Example: cat 'pointer @@894920843EBC824C@@' | %s myHashedStringLookup"
+            % argv[0]
+        )
         print("Example: xclip -o | %s myHashedStringLookup" % argv[0])
         sys.exit(1)
 
     # Load the lookup
-    with open(argv[1], 'r') as fHandle: lines = fHandle.readlines()
-    lkup = { }
+    with open(argv[1], "r") as fHandle:
+        lines = fHandle.readlines()
+    lkup = {}
     MATCH_LKUP_ENTRY = re.compile("@@([0-9A-F]{16})@@(.*)")
     for l in lines:
         m = MATCH_LKUP_ENTRY.match(l)
-        if m: lkup[m.group(1)] = m.group(2)
+        if m:
+            lkup[m.group(1)] = m.group(2)
 
     # Read stdin, replace hash string patterns and dump on stdout
     MATCH_INPUT_ENTRY = re.compile("(.*?)@@([0-9A-F]{16})@@(.*)$")
     for l in sys.stdin.readlines():
-        outLine = [ ]
+        outLine = []
         m = MATCH_INPUT_ENTRY.match(l)
         while m:
             outLine.append(m.group(1))

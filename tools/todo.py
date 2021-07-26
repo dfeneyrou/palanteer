@@ -31,7 +31,8 @@
 #  - display the todo list
 
 import sys
-if sys.version_info.major<3:
+
+if sys.version_info.major < 3:
     print("ERROR: This tool requires python3 (not python2)", file=sys.stderr)
     sys.exit(1)
 import os
@@ -41,8 +42,8 @@ import re
 
 # Constants
 # =========
-MARKER         = "@#"  # Feel free to choose your marker here
-MATCH_MARKER   = re.compile("(.*?)"+MARKER+"([a-z]+?)($|\s)(.*)", re.IGNORECASE)
+MARKER = "@#"  # Feel free to choose your marker here
+MATCH_MARKER = re.compile("(.*?)" + MARKER + "([a-z]+?)($|\s)(.*)", re.IGNORECASE)
 MATCH_PRIORITY = re.compile("(.*?)(^|\s)P([\.\-0-9]+)($|\s)(.*)")
 MATCH_WORKLOAD = re.compile("(.*?)(^|\s)W([\.0-9]+)($|\s)(.*)")
 MATCH_CATEGORY = re.compile("(.*?)\s?\[(.*?)\]\s?(.*)")
@@ -97,32 +98,36 @@ Task with all  @#OPTIM P5 [EXAMPLE] [REWORK] W0.5 [EASY] Tabulate the linearly i
 # Main entry
 # ==========
 
+
 def main(argv):
 
     # Command line parameters parsing
     # ===============================
-    doUseColor        = True
-    sortKind          = "priority"
-    fileDisplayKind   = "base"
-    oneLineMode       = False
-    doPrintUsage      = False
-    filterInCategory  = []
+    doUseColor = True
+    sortKind = "priority"
+    fileDisplayKind = "base"
+    oneLineMode = False
+    doPrintUsage = False
+    filterInCategory = []
     filterOutCategory = []
-    filenames         = []
-    prioMin, prioMax  = None, None
+    filenames = []
+    prioMin, prioMax = None, None
 
     i = 1
-    while i<len(argv):
-        if   argv[i].lower() in ["-f", "/f"]:
-            if i+1>=len(argv):
+    while i < len(argv):
+        if argv[i].lower() in ["-f", "/f"]:
+            if i + 1 >= len(argv):
                 print("Error: -f requires a parameter", file=sys.stderr)
                 doPrintUsage = True
             else:
-                fileDisplayKind = argv[i+1].lower()
+                fileDisplayKind = argv[i + 1].lower()
                 if fileDisplayKind not in ["none", "base", "full"]:
-                    print("Error: -f requires a value among [none, base, full]", file=sys.stderr)
+                    print(
+                        "Error: -f requires a value among [none, base, full]",
+                        file=sys.stderr,
+                    )
                     doPrintUsage = True
-                i = i+1
+                i = i + 1
         elif argv[i].lower() in ["-sc", "/sc"]:
             sortKind = "categories"
         elif argv[i].lower() in ["-sf", "/sf"]:
@@ -132,63 +137,89 @@ def main(argv):
         elif argv[i].lower() in ["-m", "/m"]:
             doUseColor = False
         elif argv[i].lower() in ["-c", "/c"]:
-            if i+1>=len(argv):
+            if i + 1 >= len(argv):
                 print("Error: -c requires a parameter", file=sys.stderr)
                 doPrintUsage = True
             else:
-                filterInCategory.append(argv[i+1].upper())
-                i = i+1
+                filterInCategory.append(argv[i + 1].upper())
+                i = i + 1
         elif argv[i].lower() in ["-nc", "/nc"]:
-            if i+1>=len(argv):
+            if i + 1 >= len(argv):
                 print("Error: -nc requires a parameter", file=sys.stderr)
                 doPrintUsage = True
             else:
-                filterOutCategory.append(argv[i+1].upper())
-                i = i+1
+                filterOutCategory.append(argv[i + 1].upper())
+                i = i + 1
         elif argv[i].lower() in ["-p", "/p"]:
-            if i+2>=len(argv):
+            if i + 2 >= len(argv):
                 print("Error: -p requires two parameters", file=sys.stderr)
                 doPrintUsage = True
             else:
                 try:
-                    prioMin, prioMax = float(argv[i+1]), float(argv[i+2])
-                    if prioMin>prioMax: doPrintUsage = True
+                    prioMin, prioMax = float(argv[i + 1]), float(argv[i + 2])
+                    if prioMin > prioMax:
+                        doPrintUsage = True
                 except:
                     print("Error: -p requires two numeric parameters", file=sys.stderr)
                     doPrintUsage = True
-                i = i+2
-        elif argv[i][0]=="-":
+                i = i + 2
+        elif argv[i][0] == "-":
             doPrintUsage = True  # Unknown option
             print("Unknown option '%s'" % argv[i], file=sys.stderr)
         else:
             filenames.append(argv[i])
-        i = i+1
+        i = i + 1
 
-    if doUseColor: RED, GREEN, CYAN, YELLOW, DWHITE, NORMAL = '\033[91m', '\033[92m', '\033[96m', '\033[93m', '\033[37m', '\033[0m'
-    else:          RED, GREEN, CYAN, YELLOW, DWHITE, NORMAL = "", "", "", "", "", ""
-    if sortKind=="file" and fileDisplayKind=="none": fileDisplayKind = "base" # Sanity against weird configuration
-    if not filenames: doPrintUsage = True
+    if doUseColor:
+        RED, GREEN, CYAN, YELLOW, DWHITE, NORMAL = (
+            "\033[91m",
+            "\033[92m",
+            "\033[96m",
+            "\033[93m",
+            "\033[37m",
+            "\033[0m",
+        )
+    else:
+        RED, GREEN, CYAN, YELLOW, DWHITE, NORMAL = "", "", "", "", "", ""
+    if sortKind == "file" and fileDisplayKind == "none":
+        fileDisplayKind = "base"  # Sanity against weird configuration
+    if not filenames:
+        doPrintUsage = True
 
     if doPrintUsage:
-        print(USAGE % (MARKER, argv[0], argv[0], argv[0], argv[0], argv[0], argv[0], argv[0], argv[0], argv[0]),
-              file=sys.stderr)
+        print(
+            USAGE
+            % (
+                MARKER,
+                argv[0],
+                argv[0],
+                argv[0],
+                argv[0],
+                argv[0],
+                argv[0],
+                argv[0],
+                argv[0],
+                argv[0],
+            ),
+            file=sys.stderr,
+        )
         sys.exit(1)
-
 
     # Todo items collection
     # =====================
-    todos = [ ]
+    todos = []
     for f in filenames:
         # Load the file
         lines = []
         try:
-            with open(f, 'r') as fHandle: lines = fHandle.readlines()
+            with open(f, "r") as fHandle:
+                lines = fHandle.readlines()
         except:
             print(" Warning: unable to read file %s" % f)
 
         # Loop on lines
         lineNbr, lineQty = 0, len(lines)
-        while lineNbr<lineQty:
+        while lineNbr < lineQty:
 
             # Detect the marker
             l = lines[lineNbr]
@@ -197,56 +228,83 @@ def main(argv):
                 lineNbr += 1
                 continue
 
-            itemLineNbr = lineNbr+1  # Lines in a file are counted from 1
+            itemLineNbr = lineNbr + 1  # Lines in a file are counted from 1
             filename = f
-            if   fileDisplayKind=="full": filename = f
-            elif fileDisplayKind=="none": filename = ""
-            else:                         filename = os.path.basename(f)
+            if fileDisplayKind == "full":
+                filename = f
+            elif fileDisplayKind == "none":
+                filename = ""
+            else:
+                filename = os.path.basename(f)
 
             # Get the full description of the item, including next lines whose indentation is strictly bigger than the todo item
-            startCol = len(m.group(1)) # Required to detect multiline
-            descr    = [ m.group(4).strip() ]
-            while lineNbr+1<lineQty and MARKER not in lines[lineNbr+1] and \
-                  not lines[lineNbr+1][:startCol+1].replace("//", "").replace(" ", "").replace("#", "") and \
-                  lines[lineNbr+1][startCol+1:].strip():
+            startCol = len(m.group(1))  # Required to detect multiline
+            descr = [m.group(4).strip()]
+            while (
+                lineNbr + 1 < lineQty
+                and MARKER not in lines[lineNbr + 1]
+                and not lines[lineNbr + 1][: startCol + 1]
+                .replace("//", "")
+                .replace(" ", "")
+                .replace("#", "")
+                and lines[lineNbr + 1][startCol + 1 :].strip()
+            ):
                 # Include the next line in the description
-                descr.append(lines[lineNbr+1][startCol+1:].strip())
+                descr.append(lines[lineNbr + 1][startCol + 1 :].strip())
                 lineNbr += 1
             lineNbr += 1
 
             # Extract the attributes
-            priority, workload, categories = 99., 0., [m.group(2)]
+            priority, workload, categories = 99.0, 0.0, [m.group(2)]
             for dLineNbr in range(len(descr)):
                 m = MATCH_PRIORITY.match(descr[dLineNbr])
                 while m:
-                    try:    priority = float(m.group(3).strip())
-                    except: pass
-                    descr[dLineNbr] = m.group(1)+(" " if m.group(1) else "")+m.group(5)
+                    try:
+                        priority = float(m.group(3).strip())
+                    except:
+                        pass
+                    descr[dLineNbr] = (
+                        m.group(1) + (" " if m.group(1) else "") + m.group(5)
+                    )
                     m = MATCH_PRIORITY.match(descr[dLineNbr])
                 m = MATCH_WORKLOAD.match(descr[dLineNbr])
                 while m:
-                    try:    workload = float(m.group(3).strip())
-                    except: pass
-                    descr[dLineNbr] = m.group(1)+(" " if m.group(1) else "")+m.group(5)
+                    try:
+                        workload = float(m.group(3).strip())
+                    except:
+                        pass
+                    descr[dLineNbr] = (
+                        m.group(1) + (" " if m.group(1) else "") + m.group(5)
+                    )
                     m = MATCH_WORKLOAD.match(descr[dLineNbr])
                 m = MATCH_CATEGORY.match(descr[dLineNbr])
                 while m:
                     categories.append(m.group(2).strip())
-                    descr[dLineNbr] = m.group(1)+(" " if m.group(1) else "")+m.group(3)
+                    descr[dLineNbr] = (
+                        m.group(1) + (" " if m.group(1) else "") + m.group(3)
+                    )
                     m = MATCH_CATEGORY.match(descr[dLineNbr])
 
             # Store the todo item (as a dictionaries, which are easily extensible and easy to read)
-            todos.append( { "descr": descr, "file":filename, "lineNbr":itemLineNbr,
-                            "priority":priority, "workload":workload, "categories":categories })
-
+            todos.append(
+                {
+                    "descr": descr,
+                    "file": filename,
+                    "lineNbr": itemLineNbr,
+                    "priority": priority,
+                    "workload": workload,
+                    "categories": categories,
+                }
+            )
 
     # Re-organize items
     # =================
     # Filtering on priorities
-    if prioMin!=None and prioMax!=None:
+    if prioMin != None and prioMax != None:
         filteredTodos = []
         for todo in todos:
-            if todo["priority"]>=prioMin and todo["priority"]<=prioMax: filteredTodos.append(todo)
+            if todo["priority"] >= prioMin and todo["priority"] <= prioMax:
+                filteredTodos.append(todo)
         todos = filteredTodos
 
     # Filtering on categories
@@ -254,88 +312,135 @@ def main(argv):
         # In: only the listed category are kept
         filteredTodos = []
         for todo in todos:
-            if [1 for c in todo["categories"] if c.upper() in filterInCategory]: filteredTodos.append(todo)
+            if [1 for c in todo["categories"] if c.upper() in filterInCategory]:
+                filteredTodos.append(todo)
         todos = filteredTodos
     if filterOutCategory:
         # Out: only items not containing any of these categories are kept
         filteredTodos = []
         for todo in todos:
-            if not [1 for c in todo["categories"] if c.upper() in filterOutCategory]: filteredTodos.append(todo)
+            if not [1 for c in todo["categories"] if c.upper() in filterOutCategory]:
+                filteredTodos.append(todo)
         todos = filteredTodos
 
     # Sort by priority
     todos.sort(key=lambda x: x["priority"])
 
     # Create the display groups
-    groups = [ ]
-    if sortKind=="categories":
+    groups = []
+    if sortKind == "categories":
         # Create the groups
-        allCategories = sorted(list(set(sum([ x["categories"] for x in todos ], []))), key=lambda x: x.lower()) # "sum(list, [])" = trick to merge several lists
+        allCategories = sorted(
+            list(set(sum([x["categories"] for x in todos], []))),
+            key=lambda x: x.lower(),
+        )  # "sum(list, [])" = trick to merge several lists
         if filterInCategory:
-            allCategories = [ c for c in allCategories if c in filterInCategory ]
-        for c in allCategories: groups.append( (c.upper(), RED, [ t for t in todos if c.upper() in t["categories"] ]) )
-        noCategoryTodos = [ t for t in todos if not t["categories"] ]
-        if noCategoryTodos: groups.append( ("(No category)", RED, noCategoryTodos) )
-    elif sortKind=="file":
-        allFiles = sorted(list(set([ x["file"] for x in todos])), key=lambda x: x.lower())
-        for f in allFiles: groups.append( (f, GREEN, [ t for t in todos if t["file"]==f ]) )
+            allCategories = [c for c in allCategories if c in filterInCategory]
+        for c in allCategories:
+            groups.append(
+                (c.upper(), RED, [t for t in todos if c.upper() in t["categories"]])
+            )
+        noCategoryTodos = [t for t in todos if not t["categories"]]
+        if noCategoryTodos:
+            groups.append(("(No category)", RED, noCategoryTodos))
+    elif sortKind == "file":
+        allFiles = sorted(
+            list(set([x["file"] for x in todos])), key=lambda x: x.lower()
+        )
+        for f in allFiles:
+            groups.append((f, GREEN, [t for t in todos if t["file"] == f]))
     else:
-        allIntPriorities = sorted(list(set([ int(x["priority"]) for x in todos])))
-        for p in allIntPriorities: groups.append( ("", DWHITE, [ t for t in todos if int(t["priority"])==p ]) )
-
+        allIntPriorities = sorted(list(set([int(x["priority"]) for x in todos])))
+        for p in allIntPriorities:
+            groups.append(("", DWHITE, [t for t in todos if int(t["priority"]) == p]))
 
     # Display items
     # =============
 
     # Compute widths
-    maxWidthFilename = 6 + max([0] + [ len(t["file"]) for t in todos ])
-    maxWidthCategory = max([0] + [ sum([1+len(c) for c in t["categories"]]) for t in todos])
-    descrIndent      = ( (6               +2) +
-                         (maxWidthFilename+2 if sortKind!="file"       else 7) +
-                         (maxWidthCategory+2 if sortKind!="categories" else 0) )
+    maxWidthFilename = 6 + max([0] + [len(t["file"]) for t in todos])
+    maxWidthCategory = max(
+        [0] + [sum([1 + len(c) for c in t["categories"]]) for t in todos]
+    )
+    descrIndent = (
+        (6 + 2)
+        + (maxWidthFilename + 2 if sortKind != "file" else 7)
+        + (maxWidthCategory + 2 if sortKind != "categories" else 0)
+    )
 
     # Loop on groups
     for groupName, groupColor, groupTodos in groups:
         # Header
-        groupWl     = sum([0.]+[ t["workload"] for t in groupTodos ])
-        wlStr       = ", %.1f md" % groupWl if groupWl>0. else ""
-        headerStr   = "%s%s(%d todo%s%s)" % (groupName, " " if groupName else "", len(groupTodos), "s" if len(groupTodos)>1 else "", wlStr)
+        groupWl = sum([0.0] + [t["workload"] for t in groupTodos])
+        wlStr = ", %.1f md" % groupWl if groupWl > 0.0 else ""
+        headerStr = "%s%s(%d todo%s%s)" % (
+            groupName,
+            " " if groupName else "",
+            len(groupTodos),
+            "s" if len(groupTodos) > 1 else "",
+            wlStr,
+        )
         print("%s%s" % (groupColor, headerStr))
         # List the todos
         for t in groupTodos:
             # Priority
-            pStr = ("P%.2f" % t["priority"]) if t["priority"]<99. else "---"
-            while pStr[-1]=='0': pStr = pStr[:-1]
-            if    pStr[-1]=='.': pStr = pStr[:-1]
-            print("%s%-6s  " % (CYAN, pStr), end='')
-            prioWidth = len(pStr)-1
+            pStr = ("P%.2f" % t["priority"]) if t["priority"] < 99.0 else "---"
+            while pStr[-1] == "0":
+                pStr = pStr[:-1]
+            if pStr[-1] == ".":
+                pStr = pStr[:-1]
+            print("%s%-6s  " % (CYAN, pStr), end="")
+            prioWidth = len(pStr) - 1
             # Categories
-            if sortKind!="categories":
+            if sortKind != "categories":
                 cStr = " ".join(t["categories"])
-                print("%s%s%s  " % (RED, cStr, " "*max(0, maxWidthCategory-len(cStr))), end='')
+                print(
+                    "%s%s%s  "
+                    % (RED, cStr, " " * max(0, maxWidthCategory - len(cStr))),
+                    end="",
+                )
             # Filename
-            if sortKind!="file":
-                if fileDisplayKind!="none":
+            if sortKind != "file":
+                if fileDisplayKind != "none":
                     fStr = "%s(%d)" % (t["file"], t["lineNbr"])
-                    print("%s%s%s  " % (GREEN, fStr, " "*max(0, maxWidthFilename-len(fStr))), end='')
+                    print(
+                        "%s%s%s  "
+                        % (GREEN, fStr, " " * max(0, maxWidthFilename - len(fStr))),
+                        end="",
+                    )
             else:
                 fStr = "(L%d)" % t["lineNbr"]
-                print("%s%-7s" % (GREEN, fStr), end='')
+                print("%s%-7s" % (GREEN, fStr), end="")
             # Workload
             wl = t["workload"]
-            if wl>0.:
-                print("%s(%s)" %(YELLOW, ("%d md" % wl) if float(int(wl))==wl else "%.1f md" % wl), end='')
+            if wl > 0.0:
+                print(
+                    "%s(%s)"
+                    % (
+                        YELLOW,
+                        ("%d md" % wl) if float(int(wl)) == wl else "%.1f md" % wl,
+                    ),
+                    end="",
+                )
             # Todo description
-            print(NORMAL, end='')
+            print(NORMAL, end="")
             for i in range(len(t["descr"])):
-                if i>0: print("%s%s|%s" % (CYAN, " "*prioWidth, NORMAL) + (" "*(descrIndent+2-prioWidth)) + "%s" % DWHITE, end='')
+                if i > 0:
+                    print(
+                        "%s%s|%s" % (CYAN, " " * prioWidth, NORMAL)
+                        + (" " * (descrIndent + 2 - prioWidth))
+                        + "%s" % DWHITE,
+                        end="",
+                    )
                 print("%s" % t["descr"][i].lstrip())
         print()
 
     # Display total statistics
-    totalWorkload = sum([0.]+[ t["workload"] for t in todos ])
-    wlStr = ", %.1f md declared" % totalWorkload if totalWorkload>0. else ""
-    print("Total: %d unique todo%s%s" % (len(todos), "s" if len(todos)>1 else "", wlStr))
+    totalWorkload = sum([0.0] + [t["workload"] for t in todos])
+    wlStr = ", %.1f md declared" % totalWorkload if totalWorkload > 0.0 else ""
+    print(
+        "Total: %d unique todo%s%s" % (len(todos), "s" if len(todos) > 1 else "", wlStr)
+    )
 
 
 # Bootstrap

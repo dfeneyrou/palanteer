@@ -23,64 +23,69 @@
 import io
 import os
 import sys
-from   setuptools import setup, find_packages, Extension
+from setuptools import setup, find_packages, Extension
 
 
 # Constants
 isDevMode = False  # Enable to speed up development cycles. Shall be False for final installation
 
 # Deduce some parameters
-extra_link_args         = []
+extra_link_args = []
 extra_compilation_flags = ["-I", os.path.normpath("../c++")]
 
 if isDevMode:
-    if sys.platform=="win32":
+    if sys.platform == "win32":
         extra_compilation_flags.append("/Zi")
-        extra_link_args.append('/DEBUG')
+        extra_link_args.append("/DEBUG")
     else:
         extra_compilation_flags.append("-O0")  # Debug symbols are already generated
 
 classifiers_list = [
-    'Intended Audience :: Developers',
+    "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    'License :: OSI Approved :: MIT License',
-    'Development Status :: 4 - Beta',
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
-    'Programming Language :: Python :: 3.7',
-    'Programming Language :: Python :: 3.8',
-    'Programming Language :: Python :: 3.9',
-    'Programming Language :: Python :: 3.10',
-    'Programming Language :: Python :: Implementation :: CPython',
-    'Environment :: Console',
-    'Operating System :: Microsoft :: Windows :: Windows 10',
-    'Operating System :: POSIX :: Linux',
-    'Topic :: Software Development',
-    'Topic :: Software Development :: Debuggers'
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Environment :: Console",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Debuggers",
 ]
 
 # Read the content of the readme file
-with io.open('README.md', encoding='UTF-8') as readmeFile:
+with io.open("README.md", encoding="UTF-8") as readmeFile:
     long_description = readmeFile.read()
 
 
 # Build call
-setup(name="palanteer",
-      version="0.1.0",
-      author="Damien Feneyrou",
-      author_email="dfeneyrou@gmail.com",
-      license="MIT",
-      description="Palanteer instrumentation library for Python language",
-      long_description=long_description,
-      long_description_content_type='text/markdown',
-      classifiers=classifiers_list,
-      python_requires=">=3.7",
-      url="https://github.com/dfeneyrou/palanteer",
-      packages=find_packages(),
-      ext_modules=[
-          Extension('palanteer._cextension',
-                    sources=[os.path.normpath('palanteer/_cextension/pyPalanteerInstrumentation.cpp')],
-                    extra_compile_args=extra_compilation_flags,
-                    extra_link_args   =extra_link_args)
-      ],
-      zip_safe=False
-      )
+setup(
+    name="palanteer",
+    version="0.1.0",
+    author="Damien Feneyrou",
+    author_email="dfeneyrou@gmail.com",
+    license="MIT",
+    description="Palanteer instrumentation library for Python language",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    classifiers=classifiers_list,
+    python_requires=">=3.7",
+    url="https://github.com/dfeneyrou/palanteer",
+    packages=find_packages(),
+    ext_modules=[
+        Extension(
+            "palanteer._cextension",
+            sources=[
+                os.path.normpath("palanteer/_cextension/pyPalanteerInstrumentation.cpp")
+            ],
+            extra_compile_args=extra_compilation_flags,
+            extra_link_args=extra_link_args,
+        )
+    ],
+    zip_safe=False,
+)

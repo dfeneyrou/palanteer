@@ -29,17 +29,57 @@
 #     import palanteer_stub as palanteer  # Fallback to empty functions
 
 
-def plFunction(func):         return func
-def plInitAndStart(*args, **kwargs): pass
-def plStopAndUninit():        pass
-def plDeclareThread(name):    pass
-def plData(name, value):      pass
-def plText(name):             pass
-def plMarker(category, msg):  pass
-def plLockWait(name):         pass
-def plLockState(name, state): pass
-def plLockNotify(name):       pass
-def plBegin(name):            pass
-def plEnd(name=None):         pass
-def plRegisterCli(handler, name, spec, descr): pass
-def plFreezePoint():          pass
+def plFunction(func):
+    return func
+
+
+def plInitAndStart(*args, **kwargs):
+    pass
+
+
+def plStopAndUninit():
+    pass
+
+
+def plDeclareThread(name):
+    pass
+
+
+def plData(name, value):
+    pass
+
+
+def plText(name):
+    pass
+
+
+def plMarker(category, msg):
+    pass
+
+
+def plLockWait(name):
+    pass
+
+
+def plLockState(name, state):
+    pass
+
+
+def plLockNotify(name):
+    pass
+
+
+def plBegin(name):
+    pass
+
+
+def plEnd(name=None):
+    pass
+
+
+def plRegisterCli(handler, name, spec, descr):
+    pass
+
+
+def plFreezePoint():
+    pass

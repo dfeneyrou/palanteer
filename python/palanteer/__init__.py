@@ -26,7 +26,7 @@ import gc
 import threading
 
 # Sanity check
-if sys.version_info<(3,6,0):
+if sys.version_info < (3, 6, 0):
     raise Exception("Palanteer Python library requires at least Python 3.6")
 
 # Local import, which "turns" the package into a module and mixes both Python (this file) and C-extension API
@@ -35,8 +35,8 @@ import palanteer._cextension
 
 
 # Package state
-_old_excepthook    = None
-_is_activated      = False
+_old_excepthook = None
+_is_activated = False
 _is_with_functions = True
 
 
@@ -55,6 +55,7 @@ def plFunction(func):
         returned_value = func(*args, **kwargs)
         plEnd(func.__name__)
         return returned_value
+
     # Return our instrumented function
     return _plFunctionInner
 
@@ -62,7 +63,7 @@ def plFunction(func):
 # Collect garbage collection information  (this function call is masked)
 def _pl_garbage_collector_notif(phase, info):
     # Log as a scope and as a "lock", which provides a global view of the GC usage
-    if phase=="start":
+    if phase == "start":
         plBegin("Garbage collection")
         palanteer._cextension.plLockState("Garbage collection", True)
     else:
@@ -70,21 +71,23 @@ def _pl_garbage_collector_notif(phase, info):
         plEnd("Garbage collection")
 
 
-def plInitAndStart(app_name,
-                   record_filename=None,
-                   build_name=None,
-                   server_address="127.0.0.1",
-                   server_port=59059,
-                   do_wait_for_server_connection=False,
-                   with_functions=True,
-                   with_exceptions=True,
-                   with_memory=True,
-                   with_gc=True,
-                   with_c_calls=False):
+def plInitAndStart(
+    app_name,
+    record_filename=None,
+    build_name=None,
+    server_address="127.0.0.1",
+    server_port=59059,
+    do_wait_for_server_connection=False,
+    with_functions=True,
+    with_exceptions=True,
+    with_memory=True,
+    with_gc=True,
+    with_c_calls=False,
+):
     global _old_excepthook, _is_activated, _is_with_functions
     if _is_activated:
         return
-    _is_activated      = True
+    _is_activated = True
     _is_with_functions = with_functions
 
     # This Python callback is required by the threading.setprofile()  (no C equivalent for multi-threading)
@@ -95,13 +98,17 @@ def plInitAndStart(app_name,
 
     # Ensure that (not too) brutal ending is covered
     import atexit
+
     def notify_uncaught_exception(exc_type, exc_value, exc_traceback):
         global _old_excepthook
-        palanteer._cextension.plMarker("Exception", "Last exception was uncaught, exiting program")
+        palanteer._cextension.plMarker(
+            "Exception", "Last exception was uncaught, exiting program"
+        )
         _old_excepthook(exc_type, exc_value, exc_traceback)
+
     atexit.register(plStopAndUninit)
     _old_excepthook = sys.excepthook
-    sys.excepthook  = notify_uncaught_exception
+    sys.excepthook = notify_uncaught_exception
 
     # Collect garbage collection information
     if with_gc:
@@ -109,14 +116,21 @@ def plInitAndStart(app_name,
 
     # Start the instrumentation
     if with_functions or with_exceptions:
-        threading.setprofile(bootstrap_callback) # Hook our callback to detect all new threads
-    palanteer._cextension._profiling_start(app_name, record_filename, build_name,
-                                           server_address, server_port,
-                                           1 if do_wait_for_server_connection else 0,
-                                           1 if with_functions  else 0,
-                                           1 if with_exceptions else 0,
-                                           1 if with_memory     else 0,
-                                           1 if with_c_calls    else 0)
+        threading.setprofile(
+            bootstrap_callback
+        )  # Hook our callback to detect all new threads
+    palanteer._cextension._profiling_start(
+        app_name,
+        record_filename,
+        build_name,
+        server_address,
+        server_port,
+        1 if do_wait_for_server_connection else 0,
+        1 if with_functions else 0,
+        1 if with_exceptions else 0,
+        1 if with_memory else 0,
+        1 if with_c_calls else 0,
+    )
     # Note: the first automatic "leave function" event will be dropped (which correspond to leaving this function)
 
 

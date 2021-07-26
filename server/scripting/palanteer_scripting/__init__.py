@@ -18,7 +18,7 @@
 import sys
 
 # Sanity check
-if sys.version_info<(3,6,0):
+if sys.version_info < (3, 6, 0):
     raise Exception("Palanteer Python library requires at least Python 3.6")
 
 # Local import, which "turns" the package into a module and mixes both Python and C-extension API @# REQUIRED?

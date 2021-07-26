@@ -42,32 +42,37 @@ import palanteer_scripting._cextension
 # Constants
 # =========
 
-_PL_FLAG_TYPE_DATA_NONE      = 0
+_PL_FLAG_TYPE_DATA_NONE = 0
 _PL_FLAG_TYPE_DATA_TIMESTAMP = 1
-_PL_FLAG_TYPE_DATA_S32       = 2
-_PL_FLAG_TYPE_DATA_U32       = 3
-_PL_FLAG_TYPE_DATA_S64       = 4
-_PL_FLAG_TYPE_DATA_U64       = 5
-_PL_FLAG_TYPE_DATA_FLOAT     = 6
-_PL_FLAG_TYPE_DATA_DOUBLE    = 7
-_PL_FLAG_TYPE_DATA_STRING    = 8
-_PL_FLAG_TYPE_LOCK_WAIT      = 16
-_PL_FLAG_TYPE_LOCK_ACQUIRED  = 17
-_PL_FLAG_TYPE_LOCK_RELEASED  = 18
-_PL_FLAG_TYPE_LOCK_NOTIFIED  = 19
-_PL_FLAG_TYPE_MARKER         = 20
-_PL_FLAG_TYPE_MASK           = 0x1F
+_PL_FLAG_TYPE_DATA_S32 = 2
+_PL_FLAG_TYPE_DATA_U32 = 3
+_PL_FLAG_TYPE_DATA_S64 = 4
+_PL_FLAG_TYPE_DATA_U64 = 5
+_PL_FLAG_TYPE_DATA_FLOAT = 6
+_PL_FLAG_TYPE_DATA_DOUBLE = 7
+_PL_FLAG_TYPE_DATA_STRING = 8
+_PL_FLAG_TYPE_LOCK_WAIT = 16
+_PL_FLAG_TYPE_LOCK_ACQUIRED = 17
+_PL_FLAG_TYPE_LOCK_RELEASED = 18
+_PL_FLAG_TYPE_LOCK_NOTIFIED = 19
+_PL_FLAG_TYPE_MARKER = 20
+_PL_FLAG_TYPE_MASK = 0x1F
 
 # Default: "data"
-_flag_to_kind = { _PL_FLAG_TYPE_LOCK_WAIT: "lock wait", _PL_FLAG_TYPE_LOCK_ACQUIRED: "lock use",
-                  _PL_FLAG_TYPE_LOCK_RELEASED: "lock use", _PL_FLAG_TYPE_LOCK_NOTIFIED: "lock notified",
-                  _PL_FLAG_TYPE_MARKER: "marker" }
+_flag_to_kind = {
+    _PL_FLAG_TYPE_LOCK_WAIT: "lock wait",
+    _PL_FLAG_TYPE_LOCK_ACQUIRED: "lock use",
+    _PL_FLAG_TYPE_LOCK_RELEASED: "lock use",
+    _PL_FLAG_TYPE_LOCK_NOTIFIED: "lock notified",
+    _PL_FLAG_TYPE_MARKER: "marker",
+}
 
 MATCH_EXT_STRING_LOOKUP = re.compile("@@([0-9A-F]{16})@@(.*)$")
 
 
 # Exceptions
 # ==========
+
 
 class InitializationError(Exception):
     """The Palanteer library has not been initialized. Use the function 'initialize_scripting'."""
@@ -84,44 +89,59 @@ class UnknownThreadError(Exception):
 # Structures
 # ==========
 
+
 class Evt:
     """Represents a received event from the program under test"""
+
     def __init__(self, thread_name, kind, path, date_ns, value, spec_id):
-        self.thread   = thread_name
-        self.kind     = kind
-        self.path     = path  # List is easier to work with (checking parent, popping one level, etc...)
-        self.date_ns  = date_ns
-        self.value    = value  # Type depends on the event
-        self.spec_id  = spec_id
+        self.thread = thread_name
+        self.kind = kind
+        self.path = path  # List is easier to work with (checking parent, popping one level, etc...)
+        self.date_ns = date_ns
+        self.value = value  # Type depends on the event
+        self.spec_id = spec_id
         self.children = []
 
     def __str__(self):
-        s = ["%10.6f ms  kind=%-9s  thread=%s  path=%s" % (0.000001*self.date_ns, self.kind, self.thread, self.path)]
-        if len(self.children)>0: s[-1] += "  children=%d" % len(self.children)
-        if len(str(self.value)): s[-1] += "  value=%s" % self.value
+        s = [
+            "%10.6f ms  kind=%-9s  thread=%s  path=%s"
+            % (0.000001 * self.date_ns, self.kind, self.thread, self.path)
+        ]
+        if len(self.children) > 0:
+            s[-1] += "  children=%d" % len(self.children)
+        if len(str(self.value)):
+            s[-1] += "  value=%s" % self.value
         for c in self.children:
             s.append("  | %s" % str(c))
         return "\n".join(s)
 
 
 class _Elem:
-
     def __init__(self, nameHash, prevElemIdx, threadId, flags):
-        self.nameHash    = nameHash
+        self.nameHash = nameHash
         self.prevElemIdx = prevElemIdx
-        self.threadId    = threadId
+        self.threadId = threadId
         self.threadName = _event_ctx.db_thread_names[threadId]
-        self.valueDecodeFormat = { _PL_FLAG_TYPE_DATA_S32: "i", _PL_FLAG_TYPE_DATA_U32: "I", _PL_FLAG_TYPE_DATA_S64: "q",
-                                   _PL_FLAG_TYPE_DATA_FLOAT: "f", _PL_FLAG_TYPE_DATA_DOUBLE: "d",
-                                   _PL_FLAG_TYPE_DATA_STRING: "i" }.get(flags & _PL_FLAG_TYPE_MASK, None)
-        self.valueDecodeLength = struct.calcsize(self.valueDecodeFormat) if self.valueDecodeFormat else None
-        eType = (flags & _PL_FLAG_TYPE_MASK)
+        self.valueDecodeFormat = {
+            _PL_FLAG_TYPE_DATA_S32: "i",
+            _PL_FLAG_TYPE_DATA_U32: "I",
+            _PL_FLAG_TYPE_DATA_S64: "q",
+            _PL_FLAG_TYPE_DATA_FLOAT: "f",
+            _PL_FLAG_TYPE_DATA_DOUBLE: "d",
+            _PL_FLAG_TYPE_DATA_STRING: "i",
+        }.get(flags & _PL_FLAG_TYPE_MASK, None)
+        self.valueDecodeLength = (
+            struct.calcsize(self.valueDecodeFormat) if self.valueDecodeFormat else None
+        )
+        eType = flags & _PL_FLAG_TYPE_MASK
         self.valueIsString = eType in (_PL_FLAG_TYPE_DATA_STRING, _PL_FLAG_TYPE_MARKER)
         self.kind = _flag_to_kind.get(eType, "data")
 
         # Build the path
-        self.path, elemIdx = [_event_ctx.lkup_hash_to_string_value[nameHash]], prevElemIdx
-        while elemIdx>=0:
+        self.path, elemIdx = [
+            _event_ctx.lkup_hash_to_string_value[nameHash]
+        ], prevElemIdx
+        while elemIdx >= 0:
             elem = _event_ctx.db_elems[elemIdx]
             self.path.append(_event_ctx.lkup_hash_to_string_value[elem.nameHash])
             elemIdx = elem.prevElemIdx
@@ -133,32 +153,40 @@ class EvtSpec:
 
     def __init__(self, events, thread=None, parent=None):
         self.threadName = thread if thread else ""
-        self.tokenAlloc = [] # To avoid garbage collection issues...
+        self.tokenAlloc = []  # To avoid garbage collection issues...
         # Parent
         self.parentSpec = self._extractElemPath(parent)
         # Elems
         self.elemSpec = []
-        if type(events)==type(""):
+        if type(events) == type(""):
             events = [events]
         for e in events:
             ep = self._extractElemPath(e)
-            if not ep: continue
+            if not ep:
+                continue
             self.elemSpec.append(ep)
 
     def _extractElemPath(self, elemSpec):
-        if elemSpec==None:
+        if elemSpec == None:
             elemSpec = ""
         result = []
         for t in [t.strip() for t in elemSpec.split("/") if t]:
             doStore = False
-            if   t=="*":  doStore = True
-            elif t=="**": doStore = (result and result[-1]!="**")  # Super wildcard in front is useless, same for consecutive ones
-            elif t==".":  doStore = not result  # Must be in front to be meaningful
-            else:         doStore = True
-            if doStore: result.append(t)
+            if t == "*":
+                doStore = True
+            elif t == "**":
+                doStore = (
+                    result and result[-1] != "**"
+                )  # Super wildcard in front is useless, same for consecutive ones
+            elif t == ".":
+                doStore = not result  # Must be in front to be meaningful
+            else:
+                doStore = True
+            if doStore:
+                result.append(t)
 
         # Beginning with "./**" voids these 2 terms
-        if len(result) > 2 and result[0]=="." and result[1]=="**":
+        if len(result) > 2 and result[0] == "." and result[1] == "**":
             result = result[2:]
         return tuple(result)
 
@@ -169,10 +197,11 @@ class EvtSpec:
 # Library context
 
 _is_initialized = False
-_log_func       = None
+_log_func = None
 _old_excepthook = None
 
 # Program control context
+
 
 class _ProgramContext:
     def __init__(self):
@@ -206,9 +235,10 @@ _program_ctx = _ProgramContext()
 
 # CLI context
 
+
 class _CommandContext:
     def __init__(self):
-        self.lock   = threading.Lock()  # Field protection
+        self.lock = threading.Lock()  # Field protection
         self.answer = threading.Event()
         self.reset()
 
@@ -222,16 +252,17 @@ _command_ctx = _CommandContext()
 
 # Evt sniffing context
 
+
 class _EvtContext:
     def __init__(self):
         self.lock = threading.Lock()
         self.wake_from_events = threading.Event()
-        self.specs = [] # Persistent
+        self.specs = []  # Persistent
         self.lkup_hash_to_external_string_value = {}
         self.reset()
 
     def reset(self):
-        self.db_thread_names  = []
+        self.db_thread_names = []
         self.db_elems = []
         self.db_clis = []
         self.lkup_hash_to_string_value = {}
@@ -252,7 +283,10 @@ _event_ctx = _EvtContext()
 # Internal notifications
 # =======================
 
-def _notify_record_started(app_name, build_name, are_strings_external, is_short_hash, is_control_enabled):
+
+def _notify_record_started(
+    app_name, build_name, are_strings_external, is_short_hash, is_control_enabled
+):
     global _program_ctx, _event_ctx, _command_ctx
     _program_ctx.lock.acquire()
     _event_ctx.are_strings_external = are_strings_external
@@ -285,7 +319,9 @@ def _notify_command_answer(status, answer):
 def _notify_new_frozen_thread_state(frozenThreadBitmap):
     global _event_ctx
     _event_ctx.lock.acquire()
-    _event_ctx.frozen_thread_bitmap_change |= (_event_ctx.frozen_thread_bitmap^frozenThreadBitmap)  # Track the changes
+    _event_ctx.frozen_thread_bitmap_change |= (
+        _event_ctx.frozen_thread_bitmap ^ frozenThreadBitmap
+    )  # Track the changes
     _event_ctx.frozen_thread_bitmap = frozenThreadBitmap
     _event_ctx.wake_from_events.set()
     _event_ctx.lock.release()
@@ -294,7 +330,7 @@ def _notify_new_frozen_thread_state(frozenThreadBitmap):
 def _notify_new_strings(strings):
     global _event_ctx
     _event_ctx.lock.acquire()
-    for h,s in strings:
+    for h, s in strings:
         if not s and _event_ctx.are_strings_external:
             s = _event_ctx.lkup_hash_to_external_string_value.get(h, "@@%016X@@" % h)
         _event_ctx.lkup_hash_to_string_value[h] = s
@@ -316,7 +352,9 @@ def _notify_new_threads(threads):
     for name_hash, thread_idx in threads:
         while thread_idx >= len(_event_ctx.db_thread_names):
             _event_ctx.db_thread_names.append(None)
-        _event_ctx.db_thread_names[thread_idx] = _event_ctx.lkup_hash_to_string_value[name_hash]
+        _event_ctx.db_thread_names[thread_idx] = _event_ctx.lkup_hash_to_string_value[
+            name_hash
+        ]
         _event_ctx.lkup_hash_to_thread_id[name_hash] = thread_idx
     _event_ctx.lock.release()
 
@@ -329,7 +367,9 @@ def _notify_new_elems(elems):
             _event_ctx.db_elems.append(None)
         while thread_idx >= len(_event_ctx.db_thread_names):
             _event_ctx.db_thread_names.append(None)
-        _event_ctx.db_elems[elem_idx] = _Elem(name_hash, prev_elem_idx, thread_idx, flags)
+        _event_ctx.db_elems[elem_idx] = _Elem(
+            name_hash, prev_elem_idx, thread_idx, flags
+        )
     _event_ctx.lock.release()
 
 
@@ -347,19 +387,19 @@ def _notify_new_events(events):
     for spec_id, elem_id, children_qty, name_hash, date_ns, raw_value in events:
         elem = _event_ctx.db_elems[elem_id]
         if elem.valueDecodeFormat:
-            value = struct.pack("Q", raw_value)[:elem.valueDecodeLength]
+            value = struct.pack("Q", raw_value)[: elem.valueDecodeLength]
             value = struct.unpack(elem.valueDecodeFormat, value)[0]
         else:
             value = raw_value
         if elem.valueIsString:
             value = _event_ctx.string_values[value]
         evt = Evt(elem.threadName, elem.kind, elem.path, date_ns, value, spec_id)
-        if nestedQty==0:
+        if nestedQty == 0:
             _event_ctx.events.append(evt)
             nestedQty = children_qty
         else:
             _event_ctx.events[-1].children.append(evt)
-            nestedQty = nestedQty-1
+            nestedQty = nestedQty - 1
     _event_ctx.wake_from_events.set()
     _event_ctx.lock.release()
 
@@ -367,10 +407,12 @@ def _notify_new_events(events):
 # Public initialization API
 # =========================
 
+
 def _cleanup_at_exit():
     global _program_ctx
     if _program_ctx.process:
         process_stop()
+
 
 def _cleanup_at_uncaught_exception(exc_type, exc_value, exc_traceback):
     _cleanup_at_exit()
@@ -379,13 +421,18 @@ def _cleanup_at_uncaught_exception(exc_type, exc_value, exc_traceback):
 
 default_log_min_level = 2
 
+
 def _default_log_func(level, msg):
     # Filtering
-    if level<default_log_min_level:
+    if level < default_log_min_level:
         return
 
-    date_str = datetime.datetime.today().strftime("%H:%M:%S.%f")[:-3]  # [:-3] to remove the microseconds
-    level_str = "[%s]" % {0: "detail ", 1: "info   ", 2: "warning", 3: "error  "}.get(level, "unknown")
+    date_str = datetime.datetime.today().strftime("%H:%M:%S.%f")[
+        :-3
+    ]  # [:-3] to remove the microseconds
+    level_str = "[%s]" % {0: "detail ", 1: "info   ", 2: "warning", 3: "error  "}.get(
+        level, "unknown"
+    )
     print("%s %-9s %s" % (date_str, level_str, msg))
 
 
@@ -402,7 +449,7 @@ def initialize_scripting(port=59059, log_func=None):
     # Register the exit function, to clean/kill all sub processes at exit
     atexit.register(_cleanup_at_exit)
     _old_excepthook = sys.excepthook
-    sys.excepthook  = _cleanup_at_uncaught_exception
+    sys.excepthook = _cleanup_at_uncaught_exception
 
     # Finalized
     _is_initialized = True
@@ -430,7 +477,7 @@ def set_external_strings(filename=None, lkup={}):
         _event_ctx.lkup_hash_to_external_string_value.update(lkup)
     if filename:
         lkup = {}
-        with open(filename, 'r') as fHandle:
+        with open(filename, "r") as fHandle:
             for l in fHandle.readlines():
                 m = MATCH_EXT_STRING_LOOKUP.match(l)
                 if m:
@@ -440,27 +487,33 @@ def set_external_strings(filename=None, lkup={}):
 
 
 def hash_string(s, is_short_hash=False):
-    """ Fowler–Noll–Vo hash function"""
+    """Fowler–Noll–Vo hash function"""
     if not is_short_hash:
         h = 14695981039346656037
-        for c in s: h = ((h^ord(c))*1099511628211)&0xFFFFFFFFFFFFFFFF
-        if h==0: h = 1 # Special case for our application (0 is reserved internally)
+        for c in s:
+            h = ((h ^ ord(c)) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+        if h == 0:
+            h = 1  # Special case for our application (0 is reserved internally)
         return h
     else:
         h = 2166136261
-        for c in s: h = ((h^ord(c))*16777619)&0xFFFFFFFF
-        if h==0: h = 1 # Special case for our application (0 is reserved internally)
+        for c in s:
+            h = ((h ^ ord(c)) * 16777619) & 0xFFFFFFFF
+        if h == 0:
+            h = 1  # Special case for our application (0 is reserved internally)
         return h
-
 
 
 # Program control API
 # ===================
 
-def _remote_call(func, detail="", timeout_sec=5.):
+
+def _remote_call(func, detail="", timeout_sec=5.0):
     global _command_ctx
     if not _is_initialized:
-        raise InitializationError("The Palanteer library has not been initialized. Use the function 'initialize_scripting'.")
+        raise InitializationError(
+            "The Palanteer library has not been initialized. Use the function 'initialize_scripting'."
+        )
     _command_ctx.lock.acquire()
     _command_ctx.answer.clear()
     _command_ctx.answer_status = None
@@ -472,14 +525,17 @@ def _remote_call(func, detail="", timeout_sec=5.):
     return _command_ctx.answer_status, _command_ctx.answer_text
 
 
-def program_cli(command_str, timeout_sec=5.):
+def program_cli(command_str, timeout_sec=5.0):
     """
     Calls synchronously a remote command on the program under test.
 
     If there is no answer before the timeout expires, a ConnectionError exception is raised.
     The output is a tuple (status, text). A null status means success, else an error occurs and the text provides some explanation.
     """
-    return _remote_call(lambda x=command_str: palanteer_scripting._cextension.send_cli_request(x), " when calling command '%s'" % command_str)
+    return _remote_call(
+        lambda x=command_str: palanteer_scripting._cextension.send_cli_request(x),
+        " when calling command '%s'" % command_str,
+    )
 
 
 def program_set_freeze_mode(state):
@@ -498,42 +554,44 @@ def program_get_frozen_threads():
     frozen_threads = []
 
     _event_ctx.lock.acquire()
-    for h,bit in _event_ctx.lkup_hash_to_thread_id.items():
-        if (1<<bit)&_event_ctx.frozen_thread_bitmap:
+    for h, bit in _event_ctx.lkup_hash_to_thread_id.items():
+        if (1 << bit) & _event_ctx.frozen_thread_bitmap:
             frozen_threads.append(_event_ctx.lkup_hash_to_string_value[h])
     _event_ctx.lock.release()
     return frozen_threads
 
 
-def program_wait_freeze(thread_names, timeout_sec=3.):
+def program_wait_freeze(thread_names, timeout_sec=3.0):
     """Waits that all provided threads are frozen or the timeout expires."""
     global _event_ctx
 
-    if type(thread_names)!=type([]):
+    if type(thread_names) != type([]):
         thread_names = [thread_names]
-    hashed_thread_names = [(t, hash_string(t, _event_ctx.is_short_hash)) for t in thread_names]
-    end_time_sec = time.time()+timeout_sec
-    wait_timeout_sec  = max(0.1*timeout_sec, 0.2)
+    hashed_thread_names = [
+        (t, hash_string(t, _event_ctx.is_short_hash)) for t in thread_names
+    ]
+    end_time_sec = time.time() + timeout_sec
+    wait_timeout_sec = max(0.1 * timeout_sec, 0.2)
 
     frozen_threads = []
-    while time.time()<end_time_sec:
+    while time.time() < end_time_sec:
         _event_ctx.lock.acquire()
         _event_ctx.wake_from_events.clear()
         frozen_threads = []
-        for t,h in hashed_thread_names:
+        for t, h in hashed_thread_names:
             bit = _event_ctx.lkup_hash_to_thread_id.get(h, None)
-            if bit!=None and ((1<<bit)&_event_ctx.frozen_thread_bitmap):
+            if bit != None and ((1 << bit) & _event_ctx.frozen_thread_bitmap):
                 frozen_threads.append(t)
         _event_ctx.lock.release()
 
-        if len(frozen_threads)==len(thread_names):
+        if len(frozen_threads) == len(thread_names):
             break  # All are frozen
         _event_ctx.wake_from_events.wait(wait_timeout_sec)
 
     return frozen_threads
 
 
-def program_step_continue(thread_names, timeout_sec=1.):
+def program_step_continue(thread_names, timeout_sec=1.0):
     """
     This function unblocks all provided threads "frozen" on a freeze point.
     Before returning, it also waits that all of them effectively change their frozen.
@@ -541,41 +599,52 @@ def program_step_continue(thread_names, timeout_sec=1.):
     """
     global _event_ctx
 
-    if type(thread_names)!=type([]):
+    if type(thread_names) != type([]):
         thread_names = [thread_names]
-    hashed_thread_names = [(t, hash_string(t, _event_ctx.is_short_hash)) for t in thread_names]
-    end_time_sec = time.time()+timeout_sec
-    wait_timeout_sec  = max(0.1*timeout_sec, 0.2)
+    hashed_thread_names = [
+        (t, hash_string(t, _event_ctx.is_short_hash)) for t in thread_names
+    ]
+    end_time_sec = time.time() + timeout_sec
+    wait_timeout_sec = max(0.1 * timeout_sec, 0.2)
 
     # Send the "step continue" command to the remote program
     _event_ctx.lock.acquire()
     thread_bitmap = 0
-    for t,h in hashed_thread_names:
+    for t, h in hashed_thread_names:
         bit = _event_ctx.lkup_hash_to_thread_id.get(h, None)
-        if bit==None:
+        if bit == None:
             raise UnknownThreadError("The thread '%s' is unknown" % t)
-        thread_bitmap |= (1<<bit)
+        thread_bitmap |= 1 << bit
     _event_ctx.frozen_thread_bitmap_change = 0  # Reset the changes
     _event_ctx.lock.release()
 
-    _remote_call(lambda x=thread_bitmap: palanteer_scripting._cextension.step_continue(x))
+    _remote_call(
+        lambda x=thread_bitmap: palanteer_scripting._cextension.step_continue(x)
+    )
 
     # Wait for an effective change before leaving this function
-    while time.time()<end_time_sec:
+    while time.time() < end_time_sec:
         _event_ctx.lock.acquire()
         _event_ctx.wake_from_events.clear()
         bitmap_change = _event_ctx.frozen_thread_bitmap_change
         _event_ctx.lock.release()
 
-        if (thread_bitmap&bitmap_change)==thread_bitmap:
+        if (thread_bitmap & bitmap_change) == thread_bitmap:
             return True  # All threads have changed frozen state
         _event_ctx.wake_from_events.wait(wait_timeout_sec)
 
     return False
 
 
-def process_launch(program_path, args=[], record_filename="", pass_first_freeze_point=False,
-                   capture_output=False, cli_to_quit=None, connection_timeout_sec=5.):
+def process_launch(
+    program_path,
+    args=[],
+    record_filename="",
+    pass_first_freeze_point=False,
+    capture_output=False,
+    cli_to_quit=None,
+    connection_timeout_sec=5.0,
+):
     """
     This function launches a program and waits the connection the Palanteer remote module.
 
@@ -590,9 +659,13 @@ def process_launch(program_path, args=[], record_filename="", pass_first_freeze_
 
     # Sanity
     if not _is_initialized:
-        raise InitializationError("The Palanteer library has not been initialized. Use the function 'initialize_scripting'.")
+        raise InitializationError(
+            "The Palanteer library has not been initialized. Use the function 'initialize_scripting'."
+        )
     if _program_ctx.connection.is_set():
-        raise ConnectionError("Only one program at a time can be controlled and a program is already connected.")
+        raise ConnectionError(
+            "Only one program at a time can be controlled and a program is already connected."
+        )
 
     _program_ctx.reset(cli_to_quit)
     _command_ctx.reset()
@@ -609,26 +682,40 @@ def process_launch(program_path, args=[], record_filename="", pass_first_freeze_
     previous_freeze_state = _program_ctx.freeze_mode
     if pass_first_freeze_point:
         program_set_freeze_mode(True)
-        end_synch_time_sec = time.time()+connection_timeout_sec
+        end_synch_time_sec = time.time() + connection_timeout_sec
 
     # Launch the process with or without collecting the standard outputs
     if capture_output:
-        _program_ctx.process = subprocess.Popen([program_path] + args, universal_newlines=True,
-                                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        _program_ctx.std_out = threading.Thread(target=_program_ctx._tee_pipe, args=(False,))
-        _program_ctx.std_err = threading.Thread(target=_program_ctx._tee_pipe, args=(True,))
+        _program_ctx.process = subprocess.Popen(
+            [program_path] + args,
+            universal_newlines=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        _program_ctx.std_out = threading.Thread(
+            target=_program_ctx._tee_pipe, args=(False,)
+        )
+        _program_ctx.std_err = threading.Thread(
+            target=_program_ctx._tee_pipe, args=(True,)
+        )
         _program_ctx.std_out.start()
         _program_ctx.std_err.start()
     else:
-        _program_ctx.process = subprocess.Popen([program_path] + args, universal_newlines=True)
+        _program_ctx.process = subprocess.Popen(
+            [program_path] + args, universal_newlines=True
+        )
 
     # Wait the connection to Palanteer
     if not _program_ctx.connection.wait(connection_timeout_sec):
-        raise ConnectionError("No program connected during the timeout (%f s)." % connection_timeout_sec)
+        raise ConnectionError(
+            "No program connected during the timeout (%f s)." % connection_timeout_sec
+        )
 
     # Set a small max latency, as we want script reactivity
-    try: _remote_call(lambda: palanteer_scripting._cextension.set_max_latency_ms(10))
-    except ConnectionError: pass
+    try:
+        _remote_call(lambda: palanteer_scripting._cextension.set_max_latency_ms(10))
+    except ConnectionError:
+        pass
 
     # Release the reception thread with the first call to "set freeze mode"
     program_set_freeze_mode(_program_ctx.freeze_mode)
@@ -636,8 +723,8 @@ def process_launch(program_path, args=[], record_filename="", pass_first_freeze_
     # Synchronization, if required
     if pass_first_freeze_point:
         # Wait one frozen thread
-        wait_timeout_sec = max(0.1*connection_timeout_sec, 0.2)
-        while time.time()<end_synch_time_sec:
+        wait_timeout_sec = max(0.1 * connection_timeout_sec, 0.2)
+        while time.time() < end_synch_time_sec:
             _event_ctx.lock.acquire()
             _event_ctx.wake_from_events.clear()
             frozen_thread_bitmap = _event_ctx.frozen_thread_bitmap
@@ -645,8 +732,11 @@ def process_launch(program_path, args=[], record_filename="", pass_first_freeze_
             if frozen_thread_bitmap:
                 break  # At least one thread is frozen so this includes "the first one"
             _event_ctx.wake_from_events.wait(wait_timeout_sec)
-        if time.time()>=end_synch_time_sec:
-            raise ConnectionError("Connected to the program but unable to synch on a freeze point during the timeout (%f s)." % connection_timeout_sec)
+        if time.time() >= end_synch_time_sec:
+            raise ConnectionError(
+                "Connected to the program but unable to synch on a freeze point during the timeout (%f s)."
+                % connection_timeout_sec
+            )
 
         # Put back the previous freeze state
         program_set_freeze_mode(previous_freeze_state)
@@ -658,7 +748,7 @@ def process_is_running():
     if not _program_ctx.process:
         return False
     _program_ctx.process.poll()  # Query the process state
-    return (_program_ctx.process.returncode==None)
+    return _program_ctx.process.returncode == None
 
 
 def process_get_returncode():
@@ -740,6 +830,7 @@ def process_stop():
 # Evt sniffing API
 # ==================
 
+
 def data_configure_events(specs):
     """
     This function configures the capture of the events. It replaces any previous configuration.
@@ -755,16 +846,20 @@ def data_configure_events(specs):
     palanteer_scripting._cextension.clear_all_specs()
     data_clear_buffered_events()
 
-    if type(specs)!=type([]):  # Handle the single spec case
+    if type(specs) != type([]):  # Handle the single spec case
         specs = [specs]
 
     for specId, spec in enumerate(specs):
-        palanteer_scripting._cextension.add_spec(spec.threadName, spec.parentSpec, spec.elemSpec)
+        palanteer_scripting._cextension.add_spec(
+            spec.threadName, spec.parentSpec, spec.elemSpec
+        )
         _event_ctx.specs.append(spec)
 
 
 # Collect a slice of selected events until one of the exit condition is met
-def data_collect_events(wanted=[], unwanted=[], frozen_threads=[], max_event_qty=None, timeout_sec=1.):
+def data_collect_events(
+    wanted=[], unwanted=[], frozen_threads=[], max_event_qty=None, timeout_sec=1.0
+):
     """
     This function collects the received events from the program under control
 
@@ -778,18 +873,18 @@ def data_collect_events(wanted=[], unwanted=[], frozen_threads=[], max_event_qty
     """
     global _event_ctx
 
-    timeout_sec       = max(0.01, timeout_sec)
-    end_time_sec      = time.time()+timeout_sec
-    wait_timeout_sec  = max(0.1*timeout_sec, 0.2)  # Internal polling period
-    if wanted and type(wanted)==type(""):
+    timeout_sec = max(0.01, timeout_sec)
+    end_time_sec = time.time() + timeout_sec
+    wait_timeout_sec = max(0.1 * timeout_sec, 0.2)  # Internal polling period
+    if wanted and type(wanted) == type(""):
         wanted = [wanted]
-    if unwanted and type(unwanted)==type(""):
+    if unwanted and type(unwanted) == type(""):
         unwanted = [unwanted]
-    if frozen_threads and type(frozen_threads)==type(""):
+    if frozen_threads and type(frozen_threads) == type(""):
         frozen_threads = [frozen_threads]
 
     exit_loop_count, events = None, []
-    while time.time()<end_time_sec:
+    while time.time() < end_time_sec:
         _event_ctx.lock.acquire()
 
         # Get newly received events
@@ -797,37 +892,50 @@ def data_collect_events(wanted=[], unwanted=[], frozen_threads=[], max_event_qty
         _event_ctx.wake_from_events.clear()
 
         # Check the exit conditions
-        if exit_loop_count==None and max_event_qty and len(events)>=max_event_qty:
-            exit_loop_count = _event_ctx.collection_ticks  # Exit without any additional tick
-        if exit_loop_count==None and frozen_threads:
+        if exit_loop_count == None and max_event_qty and len(events) >= max_event_qty:
+            exit_loop_count = (
+                _event_ctx.collection_ticks
+            )  # Exit without any additional tick
+        if exit_loop_count == None and frozen_threads:
             thread_bitmap, areAllThreadsKnown = 0, True
             for t in frozen_threads:
-                bit = _event_ctx.lkup_hash_to_thread_id.get(hash_string(t, _event_ctx.is_short_hash), None)
-                if bit!=None:
-                    thread_bitmap |= (1<<bit)
+                bit = _event_ctx.lkup_hash_to_thread_id.get(
+                    hash_string(t, _event_ctx.is_short_hash), None
+                )
+                if bit != None:
+                    thread_bitmap |= 1 << bit
                 else:
                     areAllThreadsKnown = False
-            if areAllThreadsKnown and (_event_ctx.frozen_thread_bitmap&thread_bitmap)==thread_bitmap:
-                exit_loop_count = _event_ctx.collection_ticks+2  # +2 ticks for the double bank collection mechanism
-        if exit_loop_count==None and wanted:
+            if (
+                areAllThreadsKnown
+                and (_event_ctx.frozen_thread_bitmap & thread_bitmap) == thread_bitmap
+            ):
+                exit_loop_count = (
+                    _event_ctx.collection_ticks + 2
+                )  # +2 ticks for the double bank collection mechanism
+        if exit_loop_count == None and wanted:
             for e in new_events:
                 if e.path[-1] in wanted:
                     wanted.remove(e.path[-1])
             if not wanted:  # All wanted are found, so exit without any additional tick
                 exit_loop_count = _event_ctx.collection_ticks
-        if exit_loop_count==None and unwanted:
+        if exit_loop_count == None and unwanted:
             for e in new_events:
                 if e.path[-1] in unwanted:
-                    exit_loop_count = _event_ctx.collection_ticks  # One unwanted is enough to exit without additional ticks
+                    exit_loop_count = (
+                        _event_ctx.collection_ticks
+                    )  # One unwanted is enough to exit without additional ticks
                     break
-        if exit_loop_count==None and not process_is_running():
-            exit_loop_count = _event_ctx.collection_ticks+2  # +2 ticks for the double bank collection mechanism
+        if exit_loop_count == None and not process_is_running():
+            exit_loop_count = (
+                _event_ctx.collection_ticks + 2
+            )  # +2 ticks for the double bank collection mechanism
 
         # End the iteration
         current_collection_tick = _event_ctx.collection_ticks
         _event_ctx.lock.release()
         events.extend(new_events)
-        if exit_loop_count!=None and exit_loop_count<=current_collection_tick:
+        if exit_loop_count != None and exit_loop_count <= current_collection_tick:
             break
         _event_ctx.wake_from_events.wait(wait_timeout_sec)
 
@@ -870,7 +978,10 @@ def data_get_known_threads():
     """This function returns a list containing the names of the known threads."""
     global _event_ctx
     _event_ctx.lock.acquire()
-    known_threads = [_event_ctx.lkup_hash_to_string_value[h] for h in _event_ctx.lkup_hash_to_thread_id.keys()]
+    known_threads = [
+        _event_ctx.lkup_hash_to_string_value[h]
+        for h in _event_ctx.lkup_hash_to_thread_id.keys()
+    ]
     _event_ctx.lock.release()
     return known_threads
 
@@ -885,7 +996,11 @@ def data_get_known_event_kinds():
     global _event_ctx
     _event_ctx.lock.acquire()
     ec = _event_ctx
-    known_event_kinds = [(e.path, e.kind, ec.db_thread_names[e.threadId]) for e in ec.db_elems if e!=None]
+    known_event_kinds = [
+        (e.path, e.kind, ec.db_thread_names[e.threadId])
+        for e in ec.db_elems
+        if e != None
+    ]
     _event_ctx.lock.release()
     return known_event_kinds
 
@@ -908,13 +1023,17 @@ def data_get_known_clis():
 # Debug API
 # =========
 
+
 def debug_print_unresolved_events(output_file=sys.stdout):
     """This function displays the list of the unresolved specified events"""
 
     unresolved_event = data_get_unresolved_events()
     print("Unresolved events (%d):" % len(unresolved_event), file=output_file)
     for spec_id, event_spec, msg in unresolved_event:
-        print("  - From spec #%d, %s for event '%s'" % (spec_id, msg, event_spec), file=output_file)
+        print(
+            "  - From spec #%d, %s for event '%s'" % (spec_id, msg, event_spec),
+            file=output_file,
+        )
 
 
 def debug_print_known_threads(output_file=sys.stdout):
@@ -933,7 +1052,10 @@ def debug_print_known_event_kinds(output_file=sys.stdout):
     print("Known event kinds (%d):" % len(event_kinds), file=output_file)
     event_kinds.sort(key=lambda x: (x[2].lower(), x[1].lower(), x[0]))
     for path, kind, thread_name in event_kinds:
-        print("  - %-11s %-24s : %s" % ("[%s]" % kind, thread_name, "/".join(path)), file=output_file)
+        print(
+            "  - %-11s %-24s : %s" % ("[%s]" % kind, thread_name, "/".join(path)),
+            file=output_file,
+        )
 
 
 def debug_print_known_clis(output_file=sys.stdout):
@@ -943,4 +1065,6 @@ def debug_print_known_clis(output_file=sys.stdout):
     print("Known CLIs (%d):" % len(clis), file=output_file)
     clis.sort(key=lambda x: x[0].lower())
     for name, param_spec, description in clis:
-        print("  - %s  %s\n      %s" % (name, param_spec, description), file=output_file)
+        print(
+            "  - %s  %s\n      %s" % (name, param_spec, description), file=output_file
+        )

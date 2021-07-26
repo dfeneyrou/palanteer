@@ -36,24 +36,38 @@ if __name__ == "__main__":
     # Parse profiling options
     record_filename, server_address, server_port = None, "127.0.0.1", 59059
     do_wait_for_server_connection, idx, do_display_usage = False, 1, False
-    with_functions, with_exceptions, with_memory, with_gc, with_c_calls = True, True, True, True, False
-    while idx<len(sys.argv):
-        if not sys.argv[idx].startswith("-"): break
-        if   sys.argv[idx]=="-nf": with_functions  = False
-        elif sys.argv[idx]=="-ne": with_exceptions = False
-        elif sys.argv[idx]=="-nm": with_memory     = False
-        elif sys.argv[idx]=="-ng": with_gc         = False
-        elif sys.argv[idx]=="-c":  with_c_calls    = True
-        elif sys.argv[idx]=="-w":  do_wait_for_server_connection = True
-        elif sys.argv[idx]=="-f" and idx+1<len(sys.argv):
-            record_filename = sys.argv[idx+1]
-            if not record_filename.endswith(".pltraw"): record_filename += ".pltraw"
+    with_functions, with_exceptions, with_memory, with_gc, with_c_calls = (
+        True,
+        True,
+        True,
+        True,
+        False,
+    )
+    while idx < len(sys.argv):
+        if not sys.argv[idx].startswith("-"):
+            break
+        if sys.argv[idx] == "-nf":
+            with_functions = False
+        elif sys.argv[idx] == "-ne":
+            with_exceptions = False
+        elif sys.argv[idx] == "-nm":
+            with_memory = False
+        elif sys.argv[idx] == "-ng":
+            with_gc = False
+        elif sys.argv[idx] == "-c":
+            with_c_calls = True
+        elif sys.argv[idx] == "-w":
+            do_wait_for_server_connection = True
+        elif sys.argv[idx] == "-f" and idx + 1 < len(sys.argv):
+            record_filename = sys.argv[idx + 1]
+            if not record_filename.endswith(".pltraw"):
+                record_filename += ".pltraw"
             idx += 1
-        elif sys.argv[idx]=="-s" and idx+1<len(sys.argv):
-            server_addr = sys.argv[idx+1]
+        elif sys.argv[idx] == "-s" and idx + 1 < len(sys.argv):
+            server_addr = sys.argv[idx + 1]
             idx += 1
-        elif sys.argv[idx]=="-p" and idx+1<len(sys.argv):
-            server_port = sys.argv[idx+1]
+        elif sys.argv[idx] == "-p" and idx + 1 < len(sys.argv):
+            server_port = sys.argv[idx + 1]
             idx += 1
         else:
             print("Error: unknown option '%s'" % sys.argv[idx], file=sys.stderr)
@@ -65,7 +79,8 @@ if __name__ == "__main__":
     sys.argv[:] = sys.argv[idx:]
 
     if do_display_usage or not sys.argv:
-        print("""Palanteer profiler usage:
+        print(
+            """Palanteer profiler usage:
 
 Either:
 
@@ -89,21 +104,31 @@ Options for case (2):
 
 Note 1: in case of connection to the server and -w is not used and no server is reachable, profiling is simply skipped
 Note 2: on both Windows and Linux, context switch information is available only with root privileges (OS limitation)
-""", file=sys.stderr)
+""",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # Real work here
-    sys.path.insert(0, os.path.dirname(sys.argv[0])) # Update the python path
+    sys.path.insert(0, os.path.dirname(sys.argv[0]))  # Update the python path
     app_name = os.path.basename(sys.argv[0])
-    if app_name.endswith(".py"): app_name = app_name[:-3]
-    plInitAndStart(app_name, record_filename=record_filename,
-                   do_wait_for_server_connection=do_wait_for_server_connection,
-                   with_functions=with_functions,
-                   with_exceptions=with_exceptions,
-                   with_memory=with_memory,
-                   with_gc=with_gc,
-                   with_c_calls=with_c_calls)
+    if app_name.endswith(".py"):
+        app_name = app_name[:-3]
+    plInitAndStart(
+        app_name,
+        record_filename=record_filename,
+        do_wait_for_server_connection=do_wait_for_server_connection,
+        with_functions=with_functions,
+        with_exceptions=with_exceptions,
+        with_memory=with_memory,
+        with_gc=with_gc,
+        with_c_calls=with_c_calls,
+    )
     # Execute the program
-    exec(compile(open(sys.argv[0]).read(), sys.argv[0], 'exec'), sys._getframe(0).f_globals, sys._getframe(0).f_locals)
+    exec(
+        compile(open(sys.argv[0]).read(), sys.argv[0], "exec"),
+        sys._getframe(0).f_globals,
+        sys._getframe(0).f_locals,
+    )
 
     # Note: the profiling is stopped automatically at program exit
