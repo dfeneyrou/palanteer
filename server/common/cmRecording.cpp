@@ -1271,13 +1271,14 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
             // This call returns false if the lock event is a duplicated one.
             // If a lock wait end shall be inserted before this one, the boolean doInsertLockWaitEnd is set
             bool doInsertLockWaitEnd = false;
-            if(!processLockUseEvent(evtx, doInsertLockWaitEnd)) continue;
+            bool doProcessLockUse    = processLockUseEvent(evtx, doInsertLockWaitEnd);
+            if(!doProcessLockUse && !doInsertLockWaitEnd) continue;
 
             // In case of lock wait insertion, we turn the lock into a lock wait end now (change in level)
             //  and indicate that the original bugz shall be logged afterward
             if(doInsertLockWaitEnd) {
-                // Indicate the flags of the second event
-                secondEventFlags = evtx.flags;
+                // Indicate the flags of the second event if the lock use shall be processed
+                if(doProcessLockUse) secondEventFlags = evtx.flags;
                 // Mutate the current event into a wait end (which modifies the level)
                 evtx.flags = PL_FLAG_TYPE_LOCK_WAIT | PL_FLAG_SCOPE_END;
             }
