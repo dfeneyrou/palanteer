@@ -98,9 +98,9 @@ def test_markers():
     """Markers"""
 
     LOG("Configure event to capture markers")
-    data_configure_events([EvtSpec(["Threading", "important"])])
+    data_configure_events([EvtSpec(["threading", "important"])])
     launch_testprogram(duration=1)
-    events = data_collect_events(wanted=["important", "Threading"], timeout_sec=10.0)
+    events = data_collect_events(wanted=["important", "threading"], timeout_sec=10.0)
     # print("\n" + "\n".join([str(e) for e in events]))
     CHECK(
         "important" in [e.path[-1] for e in events],
@@ -108,7 +108,7 @@ def test_markers():
         "\n".join([str(e) for e in events]),
     )
     CHECK(
-        "Threading" in [e.path[-1] for e in events],
+        "threading" in [e.path[-1] for e in events],
         "We received the marker at the root",
     )
     process_stop()
