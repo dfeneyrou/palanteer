@@ -52,6 +52,10 @@
 
 #include "testPart.h"
 
+// Instrumentation group to test the group API
+#ifndef PL_GROUP_TESTGROUP
+#define PL_GROUP_TESTGROUP 1
+#endif
 
 
 // ==============================
@@ -407,6 +411,33 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
         threads.push_back(std::thread(associatedTask, threadGroupNbr, threadGroupNames[threadGroupNbr],
                                       (crashThreadGroupNbr==threadGroupNbr)? crashKind : -1));
     }
+
+    // Test all the 'group' APIs
+    if(plgIsEnabled(TESTGROUP)) { plgFunctionDyn(TESTGROUP); }
+    {
+        int a = 0;
+        plgBegin(TESTGROUP, "Group begin/end test");
+        plgData(TESTGROUP, "Group variable a", a);
+        plgVar(TESTGROUP, a);
+        plgMarker(TESTGROUP, "test", "this is a group marker test");
+        plgMarkerDyn(TESTGROUP, "test", "this is a group marker test");
+        plgMarkerDyn(TESTGROUP, "test", "this is another group marker test");
+        plgEnd(TESTGROUP, "Group begin/end test");
+    }
+    {
+        plgScope(TESTGROUP, "Group scope test");
+        plgLockWait(TESTGROUP, "Group lock test");
+        plgLockState(TESTGROUP, "Group lock test", false);
+        plgLockNotify(TESTGROUP, "Group lock test");
+    }
+    {
+        plgScopeDyn(TESTGROUP, "Group scopeDyn test");
+        plgLockWaitDyn(TESTGROUP, "Group lock test");
+        plgLockStateDyn(TESTGROUP, "Group lock test", false);
+        plgLockNotifyDyn(TESTGROUP, "Group lock test");
+    }
+    { plgLockScopeState(TESTGROUP, "Group lock test", true); }
+    { plgLockScopeStateDyn(TESTGROUP, "Group lock test", true); }
 
 #if USE_PL==1 && PL_VIRTUAL_THREADS==1
     // This stimulation is added only if the "virtual threads" feature is activated.

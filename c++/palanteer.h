@@ -607,6 +607,8 @@ void plDetachVirtualThread(bool isSuspended);
 #define plgFunctionDyn(group_)                      do { } while(0)
 #define plScope(name_)                              do { } while(0)
 #define plgScope(group_, name_)                     do { } while(0)
+#define plScopeDyn(name_)                           do { } while(0)
+#define plgScopeDyn(group_, name_)                  do { } while(0)
 #define plBegin(name_)                              do { } while(0)
 #define plgBegin(group_, name_)                     do { } while(0)
 #define plEnd(name_)                                do { } while(0)
