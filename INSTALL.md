@@ -51,7 +51,7 @@ The "install" target builds all components (as `make` would do) and additionaly 
 ## Customized test program
 
 The C++ test program receives customized compilation flags through the variable `CUSTOM_FLAGS`. <br/>
-For the list of options, refer to the [instrumentation configuration](instrumentation_configuration_cpp.md.html).
+For the list of options, refer to the [instrumentation configuration](https://dfeneyrou.github.io/palanteer/instrumentation_configuration_cpp.md.html).
 
 For instance, the following command builds the testprogram with Palanteer fully disabled (example for Linux):
 
@@ -98,3 +98,5 @@ Example:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
 cmake .. -DCMAKE_BUILD_TYPE=Release -DPALANTEER_BUILD_CPP_EXAMPLE=OFF -DPALANTEER_BUILD_SERVER_SCRIPTING=OFF
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The persistence of this configuration is ensured by the CMake caching mechanism.
