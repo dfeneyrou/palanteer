@@ -56,8 +56,3 @@ if(NOT CUSTOM_FLAGS MATCHES ".*USE_PL=0.*")
   target_compile_options    ("testprogram" PRIVATE            -DUSE_PL=1)
 endif()
 
-# Test program executable with deactivated Palanteer
-# =======================
-add_executable            ("testprogram_disabled"                    testProgram.cpp testPart.cpp testPart.h)
-target_link_libraries     ("testprogram_disabled" ${STACKTRACE_LIBS} Threads::Threads libpalanteer)
-

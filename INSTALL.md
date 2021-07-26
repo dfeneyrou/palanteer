@@ -48,6 +48,29 @@ Output:
 
 The "install" target builds all components (as `make` would do) and additionaly installs the 2 built `wheel` Python packages (globally if administrator, else locally).
 
+## Customized test program
+
+The C++ test program receives customized compilation flags through the variable `CUSTOM_FLAGS`. <br/>
+For the list of options, refer to the [instrumentation configuration](instrumentation_configuration_cpp.md.html).
+
+For instance, the following command builds the testprogram with Palanteer fully disabled (example for Linux):
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+cmake .. -DCUSTOM_FLAGS="-DUSE_PL=0"
+make testprogram
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Another example (for Linux), the following command builds the testprogram with Palanteer and:
+ - without the memory tracing
+ - with the external string feature activated
+ - with simple assertions
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+cmake .. -DCUSTOM_FLAGS="-DPL_IMPL_OVERLOAD_NEW_DELETE=0 -DPL_EXTERNAL_STRINGS=1 -DPL_SIMPLE_ASSERT=1"
+make testprogram
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+NOTE: Beware that the `CUSTOM_FLAGS` value is persistent with cmake. To clear it, simply use ```-DCUSTOM_FLAGS=""``` in a cmake configuration call
 
 ## Deactivating some components
 
