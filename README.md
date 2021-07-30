@@ -32,7 +32,7 @@ The Python scripting module can control this program, in particular:
 
 <details>
   <summary> See C++ example code </summary>
-  
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ c++
 // File: example.cpp
 // On Linux, build with:  g++ -DUSE_PL=1 -I <palanteer C++ instrumentation folder> example.cpp -lpthread -o example
@@ -95,11 +95,11 @@ Execution of unmodified Python programs can be analyzed directly with a syntax s
    - Coroutines
 
 In some cases, a manual instrumentation which enhances or replaces the automatic one is desired. <br/>
-The example below is such an equivalent of the C++ one above but in Python:
+The example below is an equivalent of the C++ code above, but in Python:
 
 <details>
   <summary> See Python manual instrumentation example code </summary>
-  
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ python
 #! /usr/bin/env python3
 import sys
@@ -144,19 +144,19 @@ if __name__ == "__main__":
 </details>
 
 
-## Scripting example  
+## Scripting example
 
 Both examples above (C++ and Python) can be remotely controlled with a simple Python script.
 
-Typical usage is:
-  - Tests based on stimulations/configuration with CLI and event observation, as data can also be logged
+Typical usages are:
+  - Tests based on stimulations/configuration with CLI and events observation, as data can also be traced
   - Evaluation of the program performance
   - Monitoring
   - ...
-  
+
 <details>
   <summary> See a scripting example code (Python) </summary>
-  
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ python
 #! /usr/bin/env python3
 import sys
@@ -211,7 +211,7 @@ if __name__ == "__main__":
 
 </details>
 
-The execution of this script gives the following output:
+The execution of this last script, with the compile C++ as parameter, gives the following output:
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 > time ./remoteScript.py example
@@ -219,7 +219,7 @@ Quantity: 100000
 Minimum : 300
 Average : 400
 Maximum : 500
-./remoteScript.py example  0.62s user 0.02s system 24% cpu 2.587 total  
+./remoteScript.py example  0.62s user 0.02s system 24% cpu 2.587 total
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Details can be found [here](https://dfeneyrou.github.io/palanteer/index.html#overview/commonfeatures/remotecontrol).

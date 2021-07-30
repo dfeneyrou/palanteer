@@ -58,17 +58,25 @@ classifiers_list = [
     "Topic :: Software Development :: Debuggers",
 ]
 
-# Read the content of the readme file
+# Read the Palanteer version from the C++ header library
 with io.open(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../README.md", encoding="UTF-8"
-) as readmeFile:
+    "${CMAKE_CURRENT_SOURCE_DIR}/../c++/palanteer.h", encoding="UTF-8"
+) as versionFile:
+    PALANTEER_VERSION = (
+        [l for l in versionFile.read().split("\n") if "PALANTEER_VERSION " in l][0]
+        .split()[2]
+        .replace('"', "")
+    )
+
+# Read the content of the readme file
+with io.open("${CMAKE_CURRENT_SOURCE_DIR}/README.md", encoding="UTF-8") as readmeFile:
     long_description = readmeFile.read()
 
 
 # Build call
 setup(
     name="palanteer",
-    version="0.1.0",
+    version=PALANTEER_VERSION,
     author="Damien Feneyrou",
     author_email="dfeneyrou@gmail.com",
     license="MIT",

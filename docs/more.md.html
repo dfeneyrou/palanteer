@@ -238,11 +238,11 @@ Brief and partial thoughts:
   * C
     * Like C++ releases before C++11, C11 support is possible but would require more platform specific work (multithreading) and a reduction of the feature list (no enhanced assertions, no automatic scope closing)
     * atomic were introduced in C11, so ok
-    * Automatic scope closing lacks RAII, or any defer mechanism `cleanup` is a GCC 4.0+ and recent CLANG extension, so not official)
+    * Automatic scope closing lacks RAII, or any defer mechanism (`cleanup` is a GCC 4.0+ and recent CLANG extension, so not official)
   * Other languages
     * Each language is unique, so is its potential API and set of features, on top of the fundamental event logging
     * In C++, the design and additional feature set was directly inherited from the language's constraints. In some other languages, they would not exist at all.
-      * Ex: the enhanced assertions, the stack trace display, the variants between static and dynamic string APIs, the usage of macros leading to a cascade of confusing errors...
+      * Ex: the stack trace display, the variants between static and dynamic string APIs, the usage of macros leading to a cascade of confusing errors...
 
 
 ### Note about "other" features
@@ -263,7 +263,7 @@ Therefore the following features **are not** considered in `Palanteer`:
 
      This kind of profiling method is definitely the more accessible as it works with any existing program containing debug information. <br/>
      However, its precision depends on the chosen sampling rate and the duration of the profiling snapshot: its reliability may be weak on short runs or rarely covered but important code. This is even more visible on the nonetheless impressive "cost per source code line" feature. <br/>
-     `Palanteer` chooses instrumentation-based profiling to ensure reliable data and fine precision (~20 ns on current x64) in all cases, indeed at the cost of the instrumentation. And for this price, the logging is much wider than just timings.
+     `Palanteer` chooses instrumentation-based profiling to ensure reliable data and fine precision (~20 ns on current x64) in all cases, indeed at the cost of the instrumentation. And for this price, the benefits of the event tracing is much larger than just getting some timings.
 
 - **Advanced CPU profiling**
 
@@ -276,7 +276,7 @@ Therefore the following features **are not** considered in `Palanteer`:
      Modern GPUs are accessible through different APIs (*Vulkan, OpenGL, DirectX, Metal...*) and can also provide chipset specific statistics. <br/>
      Dedicated profiling and analysis tools exploiting this information already exist for many couple (chipset, API). <br/>
      Non-exhaustive list: *RenderDoc (open source), NVidia Nsight, Radeon GPU Profiler, Intel GPA*... <br/>
-     The argument for not adding such feature is very similar to the one of the advanced CPU profiling: vendor or dedicated GPU profiler are already covering the topic.
+     The argument for not adding such feature is very similar to the one of the advanced CPU profiling: vendor or dedicated GPU profiler are already covering the topic in a deep way.
 
 - **Code disassembly**
 
@@ -378,56 +378,71 @@ This section is an unordered collection of "pieces of advice", mostly common sen
 
 - **Use asserts**
   - They greatly speed up the bug investigation by crashing "nicely" close to the inconsistency.
-  - Their impact on performance is usually low because data is already in the cache and a test is ~1 CPU cycle.
-  - Keep the condition as a simple check, never do actions inside an assertion as it may be disabled at compile time.
+  - Their impact on performance is usually low because data is already in the cache/registers so a test is ~1 CPU cycle.
+    - Also, if `Palanteer` is used, groups of asserts can be enabled on demand at compile-time, which can greatly speed-up investigations
+  - Keep the condition as a simple check, never perform actions inside an assertion as it may be disabled at compile time.
   - Never assert on external inputs, as they are not under control.
 
 - **Use address sanitizers (ASAN)** whenever possible
   - It is built-in in `gcc` and `clang`, enabled with a few compilation/linking flags
   - The reported issues (uninitialized memory read, leaks...) would be very hard to track without such class of tool.
   - The performance of the Address Sanitizers is often around half of the one of the debug mode, so much more acceptable than the 10x slowdown of `valgrind` (which is a fantastic tool anyway).
-  - If possible, test shall be performed with ASAN builds in order to maximize the observation spectrum.
+  - If possible, tests shall be performed with ASAN builds in order to maximize the observation spectrum.
+  - Consider also the other sanitizer tools (threads, undefined behaviors, ...)
 
 - **Remember that software always contain bugs** (just try to prove the opposite...)
   - Also, any change can create a regression.
   - Eventually, what matter is simply that all target use-cases are covered by tests before each delivery.
-  - Ideally tests that can be run quickly and easily (because humans do not like to wait).
-  - In order to do them properly, do not mix testing of functionalities (should be done quickly and at each commit) and stress test (longer by nature, less deterministic. For instance to run each night).
+  - Ideally, tests shall be executed quickly and be easy to launch (because humans do not like to wait).
+  - Do not mix testing features (should be executed quickly and if possible at each commit) with stress tests (longer by nature, less deterministic. For instance to run each night).
 
-- **A software evolves in time, and with some work, from young to mature**
+- **Software evolves, and matures with time and work**
   - Feedback from users or testers are critical to the maturation of the software. No feedback, no correct evolution.
-  - Initial implementations provide a global view on the system, and they are usually suboptimal in many ways as the build and the discovery of the topic are done in parallel.
-  - To keep a software under control, regular "maintenance" is required, which implies rewriting and simplifying some parts.
-  - Simplifying or clarifying a larger code around the location of an evolution can be seen as a risk in the short term, but is very beneficial at middle term.
-  - The safety net when rewriting or modifying some code is the tests. Have some tests...
-    - Without tests, no measure of quality is possible (whatever its real value): the code is not under control and each evolution jeopardize deliveries.
-    - A potential side effect of the absence of tests is the fear of change, leading to minimum maintenance and a fossilized software.
-    - A more probable side effect of the absence of tests is just bad software quality due to the lack of observations.
+    - You do not need big surveys. Feedback from ~5 people are enough to get the big lines and filter out the outlier feedbacks.
+  - Initial implementations usually have only one value: they "just work"
+    - They are suboptimal in many ways, as the discovery of the topic and the code writing are done in parallel
+    - Now that the global view is available, a second pass on the code is highly beneficial: simplification, optimization and better maintenance
+  - To keep a software under control, regular maintenance (=partial rewrite and simplification) is required, especially when objectives are changing
+  - During an evolution, simplifying or clarifying a larger section of the code shall be considered
+    - It is an additional risk at short term, but it reduces technical debt at middle term.
+    - Moreover, some thorough tests on the topic will be performed anyway, why not maximizing their effect?
+  - The safety net when rewriting or modifying some code are the tests. Just have some tests.
+    - "Not tested, not working"
+    - Without tests, you are blind, no observation or measure of quality is possible (whatever its absolute value)
+      - the code is not under control and each evolution jeopardizes deliveries.
+      - lack of observation of the software is directly linked to bad quality
+    - A side effect of the lack of tests is the fear of change. This leads to reduced maintenance (which is then a risk) and fossilized software.
 
 - **When testing, distinguish reliable detection of a failure (something is wrong for sure, but we do not know where) from reliable code-localisation of the issues**
-    - The first is more important for the users and can be covered by higher level tests.
-    - The second is more friendly for developers, but requires more tests and at a finer levels.
-    - Both kinds are important, but their nature is different
+  - The first corresponds to high level tests
+    - usually some user test cases
+    - they stimulate a large spectrum of functionalities to make the expected global behavior
+    - they are like a "checksum" of the behaviors of the subcomponents of the system
+  - The second corresponds to unit tests or integration tests (or any partial system stimulation)
+    - more of them are required for a good coverage
+    - they are more appreciated by developers because closer to the software architecture and implementation
+    - beware to keep them far enough from the implementation so that their maintenance cost is kept low in case of code rewrite
+  - Both kinds are important, their nature and "angle of attack" are just different. Several blades are better than one...
 
 - **About unit-tests vs system tests vs integration tests vs functional tests vs end-to-end tests, etc...**
   - As biologist classify the living organisms, some people classify the tests within boxes, with semantic or philosophical concerns.
-  - It is better to focus on the characteristics of the subsystem under test rather than on the nature on the test to apply on it. <br/>
-    Imagine a multi-dimensional space and place this subsystem on these axis (definitely a non-exaustive list) to get an idea of the test to create:
+  - It is better to focus on the characteristics of the system under test rather than on the nature of the tests to apply on it. <br/>
+    Imagine a multi-dimensional space and place a system or subsystem on these axis (definitely a non-exaustive list) to get an idea of the tests to create:
     - the variability of its behavior in time. For instance, a hashtable is not likely to vary much.
       - tests too close to the implementation may be a burden to maintain for quickly evolving systems.
-    - the dependencies of the subsystem
+    - the dependencies of the system
       - Dependencies can prevent proper testing, and stubbing them may distord the result of the test. Dilemma...
-    - the complexity of the behavior of the subsystem
-      - The more complex the behavior, the higher test quantity is needed.
-      - This may become a problem if the behavior is not deterministic
-    - the criticity of the subsystem.
+    - the complexity of the behavior of the system
+      - Complex behaviors imply a choice: higher test quantity or higher level tests
+      - Complex behaviors should have pyramidal testing: high level tests an some lower level tests on its sub components, recursively
+    - the criticity of the system.
       - A fundamental component shall be tested with more care, as any issue may propagate in upper layers
       - Investigating an issue visible at a given level and whose root cause is at a lower level, is usually very costly as all upper layer hypothesis are considered first.
     - ...
 
 - In this test jungle, the key idea is to **maximize the probability to find a bug during a finite given time slice**
   - The "bouquet" of tests shall be designed with this goal in mind. If a large time slice is available, good for you.
-  - Bugs shall be weighted in relation to the impact on the business
+  - Potential bugs to search shall be weighted in relation to the impact on the business
 
 - As **only the bugs impacting the customers matter**, the collection of the real customer usage scenario is critical to create an efficient testing coverage.
   - Of course, to create a great product, the working environment shall also be "bug-free" and efficient. These kind of bugs impact indirectly the customers through the quality of the product.

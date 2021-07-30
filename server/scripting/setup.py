@@ -16,23 +16,39 @@
 
 import io
 import os
+import os.path
 import sys
 import glob
+import shutil
 from setuptools import setup, find_packages, Extension
 
+destC = "palanteer_scripting/_cextension"
 
-# Constants
-isDevMode = False  # Enable to speed up development cycles. Shall be False for final installation
-withStackTrace = False
+# If in-source, copy required C++ sources inside the folder (constraint from setup.py)
+# They will be removed after the packaging
+if os.path.isfile("../../c++/palanteer.h"):
+    shutil.copyfile("../../c++/palanteer.h", destC + "/palanteer.h")
+    shutil.copytree("../external/zstd", destC + "/zstd")
+    shutil.copytree("../common", destC + "/common")
+    os.mkdir(destC + "/base")
+    for f in ["bsString.cpp", "bsOsLinux.cpp", "bsOsWindows.cpp"]:
+        shutil.copyfile("../base/%s" % f, destC + "/base/%s" % f)
+    for h in glob.glob("../base/*.h"):
+        print(os.path.basename(h))
+        shutil.copyfile(h, destC + "/base/%s" % os.path.basename(h))
 
-# Deduce some parameters
-np = os.path.normpath
-r = "../"
+# Get the source file list
 src_list = (
-    [r + "base/bsString.cpp", r + "base/bsOsLinux.cpp", r + "base/bsOsWindows.cpp"]
-    + glob.glob(r + "common/*.cpp")
-    + glob.glob("palanteer_scripting/_cextension/*.cpp")
+    glob.glob(destC + "/base/*.cpp")
+    + glob.glob(destC + "/common/*.cpp")
+    + glob.glob(destC + "/zstd//*/*.c")
+    + glob.glob(destC + "/*.cpp")
 )
+src_list = [
+    os.path.normpath(s) for s in src_list
+]  # Normalize all source path (required for Windows)
+
+
 extra_link_args = []
 extra_compilation_flags = [
     "-DUSE_PL=1",
@@ -40,53 +56,27 @@ extra_compilation_flags = [
     "-DBS_NO_GRAPHIC",
     "-DPL_NOCONTROL=1",
     "-DPL_NOEVENT=1",
+    "-DPL_GROUP_BSVEC=0",  # Force deactivation of array bound check
 ]
-extra_compilation_flags.extend(
-    ["-I", np(r + "../c++"), "-I", np(r + "base"), "-I", np(r + "common")]
-)
-extra_compilation_flags.extend(
-    [
-        "-I",
-        np(r + "external/zstd"),
-        "-I",
-        np(r + "external/zstd/common"),
-        "-I",
-        np(r + "external/zstd/compress"),
-        "-I",
-        np(r + "external/zstd/decompress"),
-    ]
-)
-for folder in ["common", "compress", "decompress"]:
-    src_list.extend(glob.glob(r + "external/zstd/%s/*.c" % folder))
 
-if isDevMode:
-    # Developement mode (fast build & debug code)
-    extra_compilation_flags.append("-DPL_NO_COMPRESSION=1")
-    if sys.platform == "win32":
-        extra_compilation_flags.append("/Zi")
-        extra_link_args.append("/DEBUG")
-    else:
-        extra_compilation_flags.append("-O0")
-else:
-    extra_compilation_flags.append(
-        "-DPL_GROUP_BSVEC=0"
-    )  # Force deactivation of array bound check
-
-if withStackTrace:
-    extra_compilation_flags.append("-DPL_IMPL_STACKTRACE=1")
-    if sys.platform == "linux":
-        extra_link_args.extend(["-ldw", "-lunwind"])
+extra_compilation_flags.extend(["-I", os.path.normpath(destC)])
+for folder in [
+    "base",
+    "common",
+    "zstd",
+    "zstd/common",
+    "zstd/compress",
+    "zstd/decompress",
+]:
+    extra_compilation_flags.extend(["-I", os.path.normpath(destC + "/%s" % folder)])
 
 if sys.platform == "win32":
     extra_compilation_flags.append("/DUNICODE")
 
-# Normalize all source path (required for Windows)
-src_list = [np(s) for s in src_list]
-
 classifiers_list = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)"
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.7",
@@ -100,15 +90,23 @@ classifiers_list = [
     "Topic :: Software Development :: Testing",
 ]
 
+# Read the Palanteer version from the C++ header library
+with io.open(destC + "/palanteer.h", encoding="UTF-8") as versionFile:
+    PALANTEER_VERSION = (
+        [l for l in versionFile.read().split("\n") if "PALANTEER_VERSION " in l][0]
+        .split()[2]
+        .replace('"', "")
+    )
+
 # Read the content of the readme file
-with io.open("../../README.md", encoding="UTF-8") as readmeFile:
+with io.open("README.md", encoding="UTF-8") as readmeFile:
     long_description = readmeFile.read()
 
 
 # Build call
 setup(
     name="palanteer_scripting",
-    version="0.1.0",
+    version=PALANTEER_VERSION,
     author="Damien Feneyrou",
     author_email="dfeneyrou@gmail.com",
     license="AGPLv3+",
@@ -121,7 +119,7 @@ setup(
     packages=find_packages(),
     ext_modules=[
         Extension(
-            "palanteer_scripting._cextension",
+            destC,
             sources=src_list,
             extra_compile_args=extra_compilation_flags,
             extra_link_args=extra_link_args,
@@ -130,3 +128,10 @@ setup(
     py_modules=["palanteer_scripting._scripting"],
     zip_safe=False,
 )
+
+
+# If in-source, remove the temporarily copied sources (cleanup)
+if os.path.isfile("../../c++/palanteer.h"):
+    os.unlink(destC + "/palanteer.h")
+    for folder in ["base", "common", "zstd"]:
+        shutil.rmtree(destC + "/%s" % folder)

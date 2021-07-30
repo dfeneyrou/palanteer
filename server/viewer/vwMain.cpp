@@ -25,8 +25,10 @@
 // External
 #include "imgui.h"
 #include "imgui_internal.h" // For the DockBuilder API (alpha) + title bar tooltip
+#include "palanteer.h"
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
+#define STBI_ASSERT(x) plAssert(x)
 #include "stb_image.h"      // To load the icon
 
 // Internal
@@ -648,18 +650,22 @@ vwMain::drawAbout(void)
     double winWidth  = ImGui::GetWindowContentRegionMax().x;
 
     // Bold colored title
-    ImU32 testBg = IM_COL32(255, 200, 200, 255);
-    ImU32 testFg = IM_COL32(50, 150, 255, 255);
-    const char* text = "Palanteer";
-    double textWidth = ImGui::CalcTextSize(text).x;
+    ImU32 titleBg = IM_COL32(255, 200, 200, 255);
+    ImU32 titleFg = IM_COL32(50, 150, 255, 255);
+    double textWidth = ImGui::CalcTextSize("Palanteer").x;
     double x = winX+0.5*(winWidth-2.*textWidth), y = winY+2.*fontSize;
-    DRAWLIST->AddText(ImGui::GetFont(), 2.*fontSize, ImVec2(x-0.1*fontSize, y-0.1*fontSize), testBg, text);
-    DRAWLIST->AddText(ImGui::GetFont(), 2.*fontSize, ImVec2(x, y), testFg, text);
-    y += 3.*fontSize;
+    DRAWLIST->AddText(ImGui::GetFont(), 2.*fontSize, ImVec2(x-0.1*fontSize, y-0.1*fontSize), titleBg, "Palanteer");
+    DRAWLIST->AddText(ImGui::GetFont(), 2.*fontSize, ImVec2(x, y), titleFg, "Palanteer");
+    y += 2.*fontSize;
 
 #define TEXT_POSITION(text, lineSpan, coefScreenWidth, coefTextWidth)   \
     DRAWLIST->AddText(ImVec2(winX+coefScreenWidth*winWidth+coefTextWidth*ImGui::CalcTextSize(text).x, y), vwConst::uWhite, text); \
     y += lineSpan*fontSize
+
+    // Version
+    char tmpStr[128];
+    snprintf(tmpStr, sizeof(tmpStr), "v%s", PALANTEER_VERSION);
+    TEXT_POSITION(tmpStr, 2, 0.5, -0.5);
 
     // Description
     TEXT_POSITION(textDescr, 3, 0.5, -0.5);

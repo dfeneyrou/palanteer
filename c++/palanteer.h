@@ -1247,6 +1247,10 @@ public:
 
 #if USE_PL==1 || PL_EXPORT==1
 
+// Library version
+#define PALANTEER_VERSION "0.1.0"
+#define PALANTEER_VERSION_NUM 100  // Monotonic number. 100 per version component
+
 // Maximum thread quantity is 254 (server limitation for efficient storage)
 #define PL_MAX_THREAD_QTY 254
 

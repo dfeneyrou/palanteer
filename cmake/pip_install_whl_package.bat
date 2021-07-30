@@ -6,4 +6,4 @@ for /F "delims=*" %%G in ('dir /b %2\dist\*.whl') do set "whlFilename=%2/dist/%%
 
 rem Install the Wheel package
 echo Calling:  %1 -m pip install %whlFilename%
-%1 -m pip install %whlFilename%
+%1 -m pip install %whlFilename% --force-reinstall

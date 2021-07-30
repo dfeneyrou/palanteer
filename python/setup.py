@@ -22,7 +22,9 @@
 
 import io
 import os
+import os.path
 import sys
+import shutil
 from setuptools import setup, find_packages, Extension
 
 
@@ -31,7 +33,7 @@ isDevMode = False  # Enable to speed up development cycles. Shall be False for f
 
 # Deduce some parameters
 extra_link_args = []
-extra_compilation_flags = ["-I", os.path.normpath("../c++")]
+extra_compilation_flags = ["-I", "palanteer/_cextension"]
 
 if isDevMode:
     if sys.platform == "win32":
@@ -58,19 +60,30 @@ classifiers_list = [
     "Topic :: Software Development :: Debuggers",
 ]
 
+# If in-source, copy palanteer.h inside the folder (constraint from setup.py)
+if os.path.isfile("../c++/palanteer.h"):
+    shutil.copyfile("../c++/palanteer.h", "palanteer/_cextension/palanteer.h")
+
+# Read the Palanteer version from the C++ header library
+with io.open("palanteer/_cextension/palanteer.h", encoding="UTF-8") as versionFile:
+    PALANTEER_VERSION = (
+        [l for l in versionFile.read().split("\n") if "PALANTEER_VERSION " in l][0]
+        .split()[2]
+        .replace('"', "")
+    )
+
 # Read the content of the readme file
 with io.open("README.md", encoding="UTF-8") as readmeFile:
     long_description = readmeFile.read()
 
-
 # Build call
 setup(
     name="palanteer",
-    version="0.1.0",
+    version=PALANTEER_VERSION,
     author="Damien Feneyrou",
     author_email="dfeneyrou@gmail.com",
     license="MIT",
-    description="Palanteer instrumentation library for Python language",
+    description="Palanteer instrumentation library",
     long_description=long_description,
     long_description_content_type="text/markdown",
     classifiers=classifiers_list,
@@ -89,3 +102,7 @@ setup(
     ],
     zip_safe=False,
 )
+
+# If in-source, remove the copied palanteer.h (cleanup)
+if os.path.isfile("../c++/palanteer.h"):
+    os.unlink("palanteer/_cextension/palanteer.h")

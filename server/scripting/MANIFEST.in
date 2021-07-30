@@ -1,0 +1,3 @@
+include palanteer_scripting/_cextension/*.h
+include palanteer_scripting/_cextension/*/*.h
+include palanteer_scripting/_cextension/*/*/*.h

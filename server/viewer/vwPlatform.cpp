@@ -208,7 +208,7 @@ bsBootstrap(int argc, char* argv[])
             rxPort = strtol(argv[i+1], 0, 0);
             if(rxPort<=0 || rxPort>=65536) {
                 printf("ERROR: Port shall be in the range [1;65536[\n");
-                exit(1);
+                return 1;
             }
             printf("Listening port is %d\n", rxPort);
             ++i;
@@ -216,7 +216,7 @@ bsBootstrap(int argc, char* argv[])
         else if(!strcmp(argv[i], "-f") || !strcmp(argv[i], "/f")) {
 #if USE_PL==0
             printf("ERROR: Palanteer is not present in this build, so cannot record on file.\n");
-            exit(1);
+            return 1;
 #endif
             palanteerMode = PL_MODE_STORE_IN_FILE;
             plSetFilename("viewer.pltraw");
@@ -224,12 +224,12 @@ bsBootstrap(int argc, char* argv[])
         else if((!strcmp(argv[i], "-c") || !strcmp(argv[i], "/c")) && i<argc-1) {
 #if USE_PL==0
             printf("ERROR: Palanteer is not present in this build, so cannot record in connected mode.\n");
-            exit(1);
+            return 1;
 #endif
             debugPort = strtol(argv[i+1], 0, 0);
             if(debugPort<=0 || debugPort>=65536) {
                 printf("Port shall be in the range [1;65536[\n");
-                exit(1);
+                return 1;
             }
             palanteerMode = PL_MODE_CONNECTED;
             plSetServer("127.0.0.1", debugPort);
@@ -245,6 +245,10 @@ bsBootstrap(int argc, char* argv[])
         else if(!strcmp(argv[i], "-help") || !strcmp(argv[i], "--help") || !strcmp(argv[i], "-h") ||
                 !strcmp(argv[i], "/help")  || !strcmp(argv[i], "/?")) {
             doDisplayHelp = true;
+        }
+        else if(!strcmp(argv[i], "-version") || !strcmp(argv[i], "--version") || !strcmp(argv[i], "/version")) {
+            printf("Palanteer v%s\n", PALANTEER_VERSION);
+            return 0;
         }
         else {
             printf("ERROR: Unknown parameter '%s'\n", argv[i]);
@@ -271,8 +275,9 @@ bsBootstrap(int argc, char* argv[])
         printf("  -c <debug port>   send  the viewer's instrumentation data remotely.\n");
         printf("                    <debug port> shall be different from the listening <port> to avoid Larsen effect.\n");
         printf("  -tmpdb <path>     non persistent root path for the record database. Typically used for testing\n");
+        printf("  --version         dumps the version\n");
         printf("  -h or --help      dumps this help\n");
-        exit(1);
+        return 1;
     }
 
     // Init

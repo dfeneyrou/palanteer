@@ -72,6 +72,17 @@ make testprogram
 
 NOTE: Beware that the `CUSTOM_FLAGS` value is persistent with cmake. To clear it, simply use ```-DCUSTOM_FLAGS=""``` in a cmake configuration call
 
+## Manual installation of Python modules
+
+Calling ```make``` without the "install" target just builds some components. <br/>
+The two Python modules (instrumentation and scripting) are generated as `wheel` packages.
+
+They can be installed manually with `pip`:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+pip install python/dist/palanteer-<XXX>-.whl
+pip install server/scripting/dist/palanteer_scripting-<XXX>-.whl
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 ## Deactivating some components
 
 All components of Palanteer are usually not required. <br/>
