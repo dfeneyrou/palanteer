@@ -119,7 +119,7 @@ setup(
     packages=find_packages(),
     ext_modules=[
         Extension(
-            destC,
+            "palanteer_scripting._cextension",
             sources=src_list,
             extra_compile_args=extra_compilation_flags,
             extra_link_args=extra_link_args,
