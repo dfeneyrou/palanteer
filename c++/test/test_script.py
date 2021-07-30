@@ -416,8 +416,17 @@ def test_getters():
 
     unresolved_event = data_get_unresolved_events()
     CHECK(len(unresolved_event) == 4, "4 events shall be unresolved in this test")
-    for spec_id, event_spec, msg in unresolved_event:
-        LOG("From spec #%d, %s for event '%s'" % (spec_id, msg, event_spec))
+    for spec_id, thread_name, parent_spec, event_spec, msg in unresolved_event:
+        LOG(
+            "From spec #%d, %s for event '%s'%s%s"
+            % (
+                spec_id,
+                msg,
+                "/".join(event_spec),
+                (" with parent '%s'" % "/".join(parent_spec)) if parent_spec else "",
+                (" with thread '%s'" % thread_name) if thread_name else "",
+            )
+        )
 
     clis = data_get_known_clis()
     CHECK(len(clis) == 6, "6 CLIs shall be registered")

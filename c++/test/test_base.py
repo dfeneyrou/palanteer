@@ -69,9 +69,9 @@ def clean_build():
 # ============
 
 
-def run_cmd(cmd_and_args_list):
+def run_cmd(cmd_and_args_list, capture_output=True):
     res = subprocess.run(
-        cmd_and_args_list, universal_newlines=True, capture_output=True
+        cmd_and_args_list, universal_newlines=True, capture_output=capture_output
     )  # capture_output => Python 3.7 minimum
     try:
         res.check_returncode()
@@ -102,7 +102,7 @@ def build_target(target_name, string_flags, compilation_flags=[]):
     if sys.platform == "win32":
         cmake_flags.extend(["-G", "NMake Makefiles"])
     try:
-        run_cmd(["cmake", "--cmake-clean-cache", "%s" % rootProject] + cmake_flags)
+        run_cmd(["cmake", rootProject] + cmake_flags)
     except subprocess.CalledProcessError as e:
         CHECK(False, "ERROR while configuring with cmake:", e.stderr)
         return False

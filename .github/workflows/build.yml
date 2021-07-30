@@ -1,0 +1,140 @@
+name: build
+on: [ push, pull_request ]
+jobs:
+
+  Linux:
+    runs-on: ubuntu-latest
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y mesa-utils libglu1-mesa-dev mesa-common-dev gcc-multilib g++-multilib libunwind-dev libdw-dev
+
+    - name: Build components
+      run: |
+          mkdir build
+          cd    build
+          cmake ..
+          make -j $(nproc)
+
+    - name: Install python packages
+      run: |
+          cd   build
+          make install
+
+    - name: Run tests
+      run: |
+          cd c++/test
+          ../../tools/testframework.py . -v
+
+
+  Windows:
+    runs-on: windows-2019
+    env:
+      VS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      shell: cmd
+      run: python -m pip install --upgrade pip setuptools wheel
+
+    - name: Build components
+      shell: cmd
+      run: |
+          mkdir build
+          cd build
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat"
+          cmake .. -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
+          nmake
+
+    - name: Install python packages
+      shell: cmd
+      run: |
+          cd build
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat"
+          nmake install
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: binaries
+        path: build/bin/*.exe
+
+    - name: Run tests
+      shell: cmd
+      run: |
+          cd c++/test
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvars64.bat"
+          python ..\..\tools\testframework.py . -v
+
+
+  Wheels:
+    runs-on: windows-2019
+    env:
+      VS_PATH: C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\
+    steps:
+
+    - uses: actions/checkout@v2
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.7'
+    - name: Install dependencies
+      shell: cmd
+      run: python -m pip install --upgrade pip setuptools wheel
+    - name: Create wheel packages for python 3.7
+      run: |
+          cd python
+          python setup.py bdist_wheel
+          cd ..\server\scripting
+          python setup.py bdist_wheel
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.8'
+    - name: Install dependencies
+      shell: cmd
+      run: python -m pip install --upgrade pip setuptools wheel
+    - name: Create a wheel package instrumentation module for python 3.8
+      run: |
+          cd python
+          python setup.py bdist_wheel
+          cd ..\server\scripting
+          python setup.py bdist_wheel
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+    - name: Install dependencies
+      shell: cmd
+      run: python -m pip install --upgrade pip setuptools wheel
+    - name: Create a source package for python instrumentation module
+      run: |
+          cd python
+          python setup.py sdist
+          cd ..\server\scripting
+          python setup.py sdist
+    - name: Create a wheel package instrumentation module for python 3.9
+      run: |
+          cd python
+          python setup.py bdist_wheel
+          cd ..\server\scripting
+          python setup.py bdist_wheel
+
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: instrumentation wheels
+        path: python/dist/*
+    - uses: actions/upload-artifact@v2
+      with:
+        name: scripting wheels
+        path: server/scripting/dist/*

@@ -33,8 +33,4 @@ add_custom_command(OUTPUT ${FAKE_OUTPUT}
 add_custom_target(scripting ALL DEPENDS ${FAKE_OUTPUT})
 
 # Add the installation command
-if(WIN32)
-  install(CODE "execute_process(COMMAND ${CMAKE_SOURCE_DIR}/cmake/pip_install_whl_package.bat ${Python3_EXECUTABLE} \"${CMAKE_CURRENT_BINARY_DIR}\")")
-else(WIN32)
-  install(CODE "execute_process(COMMAND ${CMAKE_SOURCE_DIR}/cmake/pip_install_whl_package.sh ${Python3_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR})")
-endif(WIN32)
+install(CODE "execute_process(COMMAND ${Python3_EXECUTABLE} \"${CMAKE_SOURCE_DIR}/cmake/pip_install_whl_package.py\" ${Python3_EXECUTABLE} \"${CMAKE_CURRENT_BINARY_DIR}\")")

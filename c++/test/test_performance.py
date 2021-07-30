@@ -70,7 +70,7 @@ def _evaluate_perf_program(eval_content, flags, loop=3, code=PERF_CODE):
     if sys.platform == "win32":
         prog_name = "a.exe"
     else:
-        prog_name = "a.out"
+        prog_name = "./a.out"
         run_cmd(["strip", prog_name])
 
     # Measure the program size

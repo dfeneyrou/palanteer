@@ -969,7 +969,9 @@ def data_get_unresolved_events():
     outputInfos = []
     for spec_id, elem_id, error_msg in ueiList:
         f = _event_ctx.specs[spec_id]
-        outputInfos.append((spec_id, f.elemSpec[elem_id], error_msg))
+        outputInfos.append(
+            (spec_id, f.threadName, f.parentSpec, f.elemSpec[elem_id], error_msg)
+        )
     return outputInfos
 
 
@@ -1029,9 +1031,16 @@ def debug_print_unresolved_events(output_file=sys.stdout):
 
     unresolved_event = data_get_unresolved_events()
     print("Unresolved events (%d):" % len(unresolved_event), file=output_file)
-    for spec_id, event_spec, msg in unresolved_event:
+    for spec_id, thread_name, parent_spec, event_spec, msg in unresolved_event:
         print(
-            "  - From spec #%d, %s for event '%s'" % (spec_id, msg, event_spec),
+            "  - From spec #%d, %s for event '%s'%s%s"
+            % (
+                spec_id,
+                msg,
+                "/".join(event_spec),
+                (" with parent '%s'" % "/".join(parent_spec)) if parent_spec else "",
+                (" with thread '%s'" % thread_name) if thread_name else "",
+            ),
             file=output_file,
         )
 

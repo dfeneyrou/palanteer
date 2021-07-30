@@ -70,8 +70,14 @@ import glob
 import inspect
 import builtins
 
-import palanteer_scripting
-
+try:
+    import palanteer_scripting
+except ModuleNotFoundError:
+    print(
+        "ERROR: Palanteer scripting module is not installed, unable to run the test framework",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 # Decorator to identify test functions
 def declare_test(suite=""):

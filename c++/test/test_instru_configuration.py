@@ -157,9 +157,11 @@ def test_usepl1_saturated_request_buffer():
         "test::parametersDft third=[[hello, what is the weather today?]]"
     )
     events = data_collect_events(timeout_sec=2.0)
+
     CHECK(
         status != 0 and not process_is_running() and events,
         "CLI with too large command request size failed and program stopped (assertion)",
+        process_is_running(),
         status,
         answer,
         events,
