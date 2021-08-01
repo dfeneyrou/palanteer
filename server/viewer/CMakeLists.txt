@@ -62,6 +62,7 @@ if(MSVC)
   add_compile_options(/wd6255) # Disable the "_alloca indicates failure by raising a stack overflow exception.  Consider using _malloca instead"
   add_compile_options(/EHsc)
   set(WIN_MAIN WIN32)
+  file(GLOB ICON_RC CONFIGURE_DEPENDS *.rc)
 else()
   add_compile_options(-Wall -Wextra)
   set(cxx_flags -fno-rtti -fno-exceptions -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-function)
@@ -79,7 +80,7 @@ file(GLOB         IMGUI_SRC CONFIGURE_DEPENDS  ../external/imgui/*.cpp ../extern
 file(GLOB         BASE_SRC   CONFIGURE_DEPENDS ../base/*.cpp ../base/*.h)
 file(GLOB         COMMON_SRC CONFIGURE_DEPENDS ../common/*.cpp ../common/*.h)
 file(GLOB         VIEWER_SRC CONFIGURE_DEPENDS ../external/*.h *.cpp *.h)
-set(VIEWER_SRC ${VIEWER_SRC} ${COMMON_SRC} ${BASE_SRC} ${ZSTD_SRC} ${IMGUI_SRC})
+set(VIEWER_SRC ${VIEWER_SRC} ${COMMON_SRC} ${BASE_SRC} ${ZSTD_SRC} ${IMGUI_SRC} ${ICON_RC})
 
 # Viewer executable
 # =================
