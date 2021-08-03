@@ -1,5 +1,7 @@
 ﻿build/*
+__pycache__
 server/scripting/palanteer_scripting.egg-info/*
+python/palanteer.egg-info
 
 # Visual Studio CMake
 /.vs/*

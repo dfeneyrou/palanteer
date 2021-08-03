@@ -338,12 +338,12 @@ evaluatePerformance(plMode mode, const char* buildName, int durationMultipler)
     double bufferUsageRatio    = 100.*(double)s.collectBufferMaxUsageByteQty/(double)((s.collectBufferSizeByteQty>0)? s.collectBufferSizeByteQty:1);
     printf("Collection duration : %.2f ms for %d events\n" \
            "Collection unit cost: %.0f ns\n" \
-           "Processing duration : %.2f ms (w/ transmission and %s)\n" \
+           "Processing duration : %.2f ms (w/ %s)\n" \
            "Processing rate     : %.3f million event/s\n" \
            "Max buffer usage    : %-7d bytes (%5.2f%% of max)\n",
            (double)(endCollectNs-startCollectNs)/1000000., loopQty*4,
            (double)(endCollectNs-startCollectNs)/(double)(loopQty*4),
-           (double)(endSendingNs-startCollectNs)/1000000., (mode==PL_MODE_STORE_IN_FILE)? "disk file writing" : "server processing",
+           (double)(endSendingNs-startCollectNs)/1000000., (mode==PL_MODE_STORE_IN_FILE)? "disk file writing" : "transmission and server processing",
            4e3*loopQty/(double)(endSendingNs-startCollectNs),
            s.collectBufferMaxUsageByteQty, bufferUsageRatio);
 }

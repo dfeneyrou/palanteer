@@ -192,7 +192,7 @@ All your data, whatever the quantity, can be smoothly visualized. And all of the
 
 ### Compile-time instrumentation groups
 
-Grouping events by user-defined categories is a key feature of **Palanteer**. <br/>
+Grouping events by user-defined categories is one of the key features. <br/>
 Each group can independently be compiled or fully ignored (zero instructions in the binary, zero run-time cost, almost zero compilation time cost).
 
 Per-topic instrumentation is a powerful tool for code quality:
@@ -250,7 +250,7 @@ In this mode, all static strings used by `Palanteer` are stripped out at compila
 !!!
     On Linux, the standard command `strings &lt;binary name&gt;` shows in clear all text strings of the binary. It is an easy way to check your embeded strings.
 
-In order to properly work with a record where the external string feature have been enabled, the additional actions below are required:
+In order to properly work with a record where the external string feature has been enabled, the additional actions below are required:
 
  1. Generate a lookup file *hash -> strings* from all sources
    - The provided tool `./tools/extStringCppParser.py` parses C++ source files and generates this lookup
@@ -261,6 +261,34 @@ In order to properly work with a record where the external string feature have b
 
 !!!
     The simple tool `./tools/extStringDecoder.py` is an example how to recover obfuscating strings from `stdin` and output the result on `stdout`
+
+Example of generation of the static string lookup on the full `Palanteer` viewer sources (on Linux with zsh shell supporting `**`):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+palanteer > time ./tools/extStringCppParser.py c++/palanteer.h server/**/*.{c,cpp,h} > palanteer_string_lkup.txt
+./tools/extStringCppParser.py c++/palanteer.h server/**/*.{c,cpp,h} >   1.73s user 0.01s system 99% cpu 1.749 total
+
+palanteer > wc -l -c c++/palanteer.h server/**/*.{c,cpp,h} | tail -1
+ 137149 6921792 total
+
+palanteer > cat palanteer_string_lkup.txt | head -10
+@@CBF29CE484222325@@
+@@D756D3636AEC67B4@@ Up pressed
+@@FE7BA9047D1571F8@@!(*ptr)->isEvent
+@@B5A1F7BAAE9A272B@@!_receivedMsg
+@@D91743DED2B2E3D1@@!_screenLayoutToApply.windows.empty()
+@@678E9C501C94EC94@@!_typeFilters.empty()
+@@17B27941379D89B8@@!cmDecompressor && !cmCompressor
+@@C0C639794CD0DE9D@@!empty
+@@ED9409B179A15E99@@!f.events.empty()
+@@C191DDD7DCEB6E9F@@!GET_ISFLAT(evt.parentLIdx)
+
+palanteer > wc -l palanteer_string_lkup.txt
+1165 palanteer_string_lkup.txt
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These logs show:
+ - the full source (~137 Klines and ~6.9 Mcharacters, which includes dependencies like `Dear ImGui` and `Zstd`) is processed in less than 2 seconds
+ - the generated lookup contains 1165 unique strings from events, assertions and filenames
 
 ### Enhanced assertions
 
@@ -308,9 +336,9 @@ Most features of `Palanteer` can be selected individually at compile time.
 
 | Feature name                                                                                                      | Constant                                                             | Default                            |
 |-------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------|:-----------------------------------|
-| [Event logging](#easylogging)                                                                                     | Enabled if `USE_PL`==1 and `PL_NOEVENT` is not 1                     | Disabled                           |
-| [`Palanteer` assertions](#enhancedassertions)                                                                     | Enabled if `USE_PL`==1 and `PL_NOASSERT` is not 1                    | Disabled                           |
-| [Remote control](#remotecontrol)                                                                                  | Enabled if `USE_PL`==1 and `PL_NOCONTROL` is not 1                   | Disabled                           |
+| [Event logging](#easylogging)                                                                                     | Enabled if `USE_PL`==1 and `PL_NOEVENT` is not 1                     | Disabled (`USE_PL` not defined)    |
+| [`Palanteer` assertions](#enhancedassertions)                                                                     | Enabled if `USE_PL`==1 and `PL_NOASSERT` is not 1                    | Disabled (`USE_PL` not defined)    |
+| [Remote control](#remotecontrol)                                                                                  | Enabled if `USE_PL`==1 and `PL_NOCONTROL` is not 1                   | Disabled (`USE_PL` not defined)    |
 | [Event logging from group _YYY_](base_concepts.md.html#groups)                                                    | Enabled if event logging is enabled and `PL_GROUP_YYY` is 1          | `PL_GROUP_YYY` **must be defined** |
 | [Assertions from group _YYY_](base_concepts.md.html##groups)                                                      | Enabled if `Palanteer` assertions is enabled and `PL_GROUP_YYY` is 1 | `PL_GROUP_YYY` **must be defined** |
 | [External strings](#externalstrings)                                                                              | Enabled if `PL_EXTERNAL_STRINGS` is set to 1                         | Disabled                           |
@@ -380,6 +408,47 @@ And with additional manual instrumentations, even better knowledge can be collec
 ## Common features
 
 The features below are common to both C++ and Python instrumentations.
+
+### Offline recording
+
+Instrumentation libraries propose to save the events directly in a file, without any server side. <br/>
+This option is activated by using the mode `PL_MODE_STORE_IN_FILE` in the initialization (`plInitAndStart`), and the record filename has the extension `.pltraw`.
+
+**The benefits are:**
+
+ - Recording can be performed even if no network is available
+ - Higher event recording rate can be reached thanks to the removal of the processing bottleneck (server side)
+   - Buffer saturation is less likely to happen due to faster local processing (=disk write)
+   - Ex: 18 Mevent/s seen with `testprogram perf -f`
+ - The program observation is less disturbed in case the server shares the same machine
+   - No active server side means no CPU sharing effects, in particular if the available core quantity is limited on the machine
+   - No viewer means no graphical card/system sharing effects, in particular if the observed program involves graphics
+
+**The cons are:**
+
+ - No remote control
+ - No real time analysis
+ - The processing bottleneck to index all the events will happen when importing the file in the viewer
+
+The content of the `.pltraw` file is simply the exact payload sent to the server in case of connection. <br/>
+Importing such file in the viewer is equivalent of a replay of the program transmission, but from a file.
+
+The file size is 24 times the event quantity (note that memory operations take 2 events), plus the size of all unique strings and a slight protocol overhead.
+
+Example with the test program. The resulting `example_record.pltraw` shall be imported in the viewer (menu bar `File->Import`):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+λ .\bin\testprogram.exe perf -f
+Mode 'file storage'
+Collection duration : 23.07 ms for 1000000 events
+Collection unit cost: 23 ns
+Processing duration : 53.96 ms (w/ transmission and disk file writing)
+Processing rate     : 18.533 million event/s
+Max buffer usage    : 29345536 bytes (48.91% of max)
+
+λ ls -l example_record.pltraw
+-rw-r--r-- 1 damien  24001446 Aug  1 13:43 example_record.pltraw
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 ### Memory usage and context switches
 
@@ -641,8 +710,8 @@ hence the small difference between the `C++` and the `Python` program execution 
 ![_](images/views.gif)
 
 The viewer has two main roles:
-- record and store the events from the execution of an instrumented program
-- display records to enable debugging, profiling, optimizing speed and memory, check behavior correctness, etc...
+- **record and store the events** from the execution of an instrumented program, to be analyzed later
+- **display records** in a way that developers can debug, profile, optimize speed and memory, check behavior correctness, etc...
 
 **Recording**
 

@@ -581,10 +581,10 @@ def evaluatePerformance(mode, buildName, durationMultipler, serverPort):
         % (1e9 * (endCollectSec - startCollectSec) / (loopQty * 4.0))
     )
     print(
-        "Processing duration : %.2f ms (w/ transmission and %s)"
+        "Processing duration : %.2f ms (w/ %s)"
         % (
             1000.0 * (endSendingSec - startCollectSec),
-            "disk file writing" if mode == "file storage" else "server processing",
+            "disk file writing" if mode == "file storage" else "transmission and server processing",
         )
     )
     print(
