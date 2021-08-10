@@ -636,25 +636,11 @@ def program_step_continue(thread_names, timeout_sec=1.0):
     return False
 
 
-def process_launch(
-    program_path,
-    args=[],
-    record_filename="",
-    pass_first_freeze_point=False,
-    capture_output=False,
-    cli_to_quit=None,
-    connection_timeout_sec=5.0,
+def _setup_process_initialization(
+    record_filename,
+    pass_first_freeze_point,
+    cli_to_quit,
 ):
-    """
-    This function launches a program and waits the connection the Palanteer remote module.
-
-    If no connection is established before the timeout, a ConnectionError exception is raised.
-    :record_filename: name of the record file. Default is no record file.
-    :capture_output:  boolean. If True, the stdout and stderr are captured and accessible
-                       (see 'process_get_stderr_lines' and 'process_get_stdout_lines').
-    :cli_to_quit:     command line to call to stop the program. Default: terminate signal, then kill signal
-    :connection_timeout_sec: timeout for the connection with the program
-    """
     global _program_ctx, _command_ctx, _event_ctx
 
     # Sanity
@@ -679,31 +665,16 @@ def process_launch(
     palanteer_scripting._cextension.set_record_filename(record_filename)
 
     # Manage the synchronization freeze point
-    previous_freeze_state = _program_ctx.freeze_mode
     if pass_first_freeze_point:
         program_set_freeze_mode(True)
-        end_synch_time_sec = time.time() + connection_timeout_sec
 
-    # Launch the process with or without collecting the standard outputs
-    if capture_output:
-        _program_ctx.process = subprocess.Popen(
-            [program_path] + args,
-            universal_newlines=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        _program_ctx.std_out = threading.Thread(
-            target=_program_ctx._tee_pipe, args=(False,)
-        )
-        _program_ctx.std_err = threading.Thread(
-            target=_program_ctx._tee_pipe, args=(True,)
-        )
-        _program_ctx.std_out.start()
-        _program_ctx.std_err.start()
-    else:
-        _program_ctx.process = subprocess.Popen(
-            [program_path] + args, universal_newlines=True
-        )
+
+def _connect_to_process(
+    pass_first_freeze_point, connection_timeout_sec, previous_freeze_state
+):
+    global _program_ctx, _event_ctx
+
+    end_synch_time_sec = time.time() + connection_timeout_sec
 
     # Wait the connection to Palanteer
     if not _program_ctx.connection.wait(connection_timeout_sec):
@@ -740,6 +711,84 @@ def process_launch(
 
         # Put back the previous freeze state
         program_set_freeze_mode(previous_freeze_state)
+
+
+def process_connect(
+    record_filename="",
+    pass_first_freeze_point=False,
+    cli_to_quit=None,
+    connection_timeout_sec=5.0,
+):
+    """
+    This function connects to an already running process and waits the connection the Palanteer remote module.
+
+    If no connection is established before the timeout, a ConnectionError exception is raised.
+    :record_filename: name of the record file. Default is no record file.
+    :cli_to_quit:     command line to call to stop the program. Default: terminate signal, then kill signal
+    :connection_timeout_sec: timeout for the connection with the program
+    """
+    global _program_ctx
+
+    previous_freeze_state = _program_ctx.freeze_mode
+    _setup_process_initialization(
+        record_filename, pass_first_freeze_point, cli_to_quit
+    )
+
+    _connect_to_process(
+        pass_first_freeze_point, connection_timeout_sec, previous_freeze_state
+    )
+
+
+def process_launch(
+    program_path,
+    args=[],
+    record_filename="",
+    pass_first_freeze_point=False,
+    capture_output=False,
+    cli_to_quit=None,
+    connection_timeout_sec=5.0,
+):
+    """
+    This function launches a program and waits the connection the Palanteer remote module.
+
+    If no connection is established before the timeout, a ConnectionError exception is raised.
+    :record_filename: name of the record file. Default is no record file.
+    :capture_output:  boolean. If True, the stdout and stderr are captured and accessible
+                       (see 'process_get_stderr_lines' and 'process_get_stdout_lines').
+    :cli_to_quit:     command line to call to stop the program. Default: terminate signal, then kill signal
+    :connection_timeout_sec: timeout for the connection with the program
+    """
+    global _program_ctx
+
+    previous_freeze_state = _program_ctx.freeze_mode
+    _setup_process_initialization(
+        record_filename, pass_first_freeze_point, cli_to_quit
+    )
+
+    # Launch the process with or without collecting the standard outputs
+    if capture_output:
+        _program_ctx.process = subprocess.Popen(
+            [program_path] + args,
+            universal_newlines=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        _program_ctx.std_out = threading.Thread(
+            target=_program_ctx._tee_pipe, args=(False,)
+        )
+        _program_ctx.std_err = threading.Thread(
+            target=_program_ctx._tee_pipe, args=(True,)
+        )
+        _program_ctx.std_out.start()
+        _program_ctx.std_err.start()
+    else:
+        _program_ctx.process = subprocess.Popen(
+            [program_path] + args, universal_newlines=True
+        )
+
+    _connect_to_process(
+        pass_first_freeze_point, connection_timeout_sec, previous_freeze_state
+    )
 
 
 def process_is_running():
