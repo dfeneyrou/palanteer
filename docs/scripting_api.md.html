@@ -141,7 +141,7 @@ The declaration is:
 # record_filename: filename for the record. Empty string means no storage
 # pass_first_freeze_point: if True, returns only after first freeze point is met and released (kind of synchro)
 # capture_output : if True, reads stdout and stderr and allows the user to poll them asynchronously
-# cli_to_quit    : if not None, CLI command in order to call to quit the application. If it fails, it falls back to other termination mechanisms
+# cli_to_quit    : if not None, the CLI command to call to quit the application. If it fails, it falls back to other termination mechanisms
 # connection_timeout_sec : timeout in second to have a connection with the program. After it expires, a ConnectionError exception is triggered
 # no returned value
 def process_launch(program_path, args=[], record_filename="", pass_first_freeze_point=False, capture_output=False, cli_to_quit=None, connection_timeout_sec=5.)
@@ -150,6 +150,27 @@ def process_launch(program_path, args=[], record_filename="", pass_first_freeze_
 An example of call is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
 process_launch("./build/bin/testprogram", ["collect"], capture_output=True)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### process_connect
+
+This function connects to an externally launched instrumented program, which should use the option "wait for server".
+
+If the connection fails or another program is already connected, a **ConnectionError** exception is raised.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# record_filename: filename for the record. Empty string means no storage
+# pass_first_freeze_point: if True, returns only after first freeze point is met and released (kind of synchro)
+# cli_to_quit            : if not None, the CLI command to call to quit the application. If it fails, it falls back to other termination mechanisms
+# connection_timeout_sec : timeout in second to have a connection with the program. After it expires, a ConnectionError exception is triggered
+# no returned value
+def process_connect(record_filename="", pass_first_freeze_point=False, cli_to_quit=None, connection_timeout_sec=5.)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An example of call is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+process_connect()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ### process_is_running
@@ -167,6 +188,9 @@ An example of call is:
 while process_is_running():
     ... # Do something
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! warning
+    Be aware that a process may not be running anymore but some events still in the processing pipe and not yet visible to the script.
 
 ### process_get_returncode
 

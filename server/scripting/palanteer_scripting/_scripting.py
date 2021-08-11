@@ -724,15 +724,14 @@ def process_connect(
 
     If no connection is established before the timeout, a ConnectionError exception is raised.
     :record_filename: name of the record file. Default is no record file.
+    :pass_first_freeze_point: if True, returns only after first freeze point is met and released (kind of synchro)
     :cli_to_quit:     command line to call to stop the program. Default: terminate signal, then kill signal
     :connection_timeout_sec: timeout for the connection with the program
     """
     global _program_ctx
 
     previous_freeze_state = _program_ctx.freeze_mode
-    _setup_process_initialization(
-        record_filename, pass_first_freeze_point, cli_to_quit
-    )
+    _setup_process_initialization(record_filename, pass_first_freeze_point, cli_to_quit)
 
     _connect_to_process(
         pass_first_freeze_point, connection_timeout_sec, previous_freeze_state
@@ -753,6 +752,7 @@ def process_launch(
 
     If no connection is established before the timeout, a ConnectionError exception is raised.
     :record_filename: name of the record file. Default is no record file.
+    :pass_first_freeze_point: if True, returns only after first freeze point is met and released (kind of synchro)
     :capture_output:  boolean. If True, the stdout and stderr are captured and accessible
                        (see 'process_get_stderr_lines' and 'process_get_stdout_lines').
     :cli_to_quit:     command line to call to stop the program. Default: terminate signal, then kill signal
@@ -761,9 +761,7 @@ def process_launch(
     global _program_ctx
 
     previous_freeze_state = _program_ctx.freeze_mode
-    _setup_process_initialization(
-        record_filename, pass_first_freeze_point, cli_to_quit
-    )
+    _setup_process_initialization(record_filename, pass_first_freeze_point, cli_to_quit)
 
     # Launch the process with or without collecting the standard outputs
     if capture_output:
