@@ -23,6 +23,7 @@
 # System imports
 import os
 import sys
+import runpy
 
 # Local imports
 from palanteer import plInitAndStart, plStopAndUninit
@@ -34,6 +35,7 @@ from palanteer import plInitAndStart, plStopAndUninit
 if __name__ == "__main__":
 
     # Parse profiling options
+    run_as_module = False
     record_filename, server_address, server_port = None, "127.0.0.1", 59059
     do_wait_for_server_connection, idx, do_display_usage = False, 1, False
     with_functions, with_exceptions, with_memory, with_gc, with_c_calls = (
@@ -69,6 +71,8 @@ if __name__ == "__main__":
         elif sys.argv[idx] == "-p" and idx + 1 < len(sys.argv):
             server_port = sys.argv[idx + 1]
             idx += 1
+        elif sys.argv[idx] == "-m":
+            run_as_module = True
         else:
             print("Error: unknown option '%s'" % sys.argv[idx], file=sys.stderr)
             do_display_usage = True
@@ -101,6 +105,7 @@ Options for case (2):
  -ng                    Do not automatically log the garbage collector runs (default=log gc)
  -c                     Do automatically log the C functions                (default=only python functions)
  -w                     Wait for server connection (Palanteer viewer or scripting module). Applicable only in case of remote connection.
+ -m                     Run the app as a module (similar to python's "-m" option)
 
 Note 1: in case of connection to the server and -w is not used and no server is reachable, profiling is simply skipped
 Note 2: on both Windows and Linux, context switch information is available only with root privileges (OS limitation)
@@ -110,10 +115,13 @@ Note 2: on both Windows and Linux, context switch information is available only 
         sys.exit(1)
 
     # Real work here
-    sys.path.insert(0, os.path.dirname(sys.argv[0]))  # Update the python path
-    app_name = os.path.basename(sys.argv[0])
-    if app_name.endswith(".py"):
-        app_name = app_name[:-3]
+    if run_as_module:
+        app_name = sys.argv[0]
+    else:
+        sys.path.insert(0, os.path.dirname(sys.argv[0]))  # Update the python path
+        app_name = os.path.basename(sys.argv[0])
+        if app_name.endswith(".py"):
+            app_name = app_name[:-3]
     plInitAndStart(
         app_name,
         record_filename=record_filename,
@@ -125,10 +133,13 @@ Note 2: on both Windows and Linux, context switch information is available only 
         with_c_calls=with_c_calls,
     )
     # Execute the program
-    exec(
-        compile(open(sys.argv[0]).read(), sys.argv[0], "exec"),
-        sys._getframe(0).f_globals,
-        sys._getframe(0).f_locals,
-    )
+    if run_as_module:
+        runpy.run_module(app_name, run_name='__main__', alter_sys=True)
+    else:
+        exec(
+            compile(open(sys.argv[0]).read(), sys.argv[0], "exec"),
+            sys._getframe(0).f_globals,
+            sys._getframe(0).f_locals,
+        )
 
     # Note: the profiling is stopped automatically at program exit
