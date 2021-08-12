@@ -167,6 +167,28 @@
 // Configuration in the section below is applicable in all files where Palanteer is used
 // So declare the customisations __in all files__ or modify this file.
 
+// A "compact" software implies the following constraints:
+//  - not more than 65535 unique strings
+//  - no logging of 64bit types (double, u64...), they are converted to 32 bits equivalent
+//  - Forced PL_SHORT_STRING_HASH=1 (32 bits string hash) is acceptable
+//  - Forced PL_SHORT_DATE=1 (32 bits clock value) is acceptable
+// The benefit is a 50% reduction of the network bandwidth or of the .pltraw size in case of disk storage
+#ifndef PL_COMPACT_MODEL
+#define PL_COMPACT_MODEL 0
+#endif
+
+// If compact model in use, force short string hash and short date (prerequisites)
+#if PL_COMPACT_MODEL==1
+#ifdef PL_SHORT_STRING_HASH
+#undef PL_SHORT_STRING_HASH
+#endif
+#define PL_SHORT_STRING_HASH 1
+#ifdef PL_SHORT_DATE
+#undef PL_SHORT_DATE
+#endif
+#define PL_SHORT_DATE 1
+#endif
+
 // The "external string" mode is very different from the standard one:
 //   - no Palanteer-related static string is present in the program nor in the record.
 //      . it obfuscates the instrumentation (compile time process)
@@ -189,8 +211,8 @@
 #endif
 
 // By default, 64 bits string hashes are used to ensures virtually no collision.
-//  Declare __in all files__ or set here this variable to 0 to use rather 32 bit string hashes
-//  The only 'gain' is for 32 bit systems and only when using dynamic strings (that you should avoid)
+//  Declare __in all files__ or set here this variable to 1 to use 32 bits string hashes instead
+//  The only 'gain' is for 32 bits systems and only when using dynamic strings (that you should avoid)
 //   or recording context switches: run-time computation speed will be better
 //  Note that there is no reduction on storage size
 #ifndef PL_SHORT_STRING_HASH
@@ -207,16 +229,27 @@
 // To make it work, the following actions are required:
 // 1) the framework hook on virtual thread creation should call plDeclareVirtualThread(...). Example of name: "Fibers/Fiber 14"
 // 2) the framework hook on switching virtual threads shall call plAttachVirtualThread(...) and plDetachVirtualThread(...)
-// See the documentation for details
+// See the documentation for details. Not enabled by default due to some extra memory allocations.
 #ifndef PL_VIRTUAL_THREADS
 #define PL_VIRTUAL_THREADS 0
 #endif
 
+// [Platform specific - or just choice]
+// A short date is a date coded only on 32 bits (instead of 64 bits).
+// This flag does 2 things:
+//  - it advertised the 32 bits wrap to the server
+//  - it switches the return type of the "get clock" function to uint32_t
+// Use this flag is your high resolution clock is 32 bits, so that the wrap will be handled automatically
+// There is no space or bandwidth gain, unless you use the PL_COMPACT_MODEL flag, which implies this one
+#ifndef PL_SHORT_DATE
+#define PL_SHORT_DATE 0
+#endif
 
 // [Platform specific]
-// Clock function. By default, a predefined high performance clock is use
-//  You can set your own by defining PL_GET_CLOCK_TICK_FUNC. It shall have a prototype without input and
-//  returning a monotonic uint64_t. See getClockTick() definition below, as an example.
+// Clock function. By default, a predefined high performance clock is used (Windows / Linux)
+//  You can set your own by defining PL_GET_CLOCK_TICK_FUNC.
+//  Its prototype is without parameter and returning a monotonic unsigned integer of size
+//  uint32_t if PL_SHORT_DATE==1 else uint64_t. See getClockTick() definition below, as an example.
 // Note: Context switch collection may not work with user-defined clocks if clocks are not matching
 #ifndef PL_GET_CLOCK_TICK_FUNC
 #define PL_GET_CLOCK_TICK_FUNC() plPriv::getClockTick()
@@ -245,7 +278,7 @@
 #include <windows.h>
 #endif
 
-#include <cstdint> // For uintXXX_t
+#include <cstdint> // For sized types like uintXXX_t
 #include <cstddef> // For size_t
 
 #if USE_PL==1 && PL_NOASSERT==0
@@ -723,6 +756,13 @@ namespace plPriv {
 #define PLG_IS_COMPILE_TIME_ENABLED_(group_) PL_GROUP_ ## group_
 
 namespace plPriv {
+
+    // Definition of the clock tick type
+#if PL_SHORT_DATE==1
+    typedef uint32_t clockType_t;
+#else
+    typedef uint64_t clockType_t;
+#endif
 
     // Definition of the string hash depending on the desired size
 #if PL_SHORT_STRING_HASH==0
@@ -1257,6 +1297,17 @@ public:
 // Maximum memory detail stack depth
 #define PL_MEM_MAX_LOC_PER_THREAD  32
 
+// Protocol TLVs used at connection time with the server
+#define PL_TLV_PROTOCOL              0 /* Mandatory and shall be first */
+#define PL_TLV_CLOCK_INFO            1 /* Mandatory */
+#define PL_TLV_APP_NAME              2 /* Mandatory */
+#define PL_TLV_HAS_BUILD_NAME        3
+#define PL_TLV_HAS_EXTERNAL_STRING   4
+#define PL_TLV_HAS_SHORT_STRING_HASH 5
+#define PL_TLV_HAS_NO_CONTROL        6
+#define PL_TLV_HAS_SHORT_DATE        7
+#define PL_TLV_HAS_COMPACT_MODEL     8
+
 #endif
 
 #if USE_PL==1
@@ -1276,15 +1327,27 @@ namespace plPriv {
         union {
             int32_t  vInt;
             uint32_t vU32;
+            float    vFloat;
+            plString_t vString;  // Contains 1 pointer and 1 hashStr_t
+#if PL_COMPACT_MODEL==0
             int64_t  vS64;
             uint64_t vU64;
-            float    vFloat;
             double   vDouble;
-            plString_t vString;  // Contains 1 pointer and 1 hashStr_t
+#endif
         };
         uint32_t magic;  // Used to detect that the event writing is really done
         // For 64bits arch, an additional uint32_t padding is implicitely added
     };
+
+#if PL_COMPACT_MODEL==1
+#define PL_PRIV_RAW_FIELD vU32
+    typedef uint32_t bigRawData_t;
+    typedef uint16_t nameData_t;
+#else
+#define PL_PRIV_RAW_FIELD vU64
+    typedef uint64_t bigRawData_t;
+    typedef uint32_t nameData_t;
+#endif
 
     // Event collection service context
     struct DynString_t { char dummy[PL_DYN_STRING_MAX_SIZE]; };
@@ -1345,23 +1408,27 @@ namespace plPriv {
 
     // Clock implementation
     // Note: The effective clock frequency will be measured/calibrated at initialization time. This is also convenient for custom clock getter.
-    inline uint64_t getClockTick(void) {
+    inline clockType_t getClockTick(void) {
         // RDTSC instruction is ~7x times more precise than the std::chrono or Windows' QPC timer.
         //  And nowadays it is reliable (it was not the case on older processors were its frequency was changing with power plans).
         //  The potential wrong instruction order (no fence here) is considered as noise on the timestamp, with the benefit of a much smaller average resolution.
 #if defined(_WIN32)
         // Windows
         // Context switch events are using QPC, so a date conversion for these events is needed on Windows
-        return int64_t(__rdtsc());
+        return (clockType_t) int64_t(__rdtsc());
 #elif defined(__x86_64__)
         // Linux
         // Kernel events can be configured to use it too, so no extra work
         uint64_t low, high;
         asm volatile ("rdtsc" : "=a" (low), "=d" (high));
+#if PL_SHORT_DATE==1
+        return (clockType_t)low;
+#else
         return (high<<32)+low;
+#endif
 #else
         // C++11 standard case (slower but more portable)
-        return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        return (clockType_t) std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 #endif
     }
 
@@ -1426,62 +1493,62 @@ namespace plPriv {
     }
 
     inline void eventLogRaw(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
-                            int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
+                            int lineNbr_, bool doSkipOverflowCheck_, int flags_, bigRawData_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, flags_);
-        e.vU64  = v;
+        e.PL_PRIV_RAW_FIELD = v;
         e.magic = bi;  // Contains the unique magic value that proves that the event is written
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogRawDynName(hashStr_t filenameHash_, const char* filename_, const char* name_,
-                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
+                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, bigRawData_t v) {
         const char* allocStr = getDynString(name_);
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, 0, filename_, allocStr, lineNbr_, flags_);
-        e.vU64  = v;
+        e.PL_PRIV_RAW_FIELD = v;
         e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogRawDynName(hashStr_t filenameHash_, const char* filename_, plString_t name_,
-                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
+                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, bigRawData_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, name_.hash? name_.hash:1, filename_, name_.value, lineNbr_, flags_);
-        e.vU64  = v;
+        e.PL_PRIV_RAW_FIELD = v;
         e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogRawDynFile(hashStr_t nameHash_, const char* filename_, const char* name_,
-                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
+                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, bigRawData_t v) {
         const char* allocStr = getDynString(filename_);
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, 0, nameHash_? nameHash_:1, allocStr, name_, lineNbr_, flags_);
-        e.vU64  = v;
+        e.PL_PRIV_RAW_FIELD = v;
         e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     template<typename... Args>
     inline void eventLogRawDynFile(hashStr_t nameHash_, const char* format_, const char* name_,
-                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v,
+                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, bigRawData_t v,
                                    Args... args)
     {
         const char* allocStr = getDynString(""); // We know exactly the allocated size for this pointer
         snprintf((char*)allocStr, PL_DYN_STRING_MAX_SIZE, format_, args...);
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, 0, nameHash_? nameHash_:1, allocStr, name_, lineNbr_, flags_);
-        e.vU64  = v;
+        e.PL_PRIV_RAW_FIELD = v;
         e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
     inline void eventLogRawDynFile(hashStr_t nameHash_, plString_t filename_,const char* name_,
-                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, uint64_t v) {
+                                   int lineNbr_, bool doSkipOverflowCheck_, int flags_, bigRawData_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filename_.hash? filename_.hash:1, nameHash_? nameHash_:1, filename_.value, name_, lineNbr_, flags_);
-        e.vU64  = v;
+        e.PL_PRIV_RAW_FIELD = v;
         e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
@@ -1492,19 +1559,19 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), PL_EXTERNAL_STRINGS?0:"", PL_EXTERNAL_STRINGS?0:"", 0, PL_FLAG_TYPE_ALLOC_PART);
         e.extra = size;
-        e.vU64  = (uint64_t)ptr;
+        e.PL_PRIV_RAW_FIELD = (bigRawData_t)((uintptr_t)ptr);
         e.magic = bi;
         // Second part: location name and date
         ThreadContext_t* tCtx = &threadCtx;
         bi = globalCtx.bankAndIndex.fetch_add(1);
         if(tCtx->memLocQty==0) {
             EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), "", "", 0, PL_FLAG_TYPE_ALLOC);
-            e2.vS64  = PL_GET_CLOCK_TICK_FUNC();
+            e2.PL_PRIV_RAW_FIELD = PL_GET_CLOCK_TICK_FUNC();
             e2.magic = bi;
         } else {
             const MemLocation& ml = tCtx->memLocStack[tCtx->memLocQty-1];
             EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), ml.memHash, "", ml.memStr, 0, PL_FLAG_TYPE_ALLOC);
-            e2.vS64  = PL_GET_CLOCK_TICK_FUNC();
+            e2.PL_PRIV_RAW_FIELD = PL_GET_CLOCK_TICK_FUNC();
             e2.magic = bi;
         }
         eventCheckOverflow(bi);
@@ -1516,19 +1583,19 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), PL_EXTERNAL_STRINGS?0:"", PL_EXTERNAL_STRINGS?0:"", 0, PL_FLAG_TYPE_DEALLOC_PART);
         e.extra = 0;
-        e.vU64  = (uint64_t)ptr;
+        e.PL_PRIV_RAW_FIELD  = (bigRawData_t)((uintptr_t)ptr);
         e.magic = bi;
         // Second part: location name and date
         ThreadContext_t* tCtx = &threadCtx;
         bi = globalCtx.bankAndIndex.fetch_add(1);
         if(tCtx->memLocQty==0) {
             EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), "", "", 0, PL_FLAG_TYPE_DEALLOC);
-            e2.vS64  = PL_GET_CLOCK_TICK_FUNC();
+            e2.PL_PRIV_RAW_FIELD = PL_GET_CLOCK_TICK_FUNC();
             e2.magic = bi;
         } else {
             const MemLocation& ml = tCtx->memLocStack[tCtx->memLocQty-1];
             EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), ml.memHash, "", ml.memStr, 0,PL_FLAG_TYPE_DEALLOC);
-            e2.vS64  = PL_GET_CLOCK_TICK_FUNC();
+            e2.PL_PRIV_RAW_FIELD = PL_GET_CLOCK_TICK_FUNC();
             e2.magic = bi;
         }
         eventCheckOverflow(bi);
@@ -1537,7 +1604,7 @@ namespace plPriv {
     // Idle            : threadId =PL_CSWITCH_CORE_NONE and sysThreadId=0
     // External process: threadId =PL_CSWITCH_CORE_NONE and sysThreadId=N strictly positif
     // Internal process: threadId!=PL_CSWITCH_CORE_NONE and sysThreadID=N/A
-    inline void eventLogCSwitch(int threadId_, int sysThreadId_, int oldCoreId_, int newCoreId_, int64_t timestamp_) {
+    inline void eventLogCSwitch(int threadId_, int sysThreadId_, int oldCoreId_, int newCoreId_, clockType_t timestamp_) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
         e.filenameHash = PL_STRINGHASH("");
@@ -1548,7 +1615,7 @@ namespace plPriv {
         e.threadId     = threadId_;
         e.flags        = PL_FLAG_TYPE_CSWITCH;
         e.extra        = sysThreadId_;
-        e.vS64         = timestamp_;
+        e.PL_PRIV_RAW_FIELD = (clockType_t)timestamp_;
         e.magic        = bi;  // Contains the unique magic value that proves that the event is written
         eventCheckOverflow(bi);
     }
@@ -1574,8 +1641,13 @@ namespace plPriv {
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, int64_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
-        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64);
+#if PL_COMPACT_MODEL==1
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_S32);
+        e.vInt  = (int32_t)v;
+#else
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_S64);
         e.vS64  = v;
+#endif
         e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
@@ -1583,8 +1655,13 @@ namespace plPriv {
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, uint64_t v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
+#if PL_COMPACT_MODEL==1
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U32);
+        e.vU32  = (uint32_t)v;
+#else
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64);
         e.vU64  = v;
+#endif
         e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
@@ -1601,8 +1678,13 @@ namespace plPriv {
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, double v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
+#if PL_COMPACT_MODEL==1
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_FLOAT);
+        e.vFloat  = (float)v;
+#else
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_DOUBLE);
         e.vDouble = v;
+#endif
         e.magic   = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
@@ -1610,8 +1692,12 @@ namespace plPriv {
     inline void eventLogData(hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_,
                              int lineNbr_, bool doSkipOverflowCheck_, void* v) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
+#if PL_COMPACT_MODEL==1
+        EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U32);
+#else
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64);
-        e.vU64  = (uintptr_t)v;
+#endif
+        e.PL_PRIV_RAW_FIELD  = (bigRawData_t)((uintptr_t)v);
         e.magic = bi;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
@@ -1747,12 +1833,44 @@ namespace plPriv {
                                  // Note: If the response buffer is full, not all commands are called so response qty<=command quantity
     };
 
-    // Event structure for external world (24 bytes)
-    struct EventExt {
+    // Event structure for external world
+    // Compact model (12 bytes)
+     struct EventExtCompact {
+	    // Header: 4 bytes
+        uint8_t  threadId;
+        uint8_t  flags;
+        uint16_t lineNbr;
+		// 4 bytes
+		union {
+			struct {
+				union {
+					uint16_t filenameIdx;
+					struct {
+						uint8_t  prevCoreId;  // Context switch
+						uint8_t  newCoreId;
+					};
+				};
+				uint16_t nameIdx;
+			};
+            uint32_t memSize;  // Memory case only. The unused fields filenameIdx and nameIdx are overriden
+        };
+		// Value: 4 bytes
+        union {
+            int32_t  vInt;
+            uint32_t vU32;
+            float    vFloat;
+            uint32_t vStringIdx;
+        };
+    };
+
+    // Full model (24 bytes)
+    struct EventExtFull {
+	    // Header: 4 bytes
         uint8_t  threadId;
         uint8_t  flags;
         uint16_t lineNbr;
 
+        // 4 bytes
         union {
             uint32_t filenameIdx;
             struct {
@@ -1761,11 +1879,14 @@ namespace plPriv {
                 uint16_t reserved;
             };
         };
+        // 4 bytes
         union {
             uint32_t nameIdx;
             uint32_t memSize;  // Memory case only
         };
+        // 4 bytes
         uint32_t reserved2;  // Explicit padding for portability
+        // 8 bytes
         union {
             int32_t  vInt;
             uint32_t vU32;
@@ -1776,6 +1897,12 @@ namespace plPriv {
             uint32_t vStringIdx;
         };
     };
+
+#if PL_COMPACT_MODEL==1 && PL_EXPORT==0
+    typedef EventExtCompact EventExt;
+#else
+    typedef EventExtFull    EventExt;
+#endif
 
 } // namespace plPriv
 
@@ -1920,7 +2047,7 @@ namespace plPriv {
         FlatHashTable(int size=PL_IMPL_MAX_EXPECTED_STRING_QTY) {  // This initial value should allow a control on the potential reallocation
             int sizePo2 = 1; while(sizePo2<size) sizePo2 *= 2;
             rehash(sizePo2);
-        } // Start with a reasonable size (and 32 KB on a 64 bit platform)
+        } // Start with a reasonable size (and 32 KB on a 64 bits platform)
         ~FlatHashTable(void) { delete[] _nodes; }
         void clear(void) { _size = 0; for(int i=0; i<_maxSize; ++i) _nodes[i].hash = 0; }
         void insert(hashStr_t hash, T value) {
@@ -2928,8 +3055,8 @@ namespace plPriv {
                 // Internal process: threadId!=NONE and sysThreadID=N/A
                 dst.prevCoreId  = (src.lineNbr>>8)&0xFF; // Stored in the line field...
                 dst.newCoreId   = (src.lineNbr   )&0xFF;
-                if     (src.threadId!=PL_CSWITCH_CORE_NONE) dst.nameIdx = 0xFFFFFFFF; // Internal thread
-                else if(src.extra==0)                       dst.nameIdx = 0xFFFFFFFE; // Idle
+                if     (src.threadId!=PL_CSWITCH_CORE_NONE) dst.nameIdx = (nameData_t)0xFFFFFFFF; // Internal thread
+                else if(src.extra==0)                       dst.nameIdx = (nameData_t)0xFFFFFFFE; // Idle
                 else {                                                                // External thread
                     // @#TODO Retrieve the name of the associated process
                     hashStr_t strNameHash = hashString("External"); // Runtime hash (as the string is dynamic, no choice)
@@ -2960,7 +3087,7 @@ namespace plPriv {
             dst.lineNbr  = src.lineNbr;
 
             // Copy data fields
-            dst.vU64 = src.vU64; // Enough to copy all types except strings (endianness will be handled on server side)
+            dst.PL_PRIV_RAW_FIELD = src.PL_PRIV_RAW_FIELD; // Enough to copy all types except strings (endianness will be handled on server side)
             if(src.flags==PL_FLAG_TYPE_DATA_STRING) {
                 hashStr_t strHash = src.vString.hash;
                 bool  isDynString = (strHash==0);
@@ -3091,7 +3218,7 @@ namespace plPriv {
                     dst1.prevCoreId = coreId;
                     dst1.newCoreId  = PL_CSWITCH_CORE_NONE;
                     dst1.nameIdx    = oldNameIdx;
-                    dst1.vU64       = timeValueNs;
+                    dst1.PL_PRIV_RAW_FIELD = (bigRawData_t)timeValueNs;
 
                     EventExt& dst2 = dstBuffer[dstEventQty++];
                     dst2.threadId   = newThreadId;
@@ -3100,7 +3227,7 @@ namespace plPriv {
                     dst2.prevCoreId = PL_CSWITCH_CORE_NONE;
                     dst2.newCoreId  = coreId;
                     dst2.nameIdx    = newNameIdx;
-                    dst2.vU64       = timeValueNs;
+                    dst2.PL_PRIV_RAW_FIELD = (bigRawData_t)timeValueNs;
                 }
 
                 else if(memcmp(line, "softirq_e", 9)==0) {
@@ -3131,7 +3258,7 @@ namespace plPriv {
                         dst1.prevCoreId = coreId;
                         dst1.newCoreId  = coreId;
                         dst1.nameIdx    = actionNameIdx;
-                        dst1.vU64       = timeValueNs;
+                        dst1.PL_PRIV_RAW_FIELD = (bigRawData_t)timeValueNs;
                     }
                 }
 
@@ -3205,7 +3332,14 @@ namespace plPriv {
         plgBegin(PL_VERBOSE_CS_CBK, "eventRecordCallback");
 
         // 1 Hz clock re-synchronization
-        if(implCtx.tickToNs*(getClockTick()-implCtx.rdtscRef)>1e9) {
+#if PL_SHORT_DATE==1
+        // Works as long as the checked period (=0.5s) is less than the wrap period
+        int64_t deltaTicks = (int64_t)plPriv::getClockTick()-(int64_t)implCtx.rdtscRef;
+        if(deltaTicks<=0) deltaTicks += (1LL<<32);
+#else
+        int64_t deltaTicks = plPriv::getClockTick()-implCtx.rdtscRef;
+#endif
+        if(implCtx.tickToNs*deltaTicks>5e8) {
             LARGE_INTEGER qpc;
             QueryPerformanceCounter(&qpc);
             implCtx.rdtscRef = plPriv::getClockTick();
@@ -3230,8 +3364,8 @@ namespace plPriv {
         // Idle            : threadId =PL_CSWITCH_CORE_NONE and sysThreadId=0
         // External process: threadId =PL_CSWITCH_CORE_NONE and sysThreadId=N strictly positif
         // Internal process: threadId!=PL_CSWITCH_CORE_NONE and sysThreadID=N/A
-        eventLogCSwitch(oldThreadId, oldSysThreadId, coreId, PL_CSWITCH_CORE_NONE, evtTime);
-        eventLogCSwitch(newThreadId, newSysThreadId, PL_CSWITCH_CORE_NONE, coreId, evtTime);
+        eventLogCSwitch(oldThreadId, oldSysThreadId, coreId, PL_CSWITCH_CORE_NONE, (clockType_t)evtTime);
+        eventLogCSwitch(newThreadId, newSysThreadId, PL_CSWITCH_CORE_NONE, coreId, (clockType_t)evtTime);
         plgEnd(PL_VERBOSE_CS_CBK, "eventRecordCallback");
     }
 
@@ -3780,7 +3914,11 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
     static_assert(PL_IMPL_COLLECTION_BUFFER_BYTE_QTY>(int)2*sizeof(plPriv::EventInt), "Too small collection buffer"); // Much more expected anyway...
     static_assert(PL_IMPL_DYN_STRING_QTY>=32, "Invalid configuration");  // Stack trace requires dynamic strings
 #if PL_NOCONTROL==0 || PL_NOEVENT==0
-    static_assert(sizeof(plPriv::EventExt)==24, "Bad size of exchange Event structure");
+#if PL_COMPACT_MODEL==1
+    static_assert(sizeof(plPriv::EventExt)==12, "Bad size of compact exchange event structure");
+#else
+    static_assert(sizeof(plPriv::EventExt)==24, "Bad size of full exchange event structure");
+#endif
     plAssert(!ic.allocCollectBuffer, "Double call to 'plInitAndStart' detected");
 #endif
     ic.mode = mode;
@@ -3828,12 +3966,15 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
 
 #if PL_NOCONTROL==0 || PL_NOEVENT==0
     // Measure the event's high performance clock frequency with the standard nanosecond clock
-    const uint64_t highPerfT0 = PL_GET_CLOCK_TICK_FUNC();
+    int64_t highPerfT0 = PL_GET_CLOCK_TICK_FUNC();
     const auto stdT0 = std::chrono::high_resolution_clock::now();
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    const auto highPerfT1 = PL_GET_CLOCK_TICK_FUNC();
+    int64_t highPerfT1 = PL_GET_CLOCK_TICK_FUNC();
     const auto stdT1 = std::chrono::high_resolution_clock::now();
     // This coefficient will be sent to the server
+#if PL_SHORT_DATE==1
+    if(highPerfT1<=highPerfT0) highPerfT1 += (1LL<<32);
+#endif
     ic.tickToNs = (double)std::chrono::duration_cast<std::chrono::nanoseconds>(stdT1-stdT0).count()/(double)(highPerfT1-highPerfT0);
 
 #if defined(_WIN32) && PL_NOEVENT==0 && PL_IMPL_CONTEXT_SWITCH==1
@@ -3874,10 +4015,16 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
     tlvTotalSize += 4; /* External string flag */
 #endif
 #if PL_SHORT_STRING_HASH==1
-    tlvTotalSize += 4; /* No control flag */
+    tlvTotalSize += 4; /* Short string hash flag */
 #endif
 #if PL_NOCONTROL==1
     tlvTotalSize += 4; /* No control flag */
+#endif
+#if PL_SHORT_DATE==1
+    tlvTotalSize += 4; /* Short Date flag */
+#endif
+#if PL_COMPACT_MODEL==1
+    tlvTotalSize += 4; /* Compact model flag */
 #endif
     int      headerSize = 16+tlvTotalSize;
     uint8_t* header = (uint8_t*)alloca(headerSize*sizeof(uint8_t));
@@ -3894,12 +4041,12 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
     // Write TLVs in big endian, T=2 bytes L=2 bytes
     int offset = 16;
     // TLV Protocol
-    header[offset+0] = 0; header[offset+1] = 0; // Type 0: protocol version
+    header[offset+0] = PL_TLV_PROTOCOL>>8; header[offset+1] = PL_TLV_PROTOCOL&0xFF;
     header[offset+2] = 0; header[offset+3] = 2; // 2 bytes payload
     header[offset+4] = 0; header[offset+5] = 0; // Value 0
     offset += 6;
     // TLV Clock info
-    header[offset+0] = 0; header[offset+1] =  1; // Type 1: clock info (origin + tick to nanosecond)
+    header[offset+0] = PL_TLV_CLOCK_INFO>>8; header[offset+1] = PL_TLV_CLOCK_INFO&0xFF;
     header[offset+2] = 0; header[offset+3] = 16; // 16 bytes payload
     uint64_t tmp = PL_GET_CLOCK_TICK_FUNC();
     header[offset+ 4] = (tmp>>56)&0xFF; header[offset+ 5] = (tmp>>48)&0xFF;
@@ -3913,34 +4060,36 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
     header[offset+18] = (tmp>> 8)&0xFF; header[offset+19] = (tmp    )&0xFF;
     offset += 20;
     // TLV App name
-    header[offset+0] = 0; header[offset+1] = 2; // Type 2: application name
+    header[offset+0] = PL_TLV_APP_NAME>>8; header[offset+1] = PL_TLV_APP_NAME&0xFF;
     header[offset+2] = (appNameLength>>8)&0xFF; header[offset+3] = appNameLength&0xFF;
     memcpy(&header[offset+4], appName, appNameLength);
     offset += 4+appNameLength;
     // TLV build name
     if(buildNameLength>0) {
-        header[offset+0] = 0; header[offset+1] = 3; // Type 3: build name
+        header[offset+0] = PL_TLV_HAS_BUILD_NAME>>8; header[offset+1] = PL_TLV_HAS_BUILD_NAME&0xFF;
         header[offset+2] = (buildNameLength>>8)&0xFF; header[offset+3] = buildNameLength&0xFF;
         memcpy(&header[offset+4], buildName, buildNameLength);
         offset += 4+buildNameLength;
     }
+
+#define ADD_TLV_FLAG(flag)                                              \
+    header[offset+0] = (flag)>>8; header[offset+1] = (flag)&0xFF;       \
+    header[offset+2] = 0; header[offset+3] = 0; /* 0 bytes payload */   \
+    offset += 4
 #if PL_EXTERNAL_STRINGS==1
-    // TLV external string flag
-    header[offset+0] = 0; header[offset+1] = 4; // Type 4: External string flag
-    header[offset+2] = 0; header[offset+3] = 0; // 0 bytes payload
-    offset += 4;
+    ADD_TLV_FLAG(PL_TLV_HAS_EXTERNAL_STRING);
 #endif
 #if PL_SHORT_STRING_HASH==1
-    // TLV short string hash flag
-    header[offset+0] = 0; header[offset+1] = 5; // Type 5: Short string hash flag
-    header[offset+2] = 0; header[offset+3] = 0; // 0 bytes payload
-    offset += 4;
+    ADD_TLV_FLAG(PL_TLV_HAS_SHORT_STRING_HASH);
 #endif
 #if PL_NOCONTROL==1
-    // TLV no control flag
-    header[offset+0] = 0; header[offset+1] = 6; // Type 6: No control flag
-    header[offset+2] = 0; header[offset+3] = 0; // 0 bytes payload
-    offset += 4;
+    ADD_TLV_FLAG(PL_TLV_HAS_NO_CONTROL);
+#endif
+#if PL_SHORT_DATE==1
+    ADD_TLV_FLAG(PL_TLV_HAS_SHORT_DATE);
+#endif
+#if PL_COMPACT_MODEL==1
+    ADD_TLV_FLAG(PL_TLV_HAS_COMPACT_MODEL);
 #endif
     plAssert(offset==headerSize);
 

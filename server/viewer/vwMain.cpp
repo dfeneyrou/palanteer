@@ -1160,13 +1160,13 @@ vwMain::notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answe
 
 // Called by client reception thread
 bool
-vwMain::notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeNsOrigin, double tickToNs,
-                            bool areStringsExternal, bool isStringHashShort, bool isControlEnabled)
+vwMain::notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeTickOrigin, double tickToNs,
+                            bool areStringsExternal, bool isStringHashShort, bool isControlEnabled, bool isDateShort)
 {
     plData("Subaction", plMakeString("Notif record started"));
     // Notify the recording
     bsString errorMsg;
-    cmRecord* record = _recording->beginRecord(appName, buildName, protocol, timeNsOrigin, tickToNs, areStringsExternal,
+    cmRecord* record = _recording->beginRecord(appName, buildName, protocol, timeTickOrigin, tickToNs, areStringsExternal, isDateShort,
                                                getConfig().getCacheMBytes(), errorMsg, true);
     if(!record) {
         notifyErrorForDisplay(ERROR_GENERIC, errorMsg);

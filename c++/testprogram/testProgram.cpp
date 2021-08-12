@@ -248,8 +248,9 @@ void
 cliHandlerCreateMarker(plCliIo& cio)
 {
     const char* msg = cio.getParamString(0);
-    (void)msg; // Remove warnings when Palanteer events are not used
-    plMarkerDyn("test_marker", msg);
+    if(msg) { // In case Palanteer events are not used
+        plMarkerDyn("test_marker", msg);
+    }
 }
 
 
@@ -415,7 +416,7 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
     // Test all the 'group' APIs
     if(plgIsEnabled(TESTGROUP)) { plgFunctionDyn(TESTGROUP); }
     {
-        int a = 0;
+        int a = 0; (void)a;
         plgBegin(TESTGROUP, "Group begin/end test");
         plgData(TESTGROUP, "Group variable a", a);
         plgVar(TESTGROUP, a);

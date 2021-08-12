@@ -202,3 +202,17 @@ def test_build_instru27():
 def test_build_instru28():
     """USE_PL=0 PL_VIRTUAL_THREADS=1"""
     build_target("testprogram", test_build_instru28.__doc__)
+
+
+# Short date (32 bits wrapping) feature
+@declare_test("build instrumentation")
+def test_build_instru29():
+    """USE_PL=0 PL_SHORT_DATE=1"""
+    build_target("testprogram", test_build_instru29.__doc__)
+
+
+# Compact model feature
+@declare_test("build instrumentation")
+def test_build_instru30():
+    """USE_PL=0 PL_COMPACT_MODEL=1"""
+    build_target("testprogram", test_build_instru30.__doc__)

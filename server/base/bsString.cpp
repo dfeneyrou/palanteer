@@ -37,7 +37,7 @@ bsCharUtf8ToUnicode(u8* begin, u8* end, char16_t& codepoint)
     if     (((*begin)&0x80)==0x00) trailingBytes = 0;
     else if(((*begin)&0xE0)==0xC0) trailingBytes = 1;
     else if(((*begin)&0xF0)==0xE0) trailingBytes = 2;
-    else return 0; // Failure, unable to support 32 bit unicode, only 16 bits
+    else return 0; // Failure, unable to support 32 bits unicode, only 16 bits
     if(begin+trailingBytes>=end) return 0; // Failure due to corrupted input
 
     u32 output = 0;

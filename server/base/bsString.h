@@ -68,7 +68,7 @@ public:
 // Windows way of coding unicode
 //  Cons: incompatibility with ascii and all existing interfaces (cf Windows duplicated API A&W...). Subject to endianess. Also twice bigger size than UTF8 for ascii
 //  Pro : (almost) always 2 bytes for (almost) all characters in the world. More efficient than UTF8 for BMP characters not in latin-1
-// Note : Implementation limited to 16 bits (no support for 32 bit codepoints) which is the range of the BMP.
+// Note : Implementation limited to 16 bits (no support for 32 bits codepoints) which is the range of the BMP.
 //       This approximation allows: a fixed size (16 bit) codepoint + direct mapping between the unicode codepoint and the (limited) UTF16 value
 class bsStringUtf16 : public bsVec<char16_t>
 {

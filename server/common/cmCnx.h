@@ -53,6 +53,8 @@ private:
     // Private methods
     bool initializeTransport(FILE* fd);
     bool parseTransportLayer(u8* buf, int qty);
+    bool processNewEvents(u8* buf, int eventQty);
+    void dataReceptionLoop(FILE* fd);
 
     // Both direction
     cmInterface*             _itf;
@@ -75,12 +77,15 @@ private:
     bool   _recordToggleBytes  = false;
     bool   _areStringsExternal = false;
     bool   _isStringHashShort  = false;
-    int    _isControlEnabled   = true;
+    bool   _isControlEnabled   = true;
+    bool   _isDateShort        = false;
+    bool   _isCompactModel     = false;
     int    _recordProtocol     = 0;
-    s64    _timeNsOrigin;
+    s64    _timeTickOrigin;
     double _tickToNs;
     bsString _appName;
     bsString _buildName;
+    bsVec<u8> _conversionBuffer;
     static constexpr int _parseHeaderSize = 8;
     int _parseHeaderDataLeft = _parseHeaderSize;
     int _parseStringLeft = 0;

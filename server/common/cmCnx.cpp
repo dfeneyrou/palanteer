@@ -175,6 +175,93 @@ cmCnx::runTxToClient(void)
 // Reception from client
 // ==============================================================================================
 
+#if _WIN32
+#define CLOSE_SOCKET(s) closesocket(s)
+#else
+#define CLOSE_SOCKET(s) close(s)
+#endif
+
+void
+cmCnx::dataReceptionLoop(FILE* fd)
+{
+    if(!initializeTransport(fd)) {
+        _itf->log(LOG_ERROR, "Client reception: Unable to initialize the transport layer");
+        plgText(CLIENTRX, "State", "Error, Unable to initialize the transport layer");
+        if(fd) {
+            _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("Unable to decode the file header.\nPlease check that it is a valid .pltraw file."));
+            fclose(fd);
+        } else {
+            CLOSE_SOCKET(_clientSocket);
+            _clientSocket = bsSocketError;
+        }
+        return;
+    }
+
+    // Client reception loop
+    if(!_itf->notifyRecordStarted(_appName, _buildName, _recordProtocol, _timeTickOrigin, _tickToNs,
+                                  _areStringsExternal, _isStringHashShort, _isControlEnabled, _isDateShort)) {
+        plgText(CLIENTRX, "State", "Error, Unable to begin the record");
+        // Error message is already handled inside main
+        if(fd) {
+            fclose(fd);
+        } else {
+            CLOSE_SOCKET(_clientSocket);
+            _clientSocket = bsSocketError;
+        }
+        return;
+    }
+
+    plgText(CLIENTRX, "State", "Start data reception");
+    int deltaRecordFactor = fd? 5 : 1; // No need to have "real time" display when we import
+    bool isRecordOk         = true;
+    bool areNewDataReceived = false;
+    while(!_doStopThreads.load()) {
+
+        // Manage the periodic live display update
+        bsUs_t currentTime = bsGetClockUs();
+        if(areNewDataReceived && (currentTime-_lastDeltaRecordTime)>=deltaRecordFactor*cmConst::DELTARECORD_PERIOD_US) {
+            if(_itf->createDeltaRecord()) {
+                _lastDeltaRecordTime = currentTime;
+            }
+            areNewDataReceived = false;
+        }
+
+        // Read the data
+        int qty;
+        if(fd) {
+            qty = (int)fread(_recBuffer, 1, _recBufferSize, fd);
+            if(qty<=0) break;
+        }
+        else {
+            qty = recv(_clientSocket, (char*)_recBuffer, _recBufferSize, 0);
+            if((errno==EAGAIN || errno==EWOULDBLOCK) && qty<0) continue; // Timeout on reception (empty)
+            else if(qty<1)                                     break;    // Client is disconnected
+        }
+
+        if(!parseTransportLayer(_recBuffer, qty)) {                      // Parse the received content
+            _itf->log(LOG_ERROR, "Client reception: Error in parsing the received data");
+            plgText(CLIENTRX, "State", "Error in parsing the received data");
+            isRecordOk = false; // Corrupted record
+            break;
+        }
+        else areNewDataReceived = true;
+    } // End of reception loop
+
+    plgText(CLIENTRX, "State", "End of data reception");
+    _itf->notifyRecordEnded(isRecordOk);
+
+    if(fd) {
+        fclose(fd);
+    }
+    else {
+        CLOSE_SOCKET(_clientSocket);
+        _clientSocket = bsSocketError;
+        _itf->log(LOG_DETAIL, "Client reception: Closed client connection");
+    }
+    plgText(CLIENTRX, "State", "End of recording");
+}
+
+
 void
 cmCnx::runRxFromClient(void)
 {
@@ -263,6 +350,7 @@ cmCnx::runRxFromClient(void)
         // If yes, process it
         if(!injectedFilename.empty()) {
             plgScope(CLIENTRX, "Inject file");
+
             // Open the filename
             _itf->log(LOG_INFO, "Start importing file %s", injectedFilename.toChar());
             FILE* fd = fopen(injectedFilename.toChar(), "rb");
@@ -271,45 +359,9 @@ cmCnx::runRxFromClient(void)
                 _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("Unable to open the file: ")+injectedFilename);
                 continue;
             }
-            // Initialize the transport layer
-            if(!initializeTransport(fd)) {
-                plgText(CLIENTRX, "State", "Error, Unable to initialize the transport");
-                _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("Unable to decode the file header.\nPlease check that ")+injectedFilename+" is a valid .pltraw file.");
-                fclose(fd);
-                continue;
-            }
-            // Initialize the record layer
-            if(!_itf->notifyRecordStarted(_appName, _buildName, _recordProtocol, _timeNsOrigin, _tickToNs,
-                                          _areStringsExternal, _isStringHashShort, _isControlEnabled)) {
-                plgText(CLIENTRX, "State", "Error, Unable to begin the record");
-                // Error message is already handled inside main
-                fclose(fd); continue;
-            }
 
-            plgText(CLIENTRX, "State", "Start data reception");
-            bool isRecordOk = true;
-            while(!_doStopThreads.load()) {
-                // Manage the periodic live display update
-                bsUs_t currentTime = bsGetClockUs();
-                if(currentTime-_lastDeltaRecordTime>=5.*cmConst::DELTARECORD_PERIOD_US) {
-                    if(_itf->createDeltaRecord()) {
-                        _lastDeltaRecordTime = currentTime;
-                    }
-                }
-                size_t qty = fread(_recBuffer, 1, _recBufferSize, fd);
-                if(qty<=0) break;
-                else if(!parseTransportLayer(_recBuffer, (int)qty)) { // Parse the received content
-                    _itf->log(LOG_ERROR, "Error in parsing the imported data");
-                    plgText(CLIENTRX, "State", "Error in parsing the received data");
-                    isRecordOk = false;
-                    break;
-                }
-            }
-            plgText(CLIENTRX, "State", "End of data reception");
-            fclose(fd);
-            _itf->notifyRecordEnded(isRecordOk);
-            _itf->log(LOG_DETAIL, "End of import from file");
-            plgText(CLIENTRX, "State", "End of recording");
+            // Process the file
+            dataReceptionLoop(fd);
 
             // The import is finished, back to the main loop
             continue;
@@ -332,15 +384,10 @@ cmCnx::runRxFromClient(void)
 
         // If the record processing pipeline is not available, just close the socket
         if(!_itf->isRecordProcessingAvailable()) {
-#if _WIN32
-            closesocket(_clientSocket);
-#else
-            close(_clientSocket);
-#endif
+            CLOSE_SOCKET(_clientSocket);
             _clientSocket = bsSocketError;
             continue;
         }
-
 
         if(bsIsSocketValid(_clientSocket)) {
             plgScope(CLIENTRX, "New client transport");
@@ -348,70 +395,8 @@ cmCnx::runRxFromClient(void)
             isWaitingDisplayed = false;
             _itf->log(LOG_DETAIL, "Client reception: New connection detected");
 
-            if(!initializeTransport(0)) {
-                _itf->log(LOG_ERROR, "Client reception: Unable to initialize the transport layer");
-                plgText(CLIENTRX, "State", "Error, Unable to initialize the transport layer");
-#if _WIN32
-                closesocket(_clientSocket);
-#else
-                close(_clientSocket);
-#endif
-                _clientSocket = bsSocketError;
-                continue;
-            }
-
-            // Client reception loop
-            if(!_itf->notifyRecordStarted(_appName, _buildName, _recordProtocol, _timeNsOrigin, _tickToNs,
-                                          _areStringsExternal, _isStringHashShort, _isControlEnabled)) {
-                plgText(CLIENTRX, "State", "Error, Unable to begin the record");
-                // Error message is already handled inside main
-#if _WIN32
-                closesocket(_clientSocket);
-#else
-                close(_clientSocket);
-#endif
-                _clientSocket = bsSocketError;
-                continue;
-            }
-
-            plgText(CLIENTRX, "State", "Start reception from client");
-            bool isRecordOk         = true;
-            bool areNewDataReceived = false;
-            while(!_doStopThreads.load()) {
-
-                // Manage the periodic live display update
-                bsUs_t currentTime = bsGetClockUs();
-                if(areNewDataReceived && (currentTime-_lastDeltaRecordTime)>=cmConst::DELTARECORD_PERIOD_US) {
-                    if(_itf->createDeltaRecord()) {
-                        _lastDeltaRecordTime = currentTime;
-                    }
-                    areNewDataReceived = false;
-                }
-
-                // Read the data
-                int qty = recv(_clientSocket, (char*)_recBuffer, _recBufferSize, 0);
-                if((errno==EAGAIN || errno==EWOULDBLOCK) && qty<0) continue; // Timeout on reception (empty)
-                else if(qty<1)                                     break;    // Client is disconnected
-                else if(!parseTransportLayer(_recBuffer, qty)) {             // Parse the received content
-                    _itf->log(LOG_ERROR, "Client reception: Error in parsing the received data");
-                    plgText(CLIENTRX, "State", "Error in parsing the received data");
-                    isRecordOk = false; // Corrupted record
-                    break;
-                }
-                else areNewDataReceived = true;
-
-            } // End of reception loop
-            plgText(CLIENTRX, "State", "End of reception from client");
-
-            _itf->notifyRecordEnded(isRecordOk);
-#if _WIN32
-            closesocket(_clientSocket);
-#else
-            close(_clientSocket);
-#endif
-            _clientSocket = bsSocketError;
-            _itf->log(LOG_DETAIL, "Client reception: Closed client connection");
-            plgText(CLIENTRX, "State", "End of recording");
+            // Process the file
+            dataReceptionLoop(0);
         }
         else {
             _itf->log(LOG_ERROR, "Client reception: Unable to connect to client");
@@ -421,11 +406,7 @@ cmCnx::runRxFromClient(void)
     plgText(CLIENTRX, "State", "End of server loop");
 
     // Clean the thread
-#if _WIN32
-    closesocket(sockfd);
-#else
-    close(sockfd);
-#endif
+    CLOSE_SOCKET(sockfd);
     plgText(CLIENTRX, "State", "End of data reception thread");
 }
 
@@ -439,20 +420,17 @@ cmCnx::initializeTransport(FILE* fd)
     //  - 8B: Magic (8 bytes). Check the connection type
     //  - 4B: 0x12345678 sent as a u32, in order to detect the endianness (required for data reception)
     //  - 4B: TLV total size. So first reception shall be 16 bytes, then second reception is the TLV total size
-    //  - TLVs with size (type 2B, length 2B, length padded to 4 bytes alignment). All big endian
-    //    T=0: protocol number
-    //    T=1: clock info (origin + event tick to nanosecond)
-    //    T=2: application name zero terminated
-    //    T=3: if present, build name zero terminated
-    //    T=4: if present, external strings are used (so record requires an external string lookup file)
-    //    T=5: if present, short string hash (32 bits) are used
-    //    T=6: if present, the application has no remote control
+    //  - then TLVs, with the structure: type 2B, length 2B, length padded to 4B alignment (all in big endian)
+    //  - Shall include the TLVs "protocol number" (first), "clock info" (origin + event tick to nanosecond) and the "application name" (zero terminated)
+    //    Other TLVs are optional
 
     bsVec<u8> header; header.reserve(256);
     _areStringsExternal = false;
     _isStringHashShort  = false;
     _isControlEnabled   = true;
-    _timeNsOrigin       = 0;
+    _isDateShort        = false;
+    _isCompactModel     = false;
+    _timeTickOrigin     = 0;
     _tickToNs           = 1.;
     _appName.clear();
     _buildName.clear();
@@ -538,7 +516,7 @@ cmCnx::initializeTransport(FILE* fd)
         }
 
         // Protocol TLV
-        if(tlvType==0) {
+        if(tlvType==PL_TLV_PROTOCOL) {
             if(tlvLength!=2) {
                 _itf->log(LOG_ERROR, "Client send a corrupted Protocol element");
                 plgText(CLIENTRX, "State", "ERROR: corrupted Protocol TLV");
@@ -549,28 +527,28 @@ cmCnx::initializeTransport(FILE* fd)
         }
 
         // Clock info TLV: origin and tick to nanosecond coefficient
-        if(tlvType==1) {
+        if(tlvType==PL_TLV_CLOCK_INFO) {
             if(tlvLength!=16) {
                 _itf->log(LOG_ERROR, "Client send a corrupted Clock Info element");
                 plgText(CLIENTRX, "State", "ERROR: corrupted Clock info TLV");
                 return false;
             }
-            _timeNsOrigin = (((u64)header[offset+ 4]<<56) | ((u64)header[offset+ 5]<<48) |
-                             ((u64)header[offset+ 6]<<40) | ((u64)header[offset+ 7]<<32) |
-                             ((u64)header[offset+ 8]<<24) | ((u64)header[offset+ 9]<<16) |
-                             ((u64)header[offset+10]<< 8) |  (u64)header[offset+11]);
+            _timeTickOrigin = (((u64)header[offset+ 4]<<56) | ((u64)header[offset+ 5]<<48) |
+                               ((u64)header[offset+ 6]<<40) | ((u64)header[offset+ 7]<<32) |
+                               ((u64)header[offset+ 8]<<24) | ((u64)header[offset+ 9]<<16) |
+                               ((u64)header[offset+10]<< 8) |  (u64)header[offset+11]);
             u64 tmp = (((u64)header[offset+12]<<56) | ((u64)header[offset+13]<<48) |
                        ((u64)header[offset+14]<<40) | ((u64)header[offset+15]<<32) |
                        ((u64)header[offset+16]<<24) | ((u64)header[offset+17]<<16) |
                        ((u64)header[offset+18]<< 8) |  (u64)header[offset+19]);
             char* tmp1 = (char*)&tmp; // Avoids a warning on strict aliasing
             _tickToNs  = *(double*)tmp1;
-            plgData(CLIENTRX, "Time tick origin is", _timeNsOrigin);
+            plgData(CLIENTRX, "Time tick origin is", _timeTickOrigin);
             plgData(CLIENTRX, "Time tick unit is",   _tickToNs);
         }
 
         // Name TLV
-        else if(tlvType==2) {
+        else if(tlvType==PL_TLV_APP_NAME) {
             // Get the application name
             _appName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
             if(!_appName.empty() && _appName.back()==0) _appName.pop_back();
@@ -589,7 +567,7 @@ cmCnx::initializeTransport(FILE* fd)
         }
 
         // Build name TLV
-        else if(tlvType==3) {
+        else if(tlvType==PL_TLV_HAS_BUILD_NAME) {
             // Get the build name
             _buildName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
             if(!_buildName.empty() && _buildName.back()==0) _buildName.pop_back();
@@ -598,7 +576,7 @@ cmCnx::initializeTransport(FILE* fd)
         }
 
         // External strings TLV
-        else if(tlvType==4) {
+        else if(tlvType==PL_TLV_HAS_EXTERNAL_STRING) {
             if(tlvLength!=0) {
                 _itf->log(LOG_ERROR, "Client send a corrupted External String Flag element");
                 plgText(CLIENTRX, "State", "ERROR: corrupted External String Flag TLV");
@@ -609,7 +587,7 @@ cmCnx::initializeTransport(FILE* fd)
         }
 
         // Short string hash TLV
-        else if(tlvType==5) {
+        else if(tlvType==PL_TLV_HAS_SHORT_STRING_HASH) {
             if(tlvLength!=0) {
                 _itf->log(LOG_ERROR, "Client send a corrupted Short String Hash Flag element");
                 plgText(CLIENTRX, "State", "ERROR: corrupted Short String Hash Flag TLV");
@@ -620,7 +598,7 @@ cmCnx::initializeTransport(FILE* fd)
         }
 
         // No control TLV
-        else if(tlvType==6) {
+        else if(tlvType==PL_TLV_HAS_NO_CONTROL) {
             if(tlvLength!=0) {
                 _itf->log(LOG_ERROR, "Client send a corrupted No Control Flag element");
                 plgText(CLIENTRX, "State", "ERROR: corrupted No Control Flag TLV");
@@ -628,6 +606,28 @@ cmCnx::initializeTransport(FILE* fd)
             }
             _isControlEnabled = false;
             plgText(CLIENTRX, "State", "No Control Flag set");
+        }
+
+        // Short date TLV
+        else if(tlvType==PL_TLV_HAS_SHORT_DATE) {
+            if(tlvLength!=0) {
+                _itf->log(LOG_ERROR, "Client send a corrupted Short Date Flag element");
+                plgText(CLIENTRX, "State", "ERROR: corrupted Short Date Flag TLV");
+                return false;
+            }
+            _isDateShort = true;
+            plgText(CLIENTRX, "State", "Short Date Flag set");
+        }
+
+        // Compact model TLV
+        else if(tlvType==PL_TLV_HAS_COMPACT_MODEL) {
+            if(tlvLength!=0) {
+                _itf->log(LOG_ERROR, "Client send a corrupted Compact Model Flag element");
+                plgText(CLIENTRX, "State", "ERROR: corrupted Compact Model Flag TLV");
+                return false;
+            }
+            _isCompactModel = true;
+            plgText(CLIENTRX, "State", "Compact Model Flag set");
         }
 
         else {
@@ -643,10 +643,50 @@ cmCnx::initializeTransport(FILE* fd)
 
 
 bool
-cmCnx::parseTransportLayer(unsigned char* buf, int qty)
+cmCnx::processNewEvents(u8* buf, int eventQty)
+{
+    // Direct notification
+    if(!_isCompactModel) {
+        return _itf->notifyNewEvents((plPriv::EventExt*)buf, eventQty);
+    }
+
+    // Compact model: conversion required
+    static_assert(sizeof(plPriv::EventExtCompact)==12, "Bad size of compact exchange event structure");
+    static_assert(sizeof(plPriv::EventExt       )==24, "Bad size of exchange event structure");
+    _conversionBuffer.resize(eventQty*sizeof(plPriv::EventExt));
+
+    plPriv::EventExtCompact* src = (plPriv::EventExtCompact*)buf;
+    plPriv::EventExt*        dst = (plPriv::EventExt*)&_conversionBuffer[0];
+    for(int i=0; i<eventQty; ++i, ++src, ++dst) {
+        dst->threadId = src->threadId;
+        dst->flags    = src->flags;
+        dst->lineNbr  = src->lineNbr;
+        dst->filenameIdx = src->filenameIdx;
+        int eType = src->flags&PL_FLAG_TYPE_MASK;
+        if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {
+            dst->nameIdx  = src->nameIdx;
+            if(eType==PL_FLAG_TYPE_CSWITCH) {
+                if     (dst->nameIdx==0xFFFF) dst->nameIdx = 0xFFFFFFFF;
+                else if(dst->nameIdx==0xFFFE) dst->nameIdx = 0xFFFFFFFE;
+            }
+        } else {
+            dst->memSize = src->memSize;
+        }
+        dst->vU64 = src->vU32;
+    }
+
+    // Notify with the converted buffer
+    // Having the processing always with the "large" event structure simplifies a lot the code
+    return _itf->notifyNewEvents((plPriv::EventExt*)&_conversionBuffer[0], eventQty);
+}
+
+
+bool
+cmCnx::parseTransportLayer(u8* buf, int qty)
 {
     // Readability concerns
     bsVec<u8>& s = _parseTempStorage;
+    int eventExtSize = _isCompactModel? sizeof(plPriv::EventExtCompact) : sizeof(plPriv::EventExtFull);
 
     // Loop on the buffer content
     while(qty>0) {
@@ -724,30 +764,26 @@ cmCnx::parseTransportLayer(unsigned char* buf, int qty)
         while(qty>0 && _parseEventLeft>0) {
             plAssert(_parseHeaderDataLeft==0);
             if(!s.empty()) {
-                int usedQty = (qty>(int)sizeof(plPriv::EventExt)-s.size())? sizeof(plPriv::EventExt)-s.size() : qty;
+                int usedQty = (qty>eventExtSize-s.size())? eventExtSize-s.size() : qty;
                 std::copy(buf, buf+usedQty, std::back_inserter(s));
                 buf += usedQty;
                 qty -= usedQty;
-                if(s.size()==sizeof(plPriv::EventExt)) {
+                if(s.size()==eventExtSize) {
                     _parseEventLeft -= 1;
-                    if(!_itf->notifyNewEvents((plPriv::EventExt*)&s[0], 1)) {
-                       return false; // Event corruption
-                    }
+                    if(!processNewEvents(&s[0], 1)) return false; // Event corruption
                     s.clear();
                 }
             }
-            int eventQty = qty/sizeof(plPriv::EventExt);
+            int eventQty = qty/eventExtSize;
             if(eventQty>_parseEventLeft) eventQty = _parseEventLeft;
             if(eventQty) {
-                if(!_itf->notifyNewEvents((plPriv::EventExt*)buf, eventQty)) {
-                    return false; // Event corruption
-                }
-                buf += eventQty*sizeof(plPriv::EventExt);
-                qty -= eventQty*sizeof(plPriv::EventExt);
+                if(!processNewEvents(buf, eventQty)) return false; // Event corruption
+                buf += eventQty*eventExtSize;
+                qty -= eventQty*eventExtSize;
                 _parseEventLeft -= eventQty;
             }
             if(qty>0 && _parseEventLeft>0) {
-                plAssert(qty<(int)sizeof(plPriv::EventExt));
+                plAssert(qty<eventExtSize);
                 std::copy(buf, buf+qty, std::back_inserter(s));
                 buf += qty;
                 qty -= qty;

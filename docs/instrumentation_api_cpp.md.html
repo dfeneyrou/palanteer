@@ -1007,14 +1007,14 @@ In such case, try to isolate the faulty line from your sources, and check:
 <br>
 **plFunction does not compile**
 
-You probably hit the issue described in [plFunction](#plfunction): the (not recent) C++ compiler does not consider `__FUNCTION__` as  `constexpr`. <br>
+You probably hit the issue described in [plFunction](#plfunction): some "old" C++ compilers do not consider `__FUNCTION__` as  `constexpr`. <br>
 In such case, either:
   - switch to `plFunctionDyn()`, with the drawback of the non optimal dynamic string management
   - use `plScope("manually copied function name")`
-  - use a more recent compiler
+  - use a more recent compiler, if possible
 
 <br/>
-**I use clang with ASAN and the memory allocations are not logged...**
+**I use `clang` with ASAN and the memory allocations are not logged...**
 
 Overloading `new` and `delete` operators in clang with ASAN does not work, this is a known issue in clang (see clang bugzilla https://bugs.llvm.org/show_bug.cgi?id=19660 ).
 
@@ -1042,15 +1042,13 @@ Break in `plCrash`.
 **I have some troubles with sockets under Windows**
 
 First, ensure that "`#define _WINSOCKAPI_`" is set before including any windows header (see testProgram.cpp). <br/>
-Then, if your program already manages the WSA, you have to tell Palanteer not to do it also, with `#define PL_IMPL_MANAGE_WINDOWS_SOCKET 0`
+Then, if your program already manages the WSA, you have to tell Palanteer not to do it also, with `#define PL_IMPL_MANAGE_WINDOWS_SOCKET 0` (default is 1)
 
 <br/>
-**PL_IMPL_CONTEXT_SWITCH is set to 1 but I do not see any core related event**
+**PL_IMPL_CONTEXT_SWITCH is set to 1 but I do not see any CPU related event**
 
-The access to such process data is restricted on many OS for security reasons. <br/>
-To be able to collect them, your program shall run in privileged mode (root on Linux, administrator on Windows).
-
-Beware that on Linux, using `sudo` will create record files from and for the root user. The location of the records may change too.
+The access to such data is restricted on many OS for security reasons. <br/>
+Their collection implies that the program runs in privileged mode (root on Linux, administrator on Windows).
 
 <br/>
 **I have many threads in parallel and many "SATURATION" markers despite I allocated enough memory for the event collection buffers**
@@ -1058,7 +1056,7 @@ Beware that on Linux, using `sudo` will create record files from and for the roo
 If all CPUs are saturated, the collection task cannot run regularly enough and buffers will get full whatever their allocated size. <br/>
 The consequence is that event logging will start to block the threads, waiting for some space for logging, and place a "SATURATION" marker.
 
-The presence of the viewer or scripting module on the same machine is maybe the problem, as they use also some CPU and may interfere with the program observation. <br/>
+The presence of the viewer or scripting module on the same machine is maybe the problem, as they use also some CPU and may interfere with the program under observation. <br/>
 Ideally, the available CPU quantity shall be: at least the required quantity for your program + 3 (instrumentation thread + viewer recording thread + viewer display thread).
 
 Recording on a file reduces this requirement to: at least the required quantity for your program + 1 (instrumentation thread), as the processing of the raw events will be done later.
@@ -1075,10 +1073,11 @@ The estimated size of the record would be ~20 GB, still displayed smoothly.
 On Windows, the stacktrace decoding requires some initialization which cannot be safely done at crash time.
 
 The following points shall be checked:
-  - the compilation flag `USE_PL` is set to 1.
+  - The compilation flag `USE_PL` is set to 1.
     - If only the stacktrace feature is desired, set all `USE_PL`, `PL_NOEVENT` and `PL_NOCONTROL` to 1
-  - the compilation flag `PL_IMPL_STACKTRACE` is not explicitely set to zero (it is set to 1 by default on Windows)
-  - the function `plInitAndStart` is called
+  - The compilation flag `PL_IMPL_STACKTRACE` is not explicitely set to zero (it is set to 1 by default on Windows)
+  - The function `plInitAndStart` is called
+    - The stacktrace decoding initialization is done at this momen
     - If no event recording is desired, the mode `PL_MODE_INACTIVE` can be used.
 
 

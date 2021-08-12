@@ -403,6 +403,8 @@ This configuration **must** be consistent in all source files using `Palanteer` 
 | [PL_DYN_STRING_MAX_SIZE](#pl_dyn_string_max_size) | Defines the maximum size of a dynamic string                  | 512 B   |
 | [PL_SHORT_STRING_HASH](#pl_short_string_hash)     | Use 32 bits hash rather than 64 bits                          | 0       |
 | [PL_SIMPLE_ASSERT](#pl_simple_assert)             | Disables the assertion enhancements and reverts to basic ones | 0       |
+| [PL_SHORT_DATE](#pl_short_date)                   | Use a 32 bits clock output, which implies wraps               | 0       |
+| [PL_COMPACT_MODEL](#pl_compact_model)             | Use the "compact app model" to reduce the transferred data    | 0       |
 
 <br/>
 
@@ -468,9 +470,9 @@ The selected hash function is the Fowler–Noll–Vo which is a good trade-off b
   * the discriminative power of the hash
 
 By default, the 64 bits version is used to ensure that virtually no collision happens. <br/>
-This constant forces the usage of the 32 bit version of FNV.
+This constant forces the usage of the 32 bits version of FNV.
 
-The only 'gain' is for 32 bit systems and only when using dynamic strings or recording context switches: run-time computation speed will then be slightly improved. <br/>
+The only 'gain' is for 32 bits systems and only when using dynamic strings or recording context switches: run-time computation speed will then be slightly improved. <br/>
 Note that storage size and transmitted data are not reduced when using this flag.
 
 The default value is:
@@ -490,6 +492,49 @@ The default value is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
 #define PL_SIMPLE_ASSERT 0
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_SHORT_DATE
+
+This compilation flag switches the instrumentation to use a 32 bits clock, and the server side to handle its wraps.
+
+The two main use cases are:
+  - The high resolution clock is indeed 32 bits (on 32 bits architectures for instance)
+  - The compact application model is used (see [PL_COMPACT_MODEL](#pl_compact_model) below)
+
+If set, the server manages clock wraps and reconstitutes the unique clock date. <br/>
+For proper wrap handling, the wrap period shall be twice larger than the event sending period (should always be the case in theory).
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_SHORT_DATE 0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+### PL_COMPACT_MODEL
+
+A "compact application model" is an instrumented program which transfers 50% less data with the server (12 bytes per events instead of 24). <br/>
+This applies both for storage on file and for connected mode.
+
+To be compatible with the "compact model", the following constraints shall be fullfilled:
+  - At most 65535 unique strings are used
+  - Only 32 bits types are used
+    - If used, `double` and 64 bits integers are truncated to their 32 bits equivalent
+
+!!! note This mode is not restricted to small embedded devices
+    The biggest constraint is usually the restriction to 32 bits data types (which is even easier on 32 bits architectures). <br/>
+    Indeed, if the usage of formatted dynamic string is moderate, the limit of 65k unique strings should be reached only for large programs
+
+In this mode, the following settings are forced:
+  - `PL_SHORT_DATE` is set to 1 (32 bits clock)
+  - `PL_SHORT_STRING_HASH` is set to 1 (32 bits string hashs)
+
+The default value is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_COMPACT_MODEL 0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! tip
+    The record sizes on the server side are unaffected by this flag. Only the `.pltraw` file size and the byte quantity sent by socket are reduced.
+
 
 ### PL_GET_CLOCK_TICK_FUNC
 
@@ -520,6 +565,24 @@ The default value is (built-in function):
 #endif
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+## Troubleshootings
+
+**What is the recommended setting for small embedded devices?**
+
+Such devices usually use a 32 bits architecture and run software of moderate size. <br/>
+Two settings have been designed with this use-case in mind:
+  - The [PL_COMPACT_MODEL](#pl_compact_model), which reduces the data transfer on socket (or any transport layer)
+  - The [PL_EXTERNAL_STRINGS](#pl_external_strings) feature, which zeroes the cost of using static strings in the instrumentation
+
+Note that the compact model forces the activation of [PL_SHORT_DATE](#pl_short_date) and [PL_SHORT_STRING_HASH](#pl_short_string_hash). <br/>
+For very limited resource cases, the additional flag [PL_SIMPLE_ASSERT](#pl_simple_assert) can be used.
+
+The remote control can also be disabled (with `PL_NOCONTROL=1`), but be able to remotely control and test an embedded device is always interesting.
+
+<br/>
+**What is the impact of these settings on the memory usage?**
+
+See the description in the [performance section](index.html#c++memoryusage).
 
 
 <h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>

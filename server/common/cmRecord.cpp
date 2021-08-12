@@ -224,8 +224,8 @@ cmRecord::loadExternalStrings(void)
 #define ADD_STRING(h, s) _extStringsHashToStrIdx.insert((u32)h, h, _extStrings.size()); _extStrings.push_back(s)
 
     // Build the lookup
-    ADD_STRING(2166136261, "");         // Empty string 32 bit hash (FNV 32 offset)
-    ADD_STRING(BS_FNV_HASH_OFFSET, ""); // Empty string 64 bit hash
+    ADD_STRING(2166136261, "");         // Empty string 32 bits hash (FNV 32 offset)
+    ADD_STRING(BS_FNV_HASH_OFFSET, ""); // Empty string 64 bits hash
 
     // Read the file content
     bsVec<u8> b;

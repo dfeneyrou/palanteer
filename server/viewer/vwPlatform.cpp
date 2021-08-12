@@ -341,7 +341,7 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
 
     // Keyboard mapping. ImGui will use those indices to peek into the io.KeyDown[] array.
     static_assert(KC_KeyCount<512, "Dear ImGui does not expect more than 512 different keys");
-    static_assert(sizeof(ImDrawIdx)==4, "ImDrawIdx shall be 32 bit");
+    static_assert(sizeof(ImDrawIdx)==4, "ImDrawIdx shall be 32 bits");
     io.KeyMap[ImGuiKey_Tab]        = KC_Tab;
     io.KeyMap[ImGuiKey_LeftArrow]  = KC_Left;
     io.KeyMap[ImGuiKey_RightArrow] = KC_Right;

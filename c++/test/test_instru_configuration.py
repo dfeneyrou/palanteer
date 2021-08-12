@@ -317,7 +317,7 @@ def test_short_hash_string():
 def test_32bits_arch():
     """Config 32 bits architecture PL_SHORT_STRING_HASH=1 -m32"""
     if sys.platform == "win32":
-        LOG("Skipped: 32 bit build is not applicable under Windows")
+        LOG("Skipped: 32 bits build is not applicable under Windows")
         return
     build_target(
         "testprogram",
@@ -443,5 +443,33 @@ def test_external_short_string():
     CHECK(
         events[0].path[-1].count("@") == 0,
         "The strings of the path are no more obfuscated",
+    )
+    process_stop()
+
+
+@declare_test("config instrumentation")
+def test_compactmodel():
+    """Config Compact Model PL_COMPACT_MODEL=1"""
+    build_target("testprogram", "USE_PL=1 PL_COMPACT_MODEL=1")
+
+    data_configure_events([EvtSpec("CRASH"), spec_add_fruit])
+    try:
+        launch_testprogram()
+        CHECK(True, "Connection established")
+    except ConnectionError:
+        CHECK(False, "No connection")
+
+    events = data_collect_events(timeout_sec=1.0)
+    CHECK(events, "Some events are received")
+    CHECK(
+        not [1 for e in events if e.path[-1] == "CRASH Stacktrace"],
+        "No crash event has been received",
+    )
+    status, answer = program_cli("async_assert condvalue=0")
+    CHECK(status == 0, "CLI to make an assert called successfully", status, answer)
+    events = data_collect_events(timeout_sec=2.0)
+    CHECK(
+        [1 for e in events if e.path[-1] == "CRASH"] and not process_is_running(),
+        "Crash event due to the assert has been received",
     )
     process_stop()

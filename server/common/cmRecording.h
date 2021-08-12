@@ -34,8 +34,8 @@ public:
     ~cmRecording(void);
 
     // Core methods
-    cmRecord* beginRecord(const bsString& appName, const bsString& buildName, int protocol, s64 timeNsOrigin, double tickToNs,
-                          bool areStringsExternal, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord);
+    cmRecord* beginRecord(const bsString& appName, const bsString& buildName, int protocol, s64 timeTickOrigin, double tickToNs,
+                          bool areStringsExternal, bool isDateShort, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord);
     void endRecord(void);
     bool isRecording(void) { return _recFd!=0; }
     const bsString& storeNewString(const bsString& newString, u64 hash);
@@ -69,8 +69,8 @@ private:
     bsString     _forcedRecordFilename;      // Empty means automatic naming
 
     // Reception
-    bsString _storagePath;
-    bool     _isCompressionEnabled;
+    bsString         _storagePath;
+    bool             _isCompressionEnabled;
     std::atomic<int> _doStopThread;
     std::thread*     _threadCollectFromClient = 0;
     bsString         _injectedFilename;
@@ -78,17 +78,9 @@ private:
     // Parsing
     int  _recordProtocol     = 0;
     int  _areStringsExternal = 0;
+    bool _isDateShort        = false;
     bool _recordToggleBytes  = false;
     bsString _recordName;
-    static constexpr int _parseHeaderSize = 8;
-    int _parseHeaderDataLeft = _parseHeaderSize;
-    int _parseStringLeft = 0;
-    int _parseEventLeft  = 0;
-    bsVec<u8> _parseTempStorage;
-    void resetParser(void) {
-        _parseHeaderDataLeft = _parseHeaderSize; _parseStringLeft = 0;
-        _parseEventLeft = 0; ; _parseTempStorage.clear();
-    }
 
     // Record
     FILE* _recFd = 0;
@@ -191,6 +183,8 @@ private:
         u32 markerEventQty    = 0;
         u32 droppedEventQty   = 0;
         s64 durationNs        = 0;
+        s64 shortDateHiPartEvt = 0;
+        s64 shortDateHiPartCSwitch = 0;
         // Memory
         u64  sumAllocQty    = 0;
         u64  sumAllocSize   = 0;
@@ -238,13 +232,16 @@ private:
     void writeScopeChunk  (NestingLevelBuild& lc, bool isLast=false);
     void writeElemChunk   (ElemBuild& elem, bool isLast=false);
     void writeGenericChunk(bsVec<cmRecord::Evt>& chunkData, bsVec<chunkLoc_t>& chunkLocs);
+    void updateDate(plPriv::EventExt& evtx, s64& shortDateHiPart);
 
     // Structured storage
-    s64 _recTimeNsOrigin   = 0;
+    s64 _recTimeTickOrigin = 0;
+    s64 _highestDateTick   = 0;
     double _recTickToNs    = 1.;
     s64 _recDurationNs     = 0;
     u64 _recLastEventFileOffset = 0;
-    s64 _recLastCSwitchDateNs = 0;
+    s64 _recLastCSwitchDateNs   = 0;
+    s64 _recShortDateHiPartCpu  = 0;
     int _recCoreQty        = 0;
     int _recUsedCoreCount  = 0;
     u32 _recElemChunkQty   = 0;

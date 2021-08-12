@@ -126,7 +126,7 @@ void            osSetIcon(int width, int height, const u8* pixels); // Size of p
 // strcasestr does not exists on windows
 const char* strcasestr(const char* s, const char* sToFind);
 
-// ftell and fseek are limited to 32 bit offset, so the 64 bit version is used here
+// ftell and fseek are limited to 32 bits offset, so the 64 bits version is used here
 #define bsOsFseek _fseeki64
 #define bsOsFtell _ftelli64
 

@@ -34,7 +34,7 @@
 // Simple and fast flat hash table with linear open addressing, dedicated to build a lookup
 // - Hashing is internal (for u32 & u64 keys) and an external api is provided (for performance).
 //     If external, ensure that it is good enough to avoid clusters, and that external api is always used
-// - best storage packing is for 32 bit key size
+// - best storage packing is for 32 bits key size
 // - single value per key (overwrite of existing value)
 
 template <typename K, typename V>

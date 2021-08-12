@@ -75,11 +75,14 @@ cmRecording::~cmRecording(void)
 // ==============================================================================================
 
 cmRecord*
-cmRecording::beginRecord(const bsString& appName, const bsString& buildName, int protocol, s64 timeNsOrigin, double tickToNs,
-                         bool areStringsExternal, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord)
+cmRecording::beginRecord(const bsString& appName, const bsString& buildName, int protocol, s64 timeTickOrigin, double tickToNs,
+                         bool areStringsExternal, bool isDateShort, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord)
 {
     plScope("beginRecord");
     errorMsg.clear();
+    _recordAppName.clear();
+    _recordBuildName.clear();
+    _recordPath.clear();
 
     if(_isRecordingEnabled) {
         _recordAppName   = appName.empty()? "no_name" : appName;
@@ -118,14 +121,17 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, int
     }
 
     // Store the fields
-    _recTimeNsOrigin = timeNsOrigin;
-    _recTickToNs     = tickToNs;
+    _recTimeTickOrigin  = timeTickOrigin;
+    _highestDateTick    = timeTickOrigin;
+    _recTickToNs        = tickToNs;
     _areStringsExternal = areStringsExternal;
+    _isDateShort        = isDateShort;
 
     // Reset the structured storage
-    _recDurationNs     = 0;
+    _recDurationNs          = 0;
     _recLastEventFileOffset = 0;
-    _recLastCSwitchDateNs = 0;
+    _recLastCSwitchDateNs   = 0;
+    _recShortDateHiPartCpu  = 0;
     _recCoreQty        = 0;
     _recUsedCoreCount  = 0;
     _recElemChunkQty   = 0;
@@ -562,6 +568,13 @@ cmRecording::processCoreUsageEvent(plPriv::EventExt& evtx)
         evtx.nameIdx   = 0xFFFFFFFE;
     }
     else _recCoreIsPaused[coreId] = 0;
+
+    // Update the date and ensure that the clock is always increasing for context switches.
+    // Indeed, clock resynchronization may add some jitter and make some dates backward at these points.
+    // This would damage the speck computation for multi-resolution
+    updateDate(evtx, _recShortDateHiPartCpu);
+    if(evtx.vS64<_recLastCSwitchDateNs) evtx.vS64 = _recLastCSwitchDateNs+1;
+    _recLastCSwitchDateNs = evtx.vS64;
 
     // Check that the CPU usage by our program changed
     bool doAddCpuPoint = true;
@@ -1125,6 +1138,29 @@ cmRecording::doPauseStoring(bool state)
 }
 
 
+void
+cmRecording::updateDate(plPriv::EventExt& evtx, s64& shortDateHiPart)
+{
+    // Handle the short date and its potential wrap
+    if(_isDateShort) {
+        evtx.vS64 = shortDateHiPart | (evtx.vS64&0xFFFFFFFFLL);
+        int count = 10;
+        while(evtx.vS64<_highestDateTick-0x80000000LL && --count) {
+            evtx.vS64       += (1LL<<32);
+            shortDateHiPart += (1LL<<32);
+        }
+        plAssert(count>0);
+        if(evtx.vS64>_highestDateTick) _highestDateTick = evtx.vS64;
+    }
+
+    // Unbias and stretch the time so that record start is 0 ns and is in nanosecond
+    evtx.vS64 = (evtx.vS64>=_recTimeTickOrigin)? (s64)(_recTickToNs*(evtx.vS64-_recTimeTickOrigin)) : 0;
+
+    // Keep track of the full record duration
+    if(evtx.vS64>_recDurationNs) _recDurationNs = evtx.vS64;
+}
+
+
 bool
 cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
 {
@@ -1175,18 +1211,6 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
 
         plPriv::EventExt& evtx  = events[i];
         int               eType = evtx.flags&PL_FLAG_TYPE_MASK;
-
-        // If the data is a date, normalize it
-        if(eType==PL_FLAG_TYPE_DATA_TIMESTAMP || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) {
-            evtx.vS64 = (evtx.vS64>=_recTimeNsOrigin)? (s64)(_recTickToNs*(evtx.vS64-_recTimeNsOrigin)) : 0; // Unbias and stretch the time so that record start is 0 ns and is in nanosecond
-
-            // Ensure that the clock is always increasing for context switches.
-            // Indeed, clock resynchronization may add some jitter and make some dates backward at these points. This would damage the speck computation for multi-resolution
-            if(eType==PL_FLAG_TYPE_CSWITCH) {
-                if(evtx.vS64<_recLastCSwitchDateNs) evtx.vS64 = _recLastCSwitchDateNs+1;
-                _recLastCSwitchDateNs = evtx.vS64;
-            }
-        }
 
         // Core event case (stop processing if it concerns an external process, else continue for the ctx switch processing)
         if(eType==PL_FLAG_TYPE_CSWITCH) {
@@ -1265,6 +1289,13 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
             continue;
         }
 
+        // Normalize dates
+        if(eType!=PL_FLAG_TYPE_CSWITCH &&  // Ctx switch dates have already been processed
+           (eType==PL_FLAG_TYPE_DATA_TIMESTAMP || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST))) {
+            updateDate(evtx, (eType==PL_FLAG_TYPE_CSWITCH || eType==PL_FLAG_TYPE_SOFTIRQ)? tc.shortDateHiPartCSwitch : tc.shortDateHiPartEvt);
+            if(evtx.vS64>tc.durationNs) tc.durationNs = evtx.vS64;
+        }
+
         // Lock usage case (cannot be handled in a hierarchical manner)
         int secondEventFlags = PL_FLAG_TYPE_DATA_NONE; // No second event
         if(eType==PL_FLAG_TYPE_LOCK_ACQUIRED || eType==PL_FLAG_TYPE_LOCK_RELEASED) {
@@ -1282,12 +1313,6 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
                 // Mutate the current event into a wait end (which modifies the level)
                 evtx.flags = PL_FLAG_TYPE_LOCK_WAIT | PL_FLAG_SCOPE_END;
             }
-        }
-
-        // Keep track of the full record duration
-        if(eType==PL_FLAG_TYPE_DATA_TIMESTAMP || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) {
-            if(evtx.vS64>tc.durationNs)   tc.durationNs = evtx.vS64;
-            if(evtx.vS64>_recDurationNs) _recDurationNs = evtx.vS64;
         }
 
         // Context switch and SOFTIRQ cases

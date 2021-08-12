@@ -131,11 +131,12 @@ pyMainItf::notifyNewCli(u32 nameIdx, int paramSpecIdx, int descriptionIdx)
 
 
 bool
-pyMainItf::notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeNsOrigin, double tickToNs,
-                            bool areStringsExternal, bool isStringHashShort, bool isControlEnabled)
+pyMainItf::notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeTickOrigin, double tickToNs,
+                               bool areStringsExternal, bool isStringHashShort, bool isControlEnabled, bool isDateShort)
 {
     bsString errorMsg;
-    _recording->beginRecord(appName, buildName, protocol, timeNsOrigin, tickToNs, areStringsExternal, RECORD_CACHE_MB, errorMsg, false);
+    _recording->beginRecord(appName, buildName, protocol, timeTickOrigin, tickToNs,
+                            areStringsExternal, isDateShort, RECORD_CACHE_MB, errorMsg, false);
     if(!errorMsg.empty()) {
         notifyErrorForDisplay(ERROR_GENERIC, errorMsg);
         return false;
