@@ -134,7 +134,7 @@ Note 2: on both Windows and Linux, context switch information is available only 
     )
     # Execute the program
     if run_as_module:
-        runpy.run_module(app_name, run_name='__main__', alter_sys=True)
+        runpy.run_module(app_name, run_name="__main__", alter_sys=True)
     else:
         exec(
             compile(open(sys.argv[0]).read(), sys.argv[0], "exec"),

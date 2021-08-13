@@ -379,7 +379,7 @@ Either:
 
  1) With code instrumentation: insert a call to palanteer.plInitAndStart(app_name, ...) in your main function.
      See Palanteer documentation for details.
-     Manual instrumentation can provide much more information (ex: data, locks, ...) than just the automatic function profiling.
+     Manual instrumentation can provide much more information (data, locks, ...) than just the automatic function profiling.
 
  2) With unmodified script:  'python -m palanteer [options] &lt;your script&gt;'
      This syntax is similar to the cProfile usage. No script modification is required but only the function timings and exceptions are profiled.
@@ -392,8 +392,9 @@ Options for case (2):
  -ne                    Do not automatically log the exceptions             (default=log exception)
  -nm                    Do not log the memory allocations                   (default=log memory allocations)
  -ng                    Do not automatically log the garbage collector runs (default=log gc)
- -nc                    Do not automatically log the C functions            (default=both python and C functions)
+ -c                     Do automatically log the C functions                (default=only python functions)
  -w                     Wait for server connection (Palanteer viewer or scripting module). Applicable only in case of remote connection.
+ -m                     Run the app as a module (similar to python's "-m" option)
 
 Note 1: in case of connection to the server and -w is not used and no server is reachable, profiling is simply skipped
 Note 2: on both Windows and Linux, context switch information is available only with root privileges (OS limitation)
