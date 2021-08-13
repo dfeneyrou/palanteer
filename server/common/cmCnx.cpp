@@ -40,6 +40,9 @@
 #endif
 
 
+constexpr int SUPPORTED_MIN_PROTOCOL = 0;
+constexpr int SUPPORTED_MAX_PROTOCOL = 0;
+
 cmCnx::cmCnx(cmInterface* itf, int port) :
     _itf(itf), _port(port), _doStopThreads(0)
 {
@@ -184,11 +187,32 @@ cmCnx::runTxToClient(void)
 void
 cmCnx::dataReceptionLoop(FILE* fd)
 {
-    if(!initializeTransport(fd)) {
+    // Initialize the transport layer (reception of metadata from the client)
+    bool initStatus = initializeTransport(fd);
+
+    // Parsing failed?
+    if(!initStatus) {
         _itf->log(LOG_ERROR, "Client reception: Unable to initialize the transport layer");
         plgText(CLIENTRX, "State", "Error, Unable to initialize the transport layer");
         if(fd) {
             _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("Unable to decode the file header.\nPlease check that it is a valid .pltraw file."));
+        }
+    }
+    // Check the protocol
+    else if(_recordProtocol<SUPPORTED_MIN_PROTOCOL) {
+        initStatus = false;
+        _itf->log(LOG_ERROR, "Client reception: the instrumentation library is too old and shall be updated");
+        plgText(CLIENTRX, "State", "Error, the instrumentation library is too old and shall be updated");
+        _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("The instrumentation library is too old and shall be updated"));
+    }
+    else if(_recordProtocol>SUPPORTED_MAX_PROTOCOL) {
+        initStatus = false;
+        _itf->log(LOG_ERROR, "Client reception: the instrumentation library is too recent. The server shall be updated");
+        plgText(CLIENTRX, "State", "Error, the instrumentation library is too recent. The server shall be updated");
+        _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("The instrumentation library is too recent. The server shall be updated"));
+    }
+    if(!initStatus) {
+        if(fd) {
             fclose(fd);
         } else {
             CLOSE_SOCKET(_clientSocket);
