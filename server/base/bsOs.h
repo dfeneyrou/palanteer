@@ -52,7 +52,7 @@ public:
     virtual void eventChar(char16_t codepoint) = 0;
     virtual void eventKeyPressed (bsKeycode keycode, bsKeyModState kms) = 0;
     virtual void eventKeyReleased(bsKeycode keycode, bsKeyModState kms) = 0;
-    virtual void eventButtonPressed (int buttonId, int x, int y, bsKeyModState kms) = 0; // 0=left, 1=middle, 2=right
+    virtual void eventButtonPressed (int buttonId, int x, int y, bsKeyModState kms) = 0; // 1=left, 2=middle, 3=right
     virtual void eventButtonReleased(int buttonId, int x, int y, bsKeyModState kms) = 0;
     virtual void eventMouseMotion   (int x, int y) = 0;
     virtual void eventWheelScrolled (int x, int y, int steps, bsKeyModState kms) = 0;
