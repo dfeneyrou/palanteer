@@ -56,6 +56,7 @@ public:
     virtual void eventButtonReleased(int buttonId, int x, int y, bsKeyModState kms) = 0;
     virtual void eventMouseMotion   (int x, int y) = 0;
     virtual void eventWheelScrolled (int x, int y, int steps, bsKeyModState kms) = 0;
+    virtual void eventModifiersChanged (bsKeyModState kms) = 0;
     // Others
     virtual bool isVisible(void) const = 0;
     virtual void quit(void) = 0;
@@ -130,7 +131,7 @@ const char* strcasestr(const char* s, const char* sToFind);
 #define bsOsFseek _fseeki64
 #define bsOsFtell _ftelli64
 
-#else                       // Linux case
+#else                       // Linux/Mac case
 
 #define PL_DIR_SEP "/"
 #define PL_DIR_SEP_CHAR '/'

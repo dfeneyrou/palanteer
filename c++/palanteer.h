@@ -152,7 +152,11 @@
 // Exit function when a crash occurs, called after logging the crash in Palanteer, flushing the recording and restoring signals
 // Default is a call to abort().
 #ifndef PL_IMPL_CRASH_EXIT_FUNC
+#ifdef __APPLE__
+#define PL_IMPL_CRASH_EXIT_FUNC() abort()
+#else
 #define PL_IMPL_CRASH_EXIT_FUNC() quick_exit(1)
+#endif
 #endif
 
 // Print error function (assertions, signals).
