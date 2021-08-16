@@ -926,24 +926,24 @@ Some details on the test:
 **2) Another kind of run-time speed measurement is done via the launch of the provided C++ example program "`testprogram perf`" with connection to the viewer.** <br/>
 This speed measurement is closer to a real use case as it includes the event transmission, the event processing on the server side, and its real-time display by the viewer.
 
-The results for Linux (Debian 10 in a VirtualBox VM with gcc) are:
+The results for Linux (Debian 10 in a VirtualBox VM with gcc, context switch tracing disabled) are:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
 > ./bin/testprogram perf
 Mode 'connected'
-Collection duration : 25.04 ms for 1000000 events
-Collection unit cost: 25 ns
-Processing duration : 216.90 ms (w/ transmission and server processing)
-Processing rate     : 4.610 million event/s
+Collection duration : 19.22 ms for 1000000 events
+Collection unit cost: 19 ns
+Processing duration : 203.85 ms (w/ transmission and server processing)
+Processing rate     : 4.906 million event/s
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The results for Windows 10 (with MSVC 2019) are:
+The results for Windows 10 (with MSVC 2019, context switch tracing disabled) are:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
 λ bin\testprogram.exe perf
 Mode 'connected'
-Collection duration : 22.95 ms for 1000000 events
-Collection unit cost: 23 ns
-Processing duration : 240.71 ms (w/ transmission and server processing)
-Processing rate     : 4.154 million event/s
+Collection duration : 21.39 ms for 1000000 events
+Collection unit cost: 21 ns
+Processing duration : 211.63 ms (w/ transmission and server processing)
+Processing rate     : 4.725 million event/s
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! note Synthesis
