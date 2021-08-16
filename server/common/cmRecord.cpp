@@ -659,9 +659,13 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     // Compression mode
     READ_INT(record->compressionMode, "read the compression mode");
     if(record->compressionMode<0 || record->compressionMode>1) LOAD_ERROR("handle the abnormal compression mode");
-    // External string state
-    READ_INT(record->areStringsExternal, "read the external strings state");
-    if(record->areStringsExternal<0 || record->areStringsExternal>1) LOAD_ERROR("handle the abnormal external strings state");
+    // Options
+    memset(&record->options.values[0], 0, sizeof(record->options.values));
+    READ_INT(length, "read the options size");
+    if(length<0 || length>=32) LOAD_ERROR("handle the abnormal options size");
+    length = bsMin(length, PL_TLV_QTY);
+    if((int)fread(&record->options.values[0], 8, length, recFd)!=length) LOAD_ERROR("read the options");
+
     record->recordPath = path;
     record->recordByteQty = osGetSize(path);
     record->threads.resize(threadQty);

@@ -75,8 +75,8 @@ cmRecording::~cmRecording(void)
 // ==============================================================================================
 
 cmRecord*
-cmRecording::beginRecord(const bsString& appName, const bsString& buildName, int protocol, s64 timeTickOrigin, double tickToNs,
-                         bool areStringsExternal, bool isDateShort, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord)
+cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
+                         const cmTlvs& options, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord)
 {
     plScope("beginRecord");
     errorMsg.clear();
@@ -121,11 +121,13 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, int
     }
 
     // Store the fields
-    _recTimeTickOrigin  = timeTickOrigin;
-    _highestDateTick    = timeTickOrigin;
-    _recTickToNs        = tickToNs;
-    _areStringsExternal = areStringsExternal;
-    _isDateShort        = isDateShort;
+    _recTimeTickOrigin = timeTickOrigin;
+    _highestDateTick   = timeTickOrigin;
+    _recTickToNs       = tickToNs;
+    _isDateShort       = options.values[PL_TLV_HAS_SHORT_DATE];
+    memcpy(&_options, &options, sizeof(options));
+    _hashEmptyString   = (options.values[PL_TLV_HAS_SHORT_STRING_HASH]? BS_FNV_HASH32_OFFSET : BS_FNV_HASH_OFFSET) +
+        options.values[PL_TLV_HAS_HASH_SALT];  // Value is 0 if no salt is added
 
     // Reset the structured storage
     _recDurationNs          = 0;
@@ -183,7 +185,7 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, int
         liveRecord->recordPath = _recordPath;
         liveRecord->recordDate = osGetCreationDate(_recordPath);
         liveRecord->compressionMode    = _isCompressionEnabled? 1 : 0;
-        liveRecord->areStringsExternal = _areStringsExternal;
+        memcpy(&liveRecord->options.values[0], &_options.values[0], sizeof(_options.values));
         liveRecord->loadExternalStrings();
     }
 
@@ -887,7 +889,7 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
         plAssert(level+1<tc.levels.size(), level, tc.levels.size());
         if(evtx.nameIdx!=tc.levels[level+1].parentNameIdx) {
             // Empty string is a wildcard, so not an error
-            if(_recStrings[evtx.nameIdx].hash!=cmConst::HASH_EMPTY_64 && _recStrings[evtx.nameIdx].hash!=cmConst::HASH_EMPTY_32) {
+            if(_recStrings[evtx.nameIdx].hash!=_hashEmptyString) {
                 LOG_ERROR(cmRecord::ERROR_MISMATCH_SCOPE_END);
             }
             // In any case, replace with the matching nameIdx
@@ -1710,8 +1712,8 @@ cmRecording::endRecord(void)
 
     // Search for the empty string
     u32 emptyIdx = 0;
-    while(emptyIdx<(u32)_recStrings.size() && _recStrings[emptyIdx].hash!=cmConst::HASH_EMPTY_64 && _recStrings[emptyIdx].hash!=cmConst::HASH_EMPTY_32) ++emptyIdx;
-    if(emptyIdx==(u32)_recStrings.size()) storeNewString("", cmConst::HASH_EMPTY_64);
+    while(emptyIdx<(u32)_recStrings.size() && _recStrings[emptyIdx].hash!=_hashEmptyString) ++emptyIdx;
+    if(emptyIdx==(u32)_recStrings.size()) storeNewString("", _hashEmptyString);
 
     // Force the closing of all open blocks
     plPriv::EventExt endEvtx = { 0, PL_FLAG_TYPE_DATA_TIMESTAMP | PL_FLAG_SCOPE_END, 0, emptyIdx, emptyIdx, 0, {0} };
@@ -1829,9 +1831,10 @@ cmRecording::endRecord(void)
     tmp = _isCompressionEnabled? 1 : 0;
     fwrite(&tmp, 4, 1, _recFd);
 
-    plgData(REC, "Write the external strings state", _areStringsExternal);
-    tmp = _areStringsExternal? 1 : 0;
+    plgText(REC, "Stage", "Write the options");
+    tmp = PL_TLV_QTY;
     fwrite(&tmp, 4, 1, _recFd);
+    fwrite(&_options.values[0], 8, PL_TLV_QTY, _recFd);
 
     // Write the global event qty
     // We cannot recompute it fully from thread as some are thread-less (lock use, ctx switch...)

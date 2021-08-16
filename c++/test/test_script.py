@@ -309,7 +309,7 @@ def test_crash_info_collection():
         LOG("Wait for crash (launched with request for segv after a few iterations)")
         events = data_collect_events(timeout_sec=2.0)
         CHECK(not process_is_running(), "Process is not running anymore")
-        CHECK(len(events) == 1, "We received 1 event: the crash parent", len(events))
+        CHECK(len(events) >= 1, "We received 1 event: the crash parent", len(events))
         process_stop()
 
         LOG("Configure crash spec without parent")

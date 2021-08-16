@@ -29,10 +29,9 @@
 #include "bsString.h"
 #include "bsNetwork.h"
 #include "bsLockFree.h"
+#include "cmInterface.h"
 
 #define MAX_REMOTE_COMMAND_BYTE_SIZE 32*1024
-
-class cmInterface;
 
 class cmCnx {
 public:
@@ -73,19 +72,16 @@ private:
     std::thread* _threadClientRx = 0;
     bsUs_t       _lastDeltaRecordTime = 0;
 
+    // Extracted characteristics
+    cmTlvs      _tlvs;
+    bool       _recordToggleBytes  = false;
+    s64        _timeTickOrigin;
+    double     _tickToNs;
+    bsString   _appName;
+    bsString   _buildName;
+
     // Parsing
-    bool   _recordToggleBytes  = false;
-    bool   _areStringsExternal = false;
-    bool   _isStringHashShort  = false;
-    bool   _isControlEnabled   = true;
-    bool   _isDateShort        = false;
-    bool   _isCompactModel     = false;
-    int    _recordProtocol     = 0;
-    s64    _timeTickOrigin;
-    double _tickToNs;
-    bsString _appName;
-    bsString _buildName;
-    bsVec<u8> _conversionBuffer;
+    bsVec<u8>  _conversionBuffer;
     static constexpr int _parseHeaderSize = 8;
     int _parseHeaderDataLeft = _parseHeaderSize;
     int _parseStringLeft = 0;

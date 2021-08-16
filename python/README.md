@@ -82,17 +82,19 @@ if __name__ == "__main__":
 
 ## Installation of the instrumentation module
 
-**Directly from the PyPI storage (from sources on Linux, binary on Windows)**
+**Latest official release directly from the PyPI storage (from sources on Linux, binary on Windows)**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
 pip install palanteer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Directly from GitHub sources**
+**Directly from GitHub sources (top of tree, may be unstable)**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
 pip install "git+https://github.com/dfeneyrou/palanteer#egg=palanteer&subdirectory=python"
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **From locally retrieved sources**
+
+This method ensures that the viewer and scripting module are consistent with the intrumentation libraries.
 
 Get the sources:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
@@ -118,8 +120,8 @@ nmake install
 
 ## Important!
 
-To be useful, this module requires a "server side":
- - the **graphical viewer**
+To be useful, this module requires at least a "server side":
+ - the **[graphical viewer](https://github.com/dfeneyrou/palanteer/releases)**
    - for visual analysis (online or offline) of the collected events
  - the Python **scripting module** [`palanteer_scripting`](https://pypi.org/project/palanteer_scripting)
    - for automated remote usage of the collected events: KPI extraction, tests, monitoring...

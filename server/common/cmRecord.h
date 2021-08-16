@@ -35,10 +35,13 @@ constexpr static int cmElemChunkSize = 32/4*cmChunkSize; // Chunk elem quantity.
 constexpr static int cmMRElemSize    = 16;    // Size of the elem pyramid subsampling (in memory)
 constexpr static u32 PL_INVALID      = 0xFFFFFFFF;
 constexpr static int PL_MEMORY_SNAPSHOT_EVENT_INTERVAL = 10000; // Smaller value consumes disk space, bigger value increases reactivity time when accessing detailed allocations
-constexpr static int PL_RECORD_FORMAT_VERSION = 1;
+constexpr static int PL_RECORD_FORMAT_VERSION = 2;
 
 // Chunk location (=offset and size) in the big event file
 typedef u64 chunkLoc_t;
+
+// Record options description
+struct cmTlvs { u64 values[PL_TLV_QTY]; };
 
 
 class cmRecord {
@@ -269,7 +272,7 @@ public:
     bsString recordPath;
     bsDate   recordDate;
     int      compressionMode;
-    int      areStringsExternal;
+    cmTlvs   options;
     s64      durationNs = 0;
     u64      recordByteQty   = 0;
     int      coreQty    = 0;

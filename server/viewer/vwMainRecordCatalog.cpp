@@ -92,13 +92,25 @@ vwMain::drawRecord(void)
                 DISPLAY_STAT("File", "%s", basename.toChar());
                 if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s", _record->recordPath.toChar());
                 DISPLAY_STAT("File size", "%s", getNiceByteSize(_record->recordByteQty));
-                ImGui::Separator();
                 DISPLAY_STAT("Duration", "%s", getNiceDuration(_record->durationNs));
-                DISPLAY_STAT("Compressed", "%s", _record->compressionMode? "Yes":"No");
-                DISPLAY_STAT("External strings", "%s", _record->areStringsExternal? "Yes":"No");
-                DISPLAY_STAT("Plottable elements", "%d", _record->elems.size());
                 DISPLAY_STAT("Unique strings", "%d", _record->getStrings().size());
+                DISPLAY_STAT("Plottable elements", "%d", _record->elems.size());
                 ImGui::Separator();
+
+                // Option list
+                ImGui::TableNextColumn();
+                bool isOptionNodeOpen = ImGui::TreeNodeEx("Options", ImGuiTreeNodeFlags_SpanFullWidth);
+                ImGui::TableNextColumn();
+                if(isOptionNodeOpen) {
+                    DISPLAY_STAT("Compressed", "%s", _record->compressionMode? "Yes":"No");
+                    DISPLAY_STAT("Remote control", "%s", _record->options.values[PL_TLV_HAS_NO_CONTROL]? "No":"Yes");
+                    DISPLAY_STAT("External strings", "%s", _record->options.values[PL_TLV_HAS_EXTERNAL_STRING]? "Yes":"No");
+                    DISPLAY_STAT("Compact model", "%s", _record->options.values[PL_TLV_HAS_COMPACT_MODEL]? "Yes":"No");
+                    DISPLAY_STAT("32 bits clock", "%s", _record->options.values[PL_TLV_HAS_SHORT_DATE]? "Yes":"No");
+                    DISPLAY_STAT("32 bits hash strings", "%s", _record->options.values[PL_TLV_HAS_SHORT_STRING_HASH]? "Yes":"No");
+                    DISPLAY_STAT("Hash salt", "%" PRId64, _record->options.values[PL_TLV_HAS_HASH_SALT]);
+                    ImGui::TreePop();
+                }
 
                 // Event list
                 u32 totalEventQty = bsMax((u32)1, _record->elemEventQty+_record->memEventQty+_record->ctxSwitchEventQty+_record->lockEventQty+_record->markerEventQty);

@@ -20,7 +20,7 @@
 #include "bsString.h"
 #include "cmRecord.h"
 
-// Enumerations
+// Enumerations & types
 enum cmLogKind : u8 { LOG_DETAIL, LOG_INFO, LOG_WARNING, LOG_ERROR };
 enum cmErrorKind { ERROR_LOAD, ERROR_IMPORT, ERROR_GENERIC };
 
@@ -42,8 +42,8 @@ class cmInterface {
     virtual bool isRecordProcessingAvailable(void) const = 0;
 
     // Notifications for recording and remote control
-    virtual bool notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeTickOrigin, double tickToNs,
-                                     bool areStringsExternal, bool isStringHashShort, bool isControlEnabled, bool isDateShort) = 0;
+    virtual bool notifyRecordStarted(const bsString& appName, const bsString& buildName,
+                                     s64 timeTickOrigin, double tickToNs, const cmTlvs& options) = 0;
     virtual void notifyRecordEnded(bool isRecordOk) = 0;
     virtual void notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx) = 0;
     virtual void notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg) = 0;

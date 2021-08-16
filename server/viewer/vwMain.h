@@ -65,8 +65,8 @@ public:
 
     // Interface for the record library
     bool isRecordProcessingAvailable(void) const { return _actionMode==READY; }
-    bool notifyRecordStarted(const bsString& appName, const bsString& buildName, int protocol, s64 timeTickOrigin, double tickToNs,
-                             bool areStringsExternal, bool isStringHashShort, bool isControlEnabled, bool isDateShort);
+    bool notifyRecordStarted(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
+                             const cmTlvs& options);
     void notifyRecordEnded(bool isRecordOk);
     void notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx);
     void notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg);

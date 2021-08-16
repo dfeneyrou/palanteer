@@ -284,6 +284,13 @@ See [LICENSE.md](LICENSE.md) for details.
 
 ## Warning: Beta state
 
-Even if no major bugs are known and a special care has been taken to test as many cases as possible, this project is young and in beta state.
+Even if no major bugs are known and special care has been taken to test as many cases as possible, this project is young and in beta state.
 
 Your feedback and raised issues are warmly welcome to improve its quality, especially as it aims at improving software quality...
+
+The state of the "interfaces" is:
+  - **Instrumentation API**: stable, no big changes planned
+  - **Client-server protocol**: still evolving. The induced constraint is that the servers and instrumentation libraries shall match.
+  - **Record storage**: still evolving. The impact of compatibility breaks is that older records cannot be read anymore.
+
+Interface stability and support of older versions is planned when the project is more mature. At the moment, such constraint would clamp down on its evolution.

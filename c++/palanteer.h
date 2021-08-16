@@ -282,7 +282,6 @@
 #include <cstddef> // For size_t
 
 #if USE_PL==1 && PL_NOASSERT==0
-#include <cstdio>    // For snprintf etc...
 #include <cstdlib>   // For abort(), quick_exit...
 #include <cinttypes> // For platform independent printf/scanf
 #ifdef __unix__
@@ -294,6 +293,7 @@
 #endif // if USE_PL==1 && PL_NOASSERT==0
 
 #if USE_PL==1
+#include <cstdio>  // For snprintf etc...
 #include <atomic>  // Lock-free thread safety is done with atomics
 #include <thread>  // For this_thread::yield()
 #endif
@@ -470,6 +470,8 @@ void plDetachVirtualThread(bool isSuspended);
             plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
     } while(0)
 #endif  // PL_VIRTUAL_THREADS==1
+#define plgDeclareThread(group_, name_)    PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plDeclareThread(name_),do {} while(0))
+#define plgDeclareThreadDyn(group_, name_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plDeclareThreadDyn(name_),do {} while(0))
 
 // Closes itself automatically at end of scope
 #define plScope(name_)             PL_SCOPE_(name_, __LINE__)
@@ -633,7 +635,9 @@ void plDetachVirtualThread(bool isSuspended);
 #define plgIsEnabled(group_) 0
 #define plScopeEnable()                             do { } while(0)
 #define plDeclareThread(name_)                      do { } while(0)
+#define plgDeclareThread(group_, name_)             do { } while(0)
 #define plDeclareThreadDyn(name_)                   do { } while(0)
+#define plgDeclareThreadDyn(group_, name_)          do { } while(0)
 #define plFunction()                                do { } while(0)
 #define plgFunction(group_)                         do { } while(0)
 #define plFunctionDyn()                             do { } while(0)
@@ -764,14 +768,19 @@ namespace plPriv {
     typedef uint64_t clockType_t;
 #endif
 
+    // Hash salt in case of collision (very unlikely with 64 bits hash)
+#ifndef PL_HASH_SALT
+#define PL_HASH_SALT 0
+#endif
+
     // Definition of the string hash depending on the desired size
 #if PL_SHORT_STRING_HASH==0
-#define PL_FNV_HASH_OFFSET_ 14695981039346656037ULL
+#define PL_FNV_HASH_OFFSET_ (14695981039346656037ULL+PL_HASH_SALT)
 #define PL_FNV_HASH_PRIME_  1099511628211ULL
 #define PL_PRI_HASH PRIX64
     typedef uint64_t hashStr_t;
 #else
-#define PL_FNV_HASH_OFFSET_ 2166136261
+#define PL_FNV_HASH_OFFSET_ (2166136261+PL_HASH_SALT)
 #define PL_FNV_HASH_PRIME_  16777619
 #define PL_PRI_HASH PRIX32
     typedef uint32_t hashStr_t;
@@ -1288,8 +1297,11 @@ public:
 #if USE_PL==1 || PL_EXPORT==1
 
 // Library version
-#define PALANTEER_VERSION "0.3.dev1"
-#define PALANTEER_VERSION_NUM 201  // Monotonic number. 100 per version component
+#define PALANTEER_VERSION "0.3.dev2"
+#define PALANTEER_VERSION_NUM 202  // Monotonic number. 100 per version component. Official release are multiples of 100
+
+// Client-Server protocol version
+#define PALANTEER_CLIENT_PROTOCOL_VERSION 1
 
 // Maximum thread quantity is 254 (server limitation for efficient storage)
 #define PL_MAX_THREAD_QTY 254
@@ -1307,6 +1319,8 @@ public:
 #define PL_TLV_HAS_NO_CONTROL        6
 #define PL_TLV_HAS_SHORT_DATE        7
 #define PL_TLV_HAS_COMPACT_MODEL     8
+#define PL_TLV_HAS_HASH_SALT         9
+#define PL_TLV_QTY                  10
 
 #endif
 
@@ -3287,7 +3301,7 @@ namespace plPriv {
     static void
     collectCtxSwitch(void)
     {
-        plDeclareThread("Palanteer/winTraceLogger");
+        plgDeclareThread(PL_VERBOSE_CS_CBK, "Palanteer/winTraceLogger");
         auto& ic = implCtx;
         // Increase its priority so that we do not lose context switch events (also processing time is small)
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
@@ -3382,12 +3396,12 @@ namespace plPriv {
         // Start the collection
         globalCtx.enabled        = true;
         globalCtx.collectEnabled = true;
-        plDeclareThread("Palanteer/Transmission");
+        plgDeclareThread(PL_VERBOSE, "Palanteer/Transmission");
         plgMarker(PL_VERBOSE, "threading", "Start of Palanteer transmission loop");
 
         auto& ic = implCtx;
         ic.lastSentEventBufferTick = PL_GET_CLOCK_TICK_FUNC();
-        ic.txThreadId = getThreadId();  // So that we can identify this thread if it crashes
+        ic.txThreadId = PL_GET_SYS_THREAD_ID();  // So that we can identify this thread if it crashes
         {
             // Notify the initialization thread that transmission thread is ready
             std::lock_guard<std::mutex> lk(ic.threadInitMx);
@@ -3447,7 +3461,7 @@ namespace plPriv {
         collectEvents(true); // Flush the last collect thread round infos
 
 #if defined(__unix__) && PL_IMPL_CONTEXT_SWITCH==1
-#define PL_WRITE_TRACE(path, valueStr, isCritical)                      \
+#define PL_WRITE_TRACE_(path, valueStr, isCritical)                      \
         if(ic.cswitchPollEnabled) {                                     \
             snprintf(tmpStr, sizeof(tmpStr), "/sys/kernel/debug/tracing/%s", path); \
             tracerFd = open(tmpStr, O_WRONLY);                          \
@@ -3469,8 +3483,8 @@ namespace plPriv {
             delete[] ic.cswitchPollBuffer; ic.cswitchPollBuffer = 0;
             char tmpStr[64];
             int  tracerFd;
-            PL_WRITE_TRACE("events/enable", "0", false); // Disable all kernel events
-            PL_WRITE_TRACE("tracing_on",    "0", true);
+            PL_WRITE_TRACE_("events/enable", "0", false); // Disable all kernel events
+            PL_WRITE_TRACE_("tracing_on",    "0", true);
         }
 #endif // defined(__unix__) && PL_IMPL_CONTEXT_SWITCH==1
         ic.cswitchPollEnabled = false;
@@ -3513,7 +3527,7 @@ namespace plPriv {
     void
     receiveFromServer(void)
     {
-        plDeclareThread("Palanteer/Reception");
+        plgDeclareThread(PL_VERBOSE, "Palanteer/Reception");
         auto& ic = implCtx;
 
         plgMarker(PL_VERBOSE, "threading", "Start of Palanteer reception loop");
@@ -4026,6 +4040,9 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
 #if PL_COMPACT_MODEL==1
     tlvTotalSize += 4; /* Compact model flag */
 #endif
+#if PL_HASH_SALT!=0
+    tlvTotalSize += 8; /* Hash salt number */
+#endif
     int      headerSize = 16+tlvTotalSize;
     uint8_t* header = (uint8_t*)alloca(headerSize*sizeof(uint8_t));
     memset(header, 0, headerSize*sizeof(uint8_t)); // For the padding
@@ -4043,7 +4060,7 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
     // TLV Protocol
     header[offset+0] = PL_TLV_PROTOCOL>>8; header[offset+1] = PL_TLV_PROTOCOL&0xFF;
     header[offset+2] = 0; header[offset+3] = 2; // 2 bytes payload
-    header[offset+4] = 0; header[offset+5] = 0; // Value 0
+    header[offset+4] = PALANTEER_CLIENT_PROTOCOL_VERSION>>8; header[offset+5] = PALANTEER_CLIENT_PROTOCOL_VERSION&0xFF;
     offset += 6;
     // TLV Clock info
     header[offset+0] = PL_TLV_CLOCK_INFO>>8; header[offset+1] = PL_TLV_CLOCK_INFO&0xFF;
@@ -4091,6 +4108,13 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
 #if PL_COMPACT_MODEL==1
     ADD_TLV_FLAG(PL_TLV_HAS_COMPACT_MODEL);
 #endif
+#if PL_HASH_SALT!=0
+    header[offset+0] = PL_TLV_HAS_HASH_SALT>>8; header[offset+1] = PL_TLV_HAS_HASH_SALT&0xFF;
+    header[offset+2] = 0; header[offset+3] = 4; // 4 bytes payload
+    header[offset+4] = (PL_HASH_SALT>>24)&0xFF; header[offset+5] = (PL_HASH_SALT>>16)&0xFF;
+    header[offset+5] = (PL_HASH_SALT>> 8)&0xFF; header[offset+7] = (PL_HASH_SALT    )&0xFF;
+    offset += 8;
+#endif
     plAssert(offset==headerSize);
 
     // Write/send the built header
@@ -4103,23 +4127,23 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
         // Configure the tracing
         char tmpStr[64];
         int  tracerFd;
-        PL_WRITE_TRACE("tracing_on",     "0",                   true); // Disables tracing while configuring
-        PL_WRITE_TRACE("current_tracer", "nop",                 true); // Removes all function tracers
-        PL_WRITE_TRACE("trace_options",  "noirq-info",         false); // No need for irq information
-        PL_WRITE_TRACE("trace_options",  "noannotate",         false); // No need for extra "annotate" infos
-        PL_WRITE_TRACE("trace_options",  "norecord-cmd",       false); // No need for extra thread info (PID are enough for our usage)
-        PL_WRITE_TRACE("trace_options",  "norecord-tgid",      false); // No need for the Thread Group ID
+        PL_WRITE_TRACE_("tracing_on",     "0",                   true); // Disables tracing while configuring
+        PL_WRITE_TRACE_("current_tracer", "nop",                 true); // Removes all function tracers
+        PL_WRITE_TRACE_("trace_options",  "noirq-info",         false); // No need for irq information
+        PL_WRITE_TRACE_("trace_options",  "noannotate",         false); // No need for extra "annotate" infos
+        PL_WRITE_TRACE_("trace_options",  "norecord-cmd",       false); // No need for extra thread info (PID are enough for our usage)
+        PL_WRITE_TRACE_("trace_options",  "norecord-tgid",      false); // No need for the Thread Group ID
 #if defined(__x86_64__)
-        PL_WRITE_TRACE("trace_clock",    "x86-tsc",             true); // Same clock than the default RDTSC one for Linux
+        PL_WRITE_TRACE_("trace_clock",    "x86-tsc",             true); // Same clock than the default RDTSC one for Linux
 #else
-        PL_WRITE_TRACE("trace_clock",    "mono",                true); // Usually (depending on arch) same as std::chrono::steady_clock but lower precision than RDTSC
+        PL_WRITE_TRACE_("trace_clock",    "mono",                true); // Usually (depending on arch) same as std::chrono::steady_clock but lower precision than RDTSC
 #endif
-        PL_WRITE_TRACE("events/enable",  "0",                  false); // Disable all kernel events
-        PL_WRITE_TRACE("events/sched/sched_switch/enable", "1", true); // Enable the events we want
-        PL_WRITE_TRACE("events/irq/softirq_entry/enable",  "1", true);
-        PL_WRITE_TRACE("events/irq/softirq_exit/enable",   "1", true);
-        PL_WRITE_TRACE("buffer_size_kb", "512",                 true); // Reserve 512KB for exchanges
-        PL_WRITE_TRACE("tracing_on",     "1",                   true); // Enable tracing
+        PL_WRITE_TRACE_("events/enable",  "0",                  false); // Disable all kernel events
+        PL_WRITE_TRACE_("events/sched/sched_switch/enable", "1", true); // Enable the events we want
+        PL_WRITE_TRACE_("events/irq/softirq_entry/enable",  "1", true);
+        PL_WRITE_TRACE_("events/irq/softirq_exit/enable",   "1", true);
+        PL_WRITE_TRACE_("buffer_size_kb", "512",                 true); // Reserve 512KB for exchanges
+        PL_WRITE_TRACE_("tracing_on",     "1",                   true); // Enable tracing
 
         // Open the exchange pipe
         if(ic.cswitchPollEnabled && (ic.cswitchPollFd.fd=open("/sys/kernel/debug/tracing/trace_pipe", O_RDONLY))>=0) {
@@ -4241,7 +4265,7 @@ plStopAndUninit(void)
     }
     if(ic.doNotUninit) {
         // Wait for the TX thread to send the last data sending (unless it is the crashing thread)
-        if(ic.threadServerTx && ic.threadServerTx->joinable() && plPriv::getThreadId()!=ic.txThreadId) ic.threadServerTx->join();
+        if(ic.threadServerTx && ic.threadServerTx->joinable() && PL_GET_SYS_THREAD_ID()!=ic.txThreadId) ic.threadServerTx->join();
         // No cleaning, so stop here
         return;
     }

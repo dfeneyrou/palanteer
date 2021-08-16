@@ -150,7 +150,7 @@ The timings are contained in this structure.
 
 | Structure API                         | Description                                                          | Group variant | Dyn. string variant |
 | ---------                             | -----------                                                          | :---:         | :----:              |
-| [plDeclareThread](#pldeclarethread)   | Declares a thread                                                    |               | X                   |
+| [plDeclareThread](#pldeclarethread)   | Declares a thread                                                    | X             | X                   |
 | [plScope](#plscope)                   | Declares a scope (a named time range with optional children)         | X             | X                   |
 | [plFunction](#plfunction)             | Declares a scope with the current function name                      | X             | X                   |
 | [plBegin and plEnd](#plbeginandplend) | Declares manually the start and the end of a scope (with moderation) | X             | X                   |
@@ -164,13 +164,21 @@ A thread can be given a name, at any moment during the recording, so that:
 
 The default name is "`Thread N`" with `N` the integer thread order of appearance (so may differ from run to run).
 
-The declaration has a dynamic string variant:
+It has both group and dynamic string variants.
+
+The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
-// Thread declaration with a static string name
+// Thread name declaration with a static string name
 void plDeclareThread(threadName);
 
-// Thread declaration with a dynamic string name
+// If the group is enabled, declares a thread with the provided name as static string
+void plgDeclareThread(const char* group, const char* threadName);
+
+// Thread name declaration with a dynamic string name
 void plDeclareThreadDyn(threadName);
+
+// If the group is enabled, declares a thread with the provided name as dynamic string
+void plgDeclareThreadDyn(const char* group, const char* threadName);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some example of usage:
@@ -184,19 +192,19 @@ snprintf(name, 128, "Worker %d", workerIdx);
 plDeclareThreadDyn(name);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Threads can be grouped by prefixing the thread name with a group name, separated with "/" (similar to UNIX pathname). <br/>
-Only one hierarchical level is accepted.
+Threads can also be clustered by prefixing the thread name with a cluster name, separated with "/" (similar to UNIX pathname). <br/>
+Only one hierarchical level is accepted. <br/>
 
-Some example of thread grouping:
+Some example of thread cluster:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
 // Important: Calls here are purely for explanation. plDeclareThread shall of course be called in its respective thread
 
-// Standalone thread, not in a group
+// Standalone thread, not in a cluster
 // (Called in a thread)
 plDeclareThread("Render");
 
 
-// The calls below implicitly define a group "Workers" which contains 3 threads
+// The calls below implicitly define a cluster "Workers" which contains 3 threads
 
 // (Called at the start of another thread)
 plDeclareThread("Workers/Worker 1");
@@ -221,7 +229,7 @@ A "scope" is a named time range with a start and an end, which can contains chil
     Using scopes prevents from doing instrumentation mistakes. <br/>
     Indeed, scopes are automatically closed and cannot be interlaced (RAII behavior). This is not the case with the functions [`plBegin`](#plbeginandplend) and [`plEnd`](#plbeginandplend) described below in this chapter.
 
-It has both group and dynamic variants.
+It has both group and dynamic string variants.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -248,7 +256,7 @@ plScope(__FUNCTION__);
 
 The start of the scope is the function call, its end is the one of the language scope.
 
-It has both group and dynamic variants.
+It has both group and dynamic string variants.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -490,7 +498,7 @@ Markers also possess an user-defined attribute "category" for efficient filterin
     To be effective, markers shall be used with moderation. All depends on your definition of "outstanding event". <br/>
     Beware that too many of them might mask the truly important ones.
 
-It has both group and dynamic variants (the category is always a static string).
+It has both group and dynamic string variants (note that the category is always a static string).
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -578,7 +586,7 @@ When the wait ends, `plLockState(...)` or `plLockScopeState(...)` **must** be ca
 !!!
     This "lock wait" information is crucial in a multithreaded program so it should be instrumented thoroughly.
 
-This function has both group and dynamic variants.
+This function has both group and dynamic string variants.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -613,7 +621,7 @@ Its main role is to set the state of the lock usage:
 
 Its other and implicit role is to **mark the end of the waiting process** (if it was started previously), whatever the lock state value.
 
-This function has both group and dynamic variants.
+This function has both group and dynamic string variants.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -651,7 +659,7 @@ It is a concatenation of an immediate `plLockState` call to set the lock state t
 
 It typically matches the behavior of `std::unique_lock` (and variants).
 
-This function has both group and dynamic variants.
+This function has both group and dynamic string variants.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -685,7 +693,7 @@ It has no direct effect on the lock state.
 
 It typically matches the behavior of a condition_variable `notify_one()` call, or a semaphore post.
 
-This function has both group and dynamic variants.
+This function has both group and dynamic string variants.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -1039,18 +1047,6 @@ Note that markers and lock notifications do not have this constraint and can be 
 Break in `plCrash`.
 
 <br/>
-**I have some troubles with sockets under Windows**
-
-First, ensure that "`#define _WINSOCKAPI_`" is set before including any windows header (see testProgram.cpp). <br/>
-Then, if your program already manages the WSA, you have to tell Palanteer not to do it also, with `#define PL_IMPL_MANAGE_WINDOWS_SOCKET 0` (default is 1)
-
-<br/>
-**PL_IMPL_CONTEXT_SWITCH is set to 1 but I do not see any CPU related event**
-
-The access to such data is restricted on many OS for security reasons. <br/>
-Their collection implies that the program runs in privileged mode (root on Linux, administrator on Windows).
-
-<br/>
 **I have many threads in parallel and many "SATURATION" markers despite I allocated enough memory for the event collection buffers**
 
 If all CPUs are saturated, the collection task cannot run regularly enough and buffers will get full whatever their allocated size. <br/>
@@ -1066,19 +1062,6 @@ Recording on a file reduces this requirement to: at least the required quantity 
 
 The system can handle up to 254 threads and 2 billion events. <br/>
 The estimated size of the record would be ~20 GB, still displayed smoothly.
-
-<br/>
-**The stacktrace is not displayed on Windows**
-
-On Windows, the stacktrace decoding requires some initialization which cannot be safely done at crash time.
-
-The following points shall be checked:
-  - The compilation flag `USE_PL` is set to 1.
-    - If only the stacktrace feature is desired, set all `USE_PL`, `PL_NOEVENT` and `PL_NOCONTROL` to 1
-  - The compilation flag `PL_IMPL_STACKTRACE` is not explicitely set to zero (it is set to 1 by default on Windows)
-  - The function `plInitAndStart` is called
-    - The stacktrace decoding initialization is done at this momen
-    - If no event recording is desired, the mode `PL_MODE_INACTIVE` can be used.
 
 
 <h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>

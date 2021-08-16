@@ -29,7 +29,6 @@
 #include "cmCnx.h"
 #include "cmConst.h"
 #include "cmCompress.h"
-#include "cmInterface.h"
 
 #ifndef PL_GROUP_CLIENTRX
 #define PL_GROUP_CLIENTRX 0
@@ -41,7 +40,7 @@
 
 
 constexpr int SUPPORTED_MIN_PROTOCOL = 0;
-constexpr int SUPPORTED_MAX_PROTOCOL = 0;
+constexpr int SUPPORTED_MAX_PROTOCOL = 1;
 
 cmCnx::cmCnx(cmInterface* itf, int port) :
     _itf(itf), _port(port), _doStopThreads(0)
@@ -150,7 +149,7 @@ cmCnx::runTxToClient(void)
         }
 
         // Is control enabled? (else no need to send because the app will not listen)
-        if(!_isControlEnabled) {
+        if(_tlvs.values[PL_TLV_HAS_NO_CONTROL]) {
             _txBuffer.clear();
             _txBufferState.store(0); // Free for next command to send
             _itf->notifyCommandAnswer(plPriv::plRemoteStatus::PL_ERROR, "Control is disabled on application side");
@@ -199,13 +198,13 @@ cmCnx::dataReceptionLoop(FILE* fd)
         }
     }
     // Check the protocol
-    else if(_recordProtocol<SUPPORTED_MIN_PROTOCOL) {
+    else if(_tlvs.values[PL_TLV_PROTOCOL]<SUPPORTED_MIN_PROTOCOL) {
         initStatus = false;
         _itf->log(LOG_ERROR, "Client reception: the instrumentation library is too old and shall be updated");
         plgText(CLIENTRX, "State", "Error, the instrumentation library is too old and shall be updated");
         _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("The instrumentation library is too old and shall be updated"));
     }
-    else if(_recordProtocol>SUPPORTED_MAX_PROTOCOL) {
+    else if(_tlvs.values[PL_TLV_PROTOCOL]>SUPPORTED_MAX_PROTOCOL) {
         initStatus = false;
         _itf->log(LOG_ERROR, "Client reception: the instrumentation library is too recent. The server shall be updated");
         plgText(CLIENTRX, "State", "Error, the instrumentation library is too recent. The server shall be updated");
@@ -222,8 +221,7 @@ cmCnx::dataReceptionLoop(FILE* fd)
     }
 
     // Client reception loop
-    if(!_itf->notifyRecordStarted(_appName, _buildName, _recordProtocol, _timeTickOrigin, _tickToNs,
-                                  _areStringsExternal, _isStringHashShort, _isControlEnabled, _isDateShort)) {
+    if(!_itf->notifyRecordStarted(_appName, _buildName, _timeTickOrigin, _tickToNs, _tlvs)) {
         plgText(CLIENTRX, "State", "Error, Unable to begin the record");
         // Error message is already handled inside main
         if(fd) {
@@ -449,13 +447,9 @@ cmCnx::initializeTransport(FILE* fd)
     //    Other TLVs are optional
 
     bsVec<u8> header; header.reserve(256);
-    _areStringsExternal = false;
-    _isStringHashShort  = false;
-    _isControlEnabled   = true;
-    _isDateShort        = false;
-    _isCompactModel     = false;
-    _timeTickOrigin     = 0;
-    _tickToNs           = 1.;
+    memset(&_tlvs, 0, sizeof(_tlvs));
+    _timeTickOrigin = 0;
+    _tickToNs       = 1.;
     _appName.clear();
     _buildName.clear();
     _lastDeltaRecordTime = bsGetClockUs();
@@ -504,6 +498,13 @@ cmCnx::initializeTransport(FILE* fd)
         return false;
     }
 
+#define CHECK_TLV_PAYLOAD_SIZE(expectedSize, name)                      \
+    if(tlvLength!=expectedSize) {                                       \
+        _itf->log(LOG_ERROR, "Client send a corrupted " name " TLV");   \
+        plgText(CLIENTRX, "State",  "ERROR: corrupted " name " TLV");   \
+        return false;                                                   \
+    }
+
     // Read the TLVs
     header.clear();
     if(fd) {
@@ -539,127 +540,105 @@ cmCnx::initializeTransport(FILE* fd)
             return false;
         }
 
-        // Protocol TLV
-        if(tlvType==PL_TLV_PROTOCOL) {
-            if(tlvLength!=2) {
-                _itf->log(LOG_ERROR, "Client send a corrupted Protocol element");
-                plgText(CLIENTRX, "State", "ERROR: corrupted Protocol TLV");
-                return false;
-            }
-            _recordProtocol = (header[offset+4]<<8) | (header[offset+5]<<0);
-            plgData(CLIENTRX, "Protocol is", _recordProtocol);
-        }
+        switch(tlvType) {
 
-        // Clock info TLV: origin and tick to nanosecond coefficient
-        if(tlvType==PL_TLV_CLOCK_INFO) {
-            if(tlvLength!=16) {
-                _itf->log(LOG_ERROR, "Client send a corrupted Clock Info element");
-                plgText(CLIENTRX, "State", "ERROR: corrupted Clock info TLV");
-                return false;
-            }
+        case PL_TLV_PROTOCOL:
+            CHECK_TLV_PAYLOAD_SIZE(2, "Protocol");
+            _tlvs.values[tlvType] = (header[offset+4]<<8) | (header[offset+5]<<0);
+            plgData(CLIENTRX, "Protocol is", _tlvs.values[tlvType]);
+            break;
+
+        case PL_TLV_CLOCK_INFO: // Clock info TLV: origin and tick to nanosecond coefficient
+            CHECK_TLV_PAYLOAD_SIZE(16, "Clock Info");
             _timeTickOrigin = (((u64)header[offset+ 4]<<56) | ((u64)header[offset+ 5]<<48) |
                                ((u64)header[offset+ 6]<<40) | ((u64)header[offset+ 7]<<32) |
                                ((u64)header[offset+ 8]<<24) | ((u64)header[offset+ 9]<<16) |
                                ((u64)header[offset+10]<< 8) |  (u64)header[offset+11]);
-            u64 tmp = (((u64)header[offset+12]<<56) | ((u64)header[offset+13]<<48) |
-                       ((u64)header[offset+14]<<40) | ((u64)header[offset+15]<<32) |
-                       ((u64)header[offset+16]<<24) | ((u64)header[offset+17]<<16) |
-                       ((u64)header[offset+18]<< 8) |  (u64)header[offset+19]);
-            char* tmp1 = (char*)&tmp; // Avoids a warning on strict aliasing
-            _tickToNs  = *(double*)tmp1;
+            {
+                u64 tmp = (((u64)header[offset+12]<<56) | ((u64)header[offset+13]<<48) |
+                           ((u64)header[offset+14]<<40) | ((u64)header[offset+15]<<32) |
+                           ((u64)header[offset+16]<<24) | ((u64)header[offset+17]<<16) |
+                           ((u64)header[offset+18]<< 8) |  (u64)header[offset+19]);
+                char* tmp1 = (char*)&tmp; // Avoids a warning on strict aliasing
+                _tickToNs  = *(double*)tmp1;
+            }
+            _tlvs.values[tlvType] = (u64)(1000.*_tickToNs); // Pico second, as precision can be deep
             plgData(CLIENTRX, "Time tick origin is", _timeTickOrigin);
             plgData(CLIENTRX, "Time tick unit is",   _tickToNs);
-        }
+            break;
 
-        // Name TLV
-        else if(tlvType==PL_TLV_APP_NAME) {
+        case PL_TLV_APP_NAME:
             // Get the application name
             _appName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
             if(!_appName.empty() && _appName.back()==0) _appName.pop_back();
             // Filter out the problematic characters
-            int i=0;
-            for(u8 c : _appName) {
-                if(c<0x1F || c==0x7F || c=='"' || c=='*' || c=='/' || c=='\\' ||
-                   c==':' || c=='<' || c=='>' || c=='^' || c=='?' || c=='|') continue;
-                _appName[i++] = c;
+            {
+                int i=0;
+                for(u8 c : _appName) {
+                    if(c<0x1F || c==0x7F || c=='"' || c=='*' || c=='/' || c=='\\' ||
+                       c==':' || c=='<' || c=='>' || c=='^' || c=='?' || c=='|') continue;
+                    _appName[i++] = c;
+                }
+                _appName.resize(i);
+                _appName.strip();
             }
-            _appName.resize(i);
-            _appName.strip();
             // Some logging
             _itf->log(LOG_DETAIL, "Application name is '%s'", _appName.toChar());
             plgData(CLIENTRX, "Application name", _appName.toChar());
-        }
+            break;
 
-        // Build name TLV
-        else if(tlvType==PL_TLV_HAS_BUILD_NAME) {
+        case PL_TLV_HAS_BUILD_NAME:
             // Get the build name
             _buildName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
             if(!_buildName.empty() && _buildName.back()==0) _buildName.pop_back();
             _itf->log(LOG_DETAIL, "Build name is '%s'", _buildName.toChar());
             plgData(CLIENTRX, "Build name", _buildName.toChar());
-        }
+            break;
 
-        // External strings TLV
-        else if(tlvType==PL_TLV_HAS_EXTERNAL_STRING) {
-            if(tlvLength!=0) {
-                _itf->log(LOG_ERROR, "Client send a corrupted External String Flag element");
-                plgText(CLIENTRX, "State", "ERROR: corrupted External String Flag TLV");
-                return false;
-            }
-            _areStringsExternal = true;
+        case PL_TLV_HAS_EXTERNAL_STRING:
+            CHECK_TLV_PAYLOAD_SIZE(0, "External String Flag");
+            _tlvs.values[tlvType] = 1;
             plgText(CLIENTRX, "State", "External String Flag set");
-        }
+            break;
 
-        // Short string hash TLV
-        else if(tlvType==PL_TLV_HAS_SHORT_STRING_HASH) {
-            if(tlvLength!=0) {
-                _itf->log(LOG_ERROR, "Client send a corrupted Short String Hash Flag element");
-                plgText(CLIENTRX, "State", "ERROR: corrupted Short String Hash Flag TLV");
-                return false;
-            }
-            _isStringHashShort = true;
+        case PL_TLV_HAS_SHORT_STRING_HASH:
+            CHECK_TLV_PAYLOAD_SIZE(0, "Short String Hash Flag");
+            _tlvs.values[tlvType] = 1;
             plgText(CLIENTRX, "State", "Short String Hash Flag set");
-        }
+            break;
 
-        // No control TLV
-        else if(tlvType==PL_TLV_HAS_NO_CONTROL) {
-            if(tlvLength!=0) {
-                _itf->log(LOG_ERROR, "Client send a corrupted No Control Flag element");
-                plgText(CLIENTRX, "State", "ERROR: corrupted No Control Flag TLV");
-                return false;
-            }
-            _isControlEnabled = false;
+        case PL_TLV_HAS_NO_CONTROL:
+            CHECK_TLV_PAYLOAD_SIZE(0, "No Control Flag");
+            _tlvs.values[tlvType] = 1;
             plgText(CLIENTRX, "State", "No Control Flag set");
-        }
+            break;
 
-        // Short date TLV
-        else if(tlvType==PL_TLV_HAS_SHORT_DATE) {
-            if(tlvLength!=0) {
-                _itf->log(LOG_ERROR, "Client send a corrupted Short Date Flag element");
-                plgText(CLIENTRX, "State", "ERROR: corrupted Short Date Flag TLV");
-                return false;
-            }
-            _isDateShort = true;
+        case PL_TLV_HAS_SHORT_DATE:
+            CHECK_TLV_PAYLOAD_SIZE(0, "Short Date Flag");
+            _tlvs.values[tlvType] = 1;
             plgText(CLIENTRX, "State", "Short Date Flag set");
-        }
+            break;
 
-        // Compact model TLV
-        else if(tlvType==PL_TLV_HAS_COMPACT_MODEL) {
-            if(tlvLength!=0) {
-                _itf->log(LOG_ERROR, "Client send a corrupted Compact Model Flag element");
-                plgText(CLIENTRX, "State", "ERROR: corrupted Compact Model Flag TLV");
-                return false;
-            }
-            _isCompactModel = true;
+        case PL_TLV_HAS_COMPACT_MODEL:
+            CHECK_TLV_PAYLOAD_SIZE(0, "Compact Model Flag");
+            _tlvs.values[tlvType] = 1;
             plgText(CLIENTRX, "State", "Compact Model Flag set");
-        }
+            break;
 
-        else {
+        case PL_TLV_HAS_HASH_SALT:
+            CHECK_TLV_PAYLOAD_SIZE(4, "Hash Salt TLV");
+            _tlvs.values[tlvType] = (header[offset+4]<<24) | (header[offset+5]<<16) | (header[offset+6]<<8) | (header[offset+7]<<0);
+            plgData(CLIENTRX, "Hash salt is", _tlvs.values[tlvType]);
+            break;
+
+        default: // Just ignore unknown TLVs. Protocol compatibility is checked later
             plgData(CLIENTRX, "Skipped unknown TLV", tlvType);
-        }
-        // Ignore unknown TLVs
+        } // End of switch on TLV type
+
+        // Jump to the next TLV
         offset += 4 + tlvLength;
-    }
+
+    } // End of loop on initialization payload
 
     plgText(CLIENTRX, "State", "Transport initialized, header is ok");
     return (!_appName.empty()); // Only mandatory TLV
@@ -670,7 +649,7 @@ bool
 cmCnx::processNewEvents(u8* buf, int eventQty)
 {
     // Direct notification
-    if(!_isCompactModel) {
+    if(!_tlvs.values[PL_TLV_HAS_COMPACT_MODEL]) {
         return _itf->notifyNewEvents((plPriv::EventExt*)buf, eventQty);
     }
 
@@ -710,7 +689,7 @@ cmCnx::parseTransportLayer(u8* buf, int qty)
 {
     // Readability concerns
     bsVec<u8>& s = _parseTempStorage;
-    int eventExtSize = _isCompactModel? sizeof(plPriv::EventExtCompact) : sizeof(plPriv::EventExtFull);
+    int eventExtSize = _tlvs.values[PL_TLV_HAS_COMPACT_MODEL]? sizeof(plPriv::EventExtCompact) : sizeof(plPriv::EventExtFull);
 
     // Loop on the buffer content
     while(qty>0) {

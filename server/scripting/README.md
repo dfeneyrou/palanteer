@@ -183,4 +183,6 @@ To be useful, this module requires an "instrumentation side" in the program unde
   - For Python language, the instrumentation module is available [on PyPI](https://pypi.org/project/palanteer) or from the [github sources](https://github.com/dfeneyrou/palanteer)
   - For C++ language, the instrumentation library is a single header file available in the [github sources](https://github.com/dfeneyrou/palanteer)
 
+Also, a [graphical viewer](https://github.com/dfeneyrou/palanteer/releases) is available for non-scripted analysis of the program behaviors.
+
 NOTE: It is **strongly** recommended to have a matching version between the scripting module and the instrumentation sides

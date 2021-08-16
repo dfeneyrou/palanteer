@@ -158,7 +158,7 @@ associatedTask(int groupNbr, const char* groupName, int crashKind)
 
     plBegin("Final result");
     plVar(dummyValue);
-    plEnd("Final result");
+    plEnd("");
 }
 
 

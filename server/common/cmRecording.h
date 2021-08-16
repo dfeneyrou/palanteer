@@ -24,9 +24,8 @@
 #include "bsHashMap.h"
 #include "bsString.h"
 #include "cmRecord.h"
+#include "cmInterface.h"
 
-// Forward declaration
-class cmInterface;
 
 class cmRecording {
 public:
@@ -34,8 +33,8 @@ public:
     ~cmRecording(void);
 
     // Core methods
-    cmRecord* beginRecord(const bsString& appName, const bsString& buildName, int protocol, s64 timeTickOrigin, double tickToNs,
-                          bool areStringsExternal, bool isDateShort, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord);
+    cmRecord* beginRecord(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
+                          const cmTlvs& options, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord);
     void endRecord(void);
     bool isRecording(void) { return _recFd!=0; }
     const bsString& storeNewString(const bsString& newString, u64 hash);
@@ -76,11 +75,10 @@ private:
     bsString         _injectedFilename;
 
     // Parsing
-    int  _recordProtocol     = 0;
-    int  _areStringsExternal = 0;
-    bool _isDateShort        = false;
-    bool _recordToggleBytes  = false;
+    cmTlvs    _options;
     bsString _recordName;
+    bool     _isDateShort = false;
+    u64      _hashEmptyString;
 
     // Record
     FILE* _recFd = 0;

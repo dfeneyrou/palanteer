@@ -32,10 +32,6 @@ public:
     static constexpr int    MAX_THREAD_QTY  = 254;
     static constexpr int    MAX_LEVEL_QTY   = 254;
 
-    // Empty string hash
-    static constexpr u64    HASH_EMPTY_64 = 14695981039346656037ULL;
-    static constexpr u64    HASH_EMPTY_32 = 2166136261;
-
     // Built-in name IDs used to identify an Elem (no overlap with the user nameIdx)
     // Memory management specific
     static constexpr int    MEMORY_ALLOCSIZE_NAMEIDX  = 0x70000000;

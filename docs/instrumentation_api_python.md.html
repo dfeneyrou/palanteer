@@ -501,6 +501,15 @@ The exaustive list is:
 
 ## Troubleshootings
 
+**`make install` gives the error "invalid command 'bdist_wheel'" **
+
+This missing command means "Binary DISTtribution in wheel format". <br/>
+The `wheel` package is missing, which is fixed with:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+pip install wheel
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+<br/>
 **CMake installs the Python modules locally, just for my user. I want it to be for all users**
 
 The installation of the Python modules by `cmake` is done with
@@ -510,8 +519,9 @@ pip install &lt;wheel package.whl&gt;
 
 If the user has the privileges to do so (i.e. root or administrator), `pip` installs the package for all users. Else locally.
 
-The built wheel package location is displayed in the make output.
+The built wheel package location is displayed in the `make` output.
 
+<br/>
 **Automatic logging really slows down my program, how can I improve this?**
 
 There is at least 2 things to try:
@@ -521,6 +531,7 @@ There is at least 2 things to try:
  1. To get a full control and very low overhead, typically for long run monitoring in production, just disable the automatic logging of functions with `with_functions=False` in the call to `plInitAndStart`. <br/>
     Then manually instrument your program on the interesting locations with `plBegin`, `plEnd` and `@plFunction` decorator.
 
+<br/>
 **I manually instrumented my program, how can I share it without forcing users to install Palanteer?**
 
 For this particular purpose, the small module `./tools/palanteer_stub.py` implements all APIs as a no-operation. <br/>
