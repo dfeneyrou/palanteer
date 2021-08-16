@@ -70,7 +70,11 @@ crashErrorLogger(const char* msg)
 // ==============================================================================================
 
 static const GLchar* guiVertexShaderSrc =
+#ifdef __APPLE__
+    "#version 410 core\n"
+#else
     "#version 300 es\n"
+#endif
     "uniform mat4 ProjMtx;\n"
     "in vec2 Position;\n"
     "in vec2 UV;\n"
@@ -85,7 +89,11 @@ static const GLchar* guiVertexShaderSrc =
     "}\n";
 
 static const GLchar* guiFragmentShaderSrc =
+#ifdef __APPLE__
+    "#version 410 core\n"
+#else
     "#version 300 es\n"
+#endif
     "precision mediump float;\n"
     "uniform sampler2D Texture;\n"
     "in vec2 Frag_UV;\n"
@@ -681,6 +689,19 @@ vwPlatform::eventWheelScrolled (int x, int y, int steps, bsKeyModState kms)
     ImGuiIO& io     = ImGui::GetIO();
     io.MouseWheel  -= (float)steps;
     _lastMouseMoveTimeUs = bsGetClockUs();
+    notifyDrawDirty();
+}
+
+void
+vwPlatform::eventModifiersChanged (bsKeyModState kms)
+{
+    ImGuiIO& io     = ImGui::GetIO();
+    
+    io.KeyCtrl  = kms.ctrl;
+    io.KeyShift = kms.shift;
+    io.KeyAlt   = kms.alt;
+    io.KeySuper = kms.sys;
+    
     notifyDrawDirty();
 }
 

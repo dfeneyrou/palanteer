@@ -31,6 +31,9 @@
 #ifdef __linux__
 #include "bsOsGlLnx.h"
 #endif
+#ifdef __APPLE__
+#include "bsOsGlMac.h"
+#endif
 #ifdef _WIN32
 #include "bsOsGlWin.h"
 #endif

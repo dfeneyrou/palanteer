@@ -22,37 +22,6 @@
 
 #pragma once
 
-// Internal
-#include "bs.h"
-
-// Linux
-#ifdef __linux__
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#define bsIsSocketValid(s) ((s)>=0)
-#define bsSocketError -1
-typedef int bsSocket_t;
-#endif
-
-// MacOS
-#ifdef __APPLE__
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#define bsIsSocketValid(s) ((s)>=0)
-#define bsSocketError -1
-typedef int bsSocket_t;
-#endif
-
-// Windows
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "Ws2_32.lib")
-#define bsIsSocketValid(s) ((s)!=INVALID_SOCKET && (s)!=SOCKET_ERROR)
-#define bsSocketError SOCKET_ERROR
-typedef uint32_t bsSocket_t ;
-#endif
+#define GL_SILENCE_DEPRECATION
+#define GL_GLEXT_PROTOTYPES 1
+#include <OpenGL/gl3.h>

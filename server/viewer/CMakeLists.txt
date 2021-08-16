@@ -17,6 +17,10 @@ if(WIN32)
     message("Palanteer feature 'stacktrace' enabled for viewer")
     add_definitions(-DPL_IMPL_STACKTRACE=1)
   endif()
+elseif(APPLE)
+  # Apple: openGL is required
+  find_package(OpenGL REQUIRED)
+  set(PALANTEER_LIBS OpenGL::GL)
 else(WIN32)
   # Linux: openGL and X11 are required
   find_package(OpenGL REQUIRED)
@@ -65,7 +69,13 @@ if(MSVC)
   file(GLOB ICON_RC CONFIGURE_DEPENDS *.rc)
 else()
   add_compile_options(-Wall -Wextra)
-  set(cxx_flags -fno-rtti -fno-exceptions -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-function)
+  
+  if(APPLE)
+    set(cxx_flags -fno-rtti -fno-exceptions -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-function -x objective-c++)
+  else()
+    set(cxx_flags -fno-rtti -fno-exceptions -Wno-missing-field-initializers -Wno-unused-parameter -Wno-unused-function)
+  endif()
+
   add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:${cxx_flags}>") # We have some C files too (in 3rd party zstd)
 endif()
 
@@ -77,7 +87,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CUSTOM_FLAGS}")
 # ==============
 file(GLOB_RECURSE ZSTD_SRC  CONFIGURE_DEPENDS  ../external/zstd/*.c ../external/zstd/*.h)
 file(GLOB         IMGUI_SRC CONFIGURE_DEPENDS  ../external/imgui/*.cpp ../external/imgui/*.h)
-file(GLOB         BASE_SRC   CONFIGURE_DEPENDS ../base/*.cpp ../base/*.h)
+file(GLOB         BASE_SRC   CONFIGURE_DEPENDS ../base/*.cpp ../base/*.h ../base/*.mm)
 file(GLOB         COMMON_SRC CONFIGURE_DEPENDS ../common/*.cpp ../common/*.h)
 file(GLOB         VIEWER_SRC CONFIGURE_DEPENDS ../external/*.h *.cpp *.h)
 set(VIEWER_SRC ${VIEWER_SRC} ${COMMON_SRC} ${BASE_SRC} ${ZSTD_SRC} ${IMGUI_SRC} ${ICON_RC})
@@ -85,7 +95,11 @@ set(VIEWER_SRC ${VIEWER_SRC} ${COMMON_SRC} ${BASE_SRC} ${ZSTD_SRC} ${IMGUI_SRC} 
 # Viewer executable
 # =================
 add_executable("palanteer" ${WIN_MAIN} ${VIEWER_SRC})
+if(APPLE)
+target_link_libraries("palanteer" ${PALANTEER_LIBS} Threads::Threads libpalanteer "-framework Foundation" "-framework Cocoa -framework OpenGL" objc)
+else()
 target_link_libraries("palanteer" ${PALANTEER_LIBS} Threads::Threads libpalanteer)
+endif()
 target_include_directories("palanteer" PRIVATE
   ../external/zstd ../external/zstd/common ../external/zstd/compress ../external/zstd/decompress
   ../external/imgui ../external ../../c++  ../base ../common)
