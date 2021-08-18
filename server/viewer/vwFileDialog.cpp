@@ -115,7 +115,7 @@ vwFileDialog::draw(int fontSize)
 
         // Sort folders
         std::sort(_dirEntries.begin(), _dirEntries.end(),
-                  [](const Entry& a, const Entry& b)->bool { return strcasecmp(a.name.toChar(), b.name.toChar())<=0; } );
+                  [](const Entry& a, const Entry& b)->bool { return strcasecmp(a.name.toChar(), b.name.toChar())<0; } );
         forceFileSorting = true;
         _isEntriesDirty = false;
     }
