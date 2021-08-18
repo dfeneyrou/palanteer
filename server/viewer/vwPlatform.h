@@ -87,6 +87,7 @@ private:
     // ImGui & OpenGL
     int    _displayWidth  = -1;
     int    _displayHeight = -1;
+    float  _dpiScale      = 1.;
     bsUs_t _lastUpdateDurationUs = 1;    // Update only
     bsUs_t _lastRenderingDurationUs = 1; // Update and OpenGL rendering
     bsUs_t _lastRenderingTimeUs = 0;

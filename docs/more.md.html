@@ -379,9 +379,13 @@ This section is an unordered collection of "pieces of advice", mostly common sen
 - **Use asserts**
   - They greatly speed up the bug investigation by crashing "nicely" close to the inconsistency.
   - Their impact on performance is usually low because data is already in the cache/registers so a test is ~1 CPU cycle.
-    - Also, if `Palanteer` is used, groups of asserts can be enabled on demand at compile-time, which can greatly speed-up investigations
+    - Also, if `Palanteer` is used, groups of asserts can be enabled on demand at compile-time
   - Keep the condition as a simple check, never perform actions inside an assertion as it may be disabled at compile time.
   - Never assert on external inputs, as they are not under control.
+
+- **For time related constant/variable, always include the unit in the name (exemple: `timeout_msec`)**
+  - Such bugs due to confusion on units are so frequent and so easy to avoid...
+  - Mistake on time units are the more representative, but this hint is applicable to all units as soon as there may be some ambiguity
 
 - **Use address sanitizers (ASAN)** whenever possible
   - It is built-in in `gcc` and `clang`, enabled with a few compilation/linking flags

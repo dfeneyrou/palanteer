@@ -222,7 +222,10 @@ class _TestFailedError(Exception):
 
 
 # Public CRASH_SPEC
-CRASH_SPEC = [palanteer_scripting.EvtSpec("CRASH Stacktrace"), palanteer_scripting.EvtSpec(parent="CRASH Stacktrace", events=["*"])]
+CRASH_SPEC = [
+    palanteer_scripting.EvtSpec("CRASH Stacktrace"),
+    palanteer_scripting.EvtSpec(parent="CRASH Stacktrace", events=["*"]),
+]
 
 # Used server port (better if different from the viewer's one)
 SERVER_PORT = 59060

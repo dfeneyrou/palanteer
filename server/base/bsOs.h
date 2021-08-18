@@ -71,7 +71,7 @@ void osCreateWindow(const char* windowTitle, const char* configName,
                       bool overrideWindowManager=false);
 void osDestroyWindow(void);
 void osSetWindowTitle(const bsString& title);
-void osGetWindowSize(int& width, int& height);
+void osGetWindowSize(int& width, int& height, int& dpiWidth, int& dpiHeight);
 void osProcessInputs(bsOsHandler* osHandler);
 void osHideWindow(void);
 void osShowWindow(void);

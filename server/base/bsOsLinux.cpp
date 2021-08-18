@@ -67,8 +67,10 @@ static struct {
     Cursor      noCursor      = None;
     Cursor      defaultCursor = None;
     Cursor      currentCursor = None;
-    int         wWidth  = -1;
-    int         wHeight = -1;
+    int         wWidth    = -1;
+    int         wHeight   = -1;
+    int         dpiWidth  = -1;
+    int         dpiHeight = -1;
     // Character inputs
     XIM xInputMethod  = 0;  // Input method linked to the X display
     XIC xInputContext = 0;  // Input context used to gete unicode input in our window
@@ -167,13 +169,22 @@ osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft,
     attr.override_redirect = gGlob.isDirectOverride;
     attr.event_mask = StructureNotifyMask | EnterWindowMask | LeaveWindowMask | ExposureMask  | ButtonPressMask | PointerMotionMask |
         ButtonReleaseMask | OwnerGrabButtonMask | FocusChangeMask | KeyPressMask | KeyReleaseMask;
-    int attr_mask = CWBackPixmap | CWColormap | CWBorderPixel| CWEventMask | CWOverrideRedirect ;
-    int dWidth  = DisplayWidth (gGlob.xDisplay, DefaultScreen(gGlob.xDisplay));
-    int dHeight = DisplayHeight(gGlob.xDisplay, DefaultScreen(gGlob.xDisplay));
+    int attr_mask = CWBackPixmap | CWColormap | CWBorderPixel| CWEventMask | CWOverrideRedirect;
+    int defaultScreenId = DefaultScreen(gGlob.xDisplay);
+    int dWidth    = DisplayWidth   (gGlob.xDisplay, defaultScreenId); // In pixel
+    int dHeight   = DisplayHeight  (gGlob.xDisplay, defaultScreenId);
+
+    // Compute DPI
+#define COMPUTE_DPI(pix, mm) (int)(9.6*((int)(((double)pix)/((double)mm)*(254./96.)+0.5)))  /* Quantize the DPI each 5%, to clean approximated values */
+    int dWidthMm    = DisplayWidthMM (gGlob.xDisplay, defaultScreenId); // In millimeter
+    int dHeightMm   = DisplayHeightMM(gGlob.xDisplay, defaultScreenId);
+    gGlob.dpiWidth  = COMPUTE_DPI(dWidth, dWidthMm);
+    gGlob.dpiHeight = COMPUTE_DPI(dHeight, dHeightMm);
+
     int x = (int)(ratioLeft *(float)dWidth);
     int y = (int)(ratioTop  *(float)dHeight);
-    gGlob.wWidth  = (int)((ratioRight-ratioLeft)*(float)dWidth);
-    gGlob.wHeight = (int)((ratioBottom-ratioTop)*(float)dHeight);
+    gGlob.wWidth    = (int)((ratioRight-ratioLeft)*(float)dWidth);
+    gGlob.wHeight   = (int)((ratioBottom-ratioTop)*(float)dHeight);
     gGlob.windowHandle = XCreateWindow(gGlob.xDisplay, Xroot, x, y, gGlob.wWidth, gGlob.wHeight,
                                        0, visual->depth, InputOutput, visual->visual, attr_mask, &attr);
     gGlob.glXWindowHandle = gGlob.windowHandle;
@@ -209,7 +220,7 @@ osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft,
     gGlob.xInputMethod = XOpenIM(gGlob.xDisplay, NULL, NULL, NULL);
     if(gGlob.xInputMethod) {
         gGlob.xInputContext = XCreateIC(gGlob.xInputMethod, XNClientWindow, gGlob.glXWindowHandle, XNFocusWindow, gGlob.glXWindowHandle,
-                                   XNInputStyle, XIMPreeditNothing | XIMStatusNothing, NULL);
+                                        XNInputStyle, XIMPreeditNothing | XIMStatusNothing, NULL);
     }
 
     // Create the OpenGL 3.0 context
@@ -272,10 +283,12 @@ osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft,
 // ===============
 
 void
-osGetWindowSize(int& width, int& height)
+osGetWindowSize(int& width, int& height, int& dpiWidth, int& dpiHeight)
 {
-    width  = gGlob.wWidth;
-    height = gGlob.wHeight;
+    width     = gGlob.wWidth;
+    height    = gGlob.wHeight;
+    dpiWidth  = gGlob.dpiWidth;
+    dpiHeight = gGlob.dpiHeight;
 }
 
 

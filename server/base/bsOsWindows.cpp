@@ -67,6 +67,8 @@
 static struct {
     int windowWidth     = -1;
     int windowHeight    = -1;
+    int dpiWidth        = 96;
+    int dpiHeight       = 96;
     HINSTANCE hInstance = 0;
     int       nCmdShow  = -1;
     LPTSTR    windowClass;      // Window Class
@@ -101,6 +103,16 @@ showMessage(LPCWSTR message)
 // Forward declaration
 static LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
+// DPI awareness and getters from Dear Imgui, file backends/imgui_impl_win32.cpp
+#ifndef DPI_ENUMS_DECLARED
+typedef enum { MDT_EFFECTIVE_DPI = 0, MDT_ANGULAR_DPI = 1, MDT_RAW_DPI = 2, MDT_DEFAULT = MDT_EFFECTIVE_DPI } MONITOR_DPI_TYPE;
+#endif
+#ifndef _DPI_AWARENESS_CONTEXTS_
+DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE (DPI_AWARENESS_CONTEXT)-3
+#endif
+typedef HRESULT(WINAPI* PFN_GetDpiForMonitor)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*); // Shcore.lib + dll, Windows 8.1+
+
 
 void
 osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft, float ratioTop, float ratioRight, float ratioBottom, bool overrideWindowManager)
@@ -111,6 +123,9 @@ osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft,
     plAssert(ratioBottom>=0. && ratioBottom<=1.);
     plAssert(ratioLeft<ratioRight);
     plAssert(ratioTop<ratioBottom);
+
+    // Enable DPI awareness (per application, else there are some display issue when resizing...)
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
 
     // Register the application class
     WNDCLASSEX wcex;
@@ -183,6 +198,17 @@ osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft,
     int y       = (int)(ratioTop  *(float)dHeight);
     gGlob.windowWidth  = (int)((ratioRight-ratioLeft)*(float)dWidth);
     gGlob.windowHeight = (int)((ratioBottom-ratioTop)*(float)dHeight);
+
+    // Compute the DPI
+    HINSTANCE shcore_dll = ::LoadLibraryA("shcore.dll"); // Reference counted per-process
+    PFN_GetDpiForMonitor GetDpiForMonitorFn = (PFN_GetDpiForMonitor)::GetProcAddress(shcore_dll, "GetDpiForMonitor");
+    if(GetDpiForMonitorFn) {
+        HMONITOR monitor = ::MonitorFromWindow(fakeWND, MONITOR_DEFAULTTONEAREST);
+        UINT xdpi = 96, ydpi = 96;
+        GetDpiForMonitorFn(monitor, MDT_EFFECTIVE_DPI, &xdpi, &ydpi);
+        gGlob.dpiWidth  = xdpi;
+        gGlob.dpiHeight = ydpi;
+    }
 
     DWORD dwExStyle = WS_EX_APPWINDOW | WS_EX_WINDOWEDGE;  // Window Extended Style
     DWORD dwStyle   = WS_OVERLAPPEDWINDOW;                 // Windows Style
@@ -332,10 +358,12 @@ osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft,
 // ===============
 
 void
-osGetWindowSize(int& width, int& height)
+osGetWindowSize(int& width, int& height, int& dpiWidth, int& dpiHeight)
 {
-    width  = gGlob.windowWidth;
-    height = gGlob.windowHeight;
+    width     = gGlob.windowWidth;
+    height    = gGlob.windowHeight;
+    dpiWidth  = gGlob.dpiWidth;
+    dpiHeight = gGlob.dpiHeight;
 }
 
 

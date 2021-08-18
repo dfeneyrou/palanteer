@@ -819,7 +819,7 @@ cmRecording::saveThreadMemorySnapshot(ThreadBuild& tc, s64 timeNs, u32 allocMIdx
     if(allocatedScopeQty) {
         if(_isCompressionEnabled) {
             plgScope(REC, "Compression");
-            if(_workingCompressionBuffer.size()<writtenBufferSize) _workingCompressionBuffer.resize(writtenBufferSize*2);  // With some margin
+            if(_workingCompressionBuffer.size()<writtenBufferSize*2) _workingCompressionBuffer.resize(writtenBufferSize*2);  // With some margin
             writtenBufferSize = _workingCompressionBuffer.size();  // Give some memory margin to the compression library (faster)
             cmCompressChunk((u8*)&tc.memSSCurrentAlloc[0], allocatedScopeQty*sizeof(u32), &_workingCompressionBuffer[0], &writtenBufferSize);
         }

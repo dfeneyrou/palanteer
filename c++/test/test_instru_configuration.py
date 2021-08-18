@@ -64,7 +64,7 @@ def test_usepl1_nocontrol():
     """Config PL_NOCONTROL=1"""
     build_target("testprogram", "USE_PL=1 PL_NOCONTROL=1")
 
-    data_configure_events(CRASH_SPEC+[spec_add_fruit])
+    data_configure_events(CRASH_SPEC + [spec_add_fruit])
     try:
         launch_testprogram()
         CHECK(True, "Connection established")
@@ -88,7 +88,7 @@ def test_usepl1_noevent():
     """Config PL_NOEVENT=1"""
     build_target("testprogram", "USE_PL=1 PL_NOEVENT=1")
 
-    data_configure_events(CRASH_SPEC+[spec_add_fruit])
+    data_configure_events(CRASH_SPEC + [spec_add_fruit])
     try:
         launch_testprogram()
         CHECK(True, "Connection established")
@@ -111,7 +111,7 @@ def test_usepl1_noassert():
     """Config PL_NOASSERT=1"""
     build_target("testprogram", "USE_PL=1 PL_NOASSERT=1")
 
-    data_configure_events(CRASH_SPEC+[spec_add_fruit])
+    data_configure_events(CRASH_SPEC + [spec_add_fruit])
     try:
         launch_testprogram(
             pass_first_freeze_point=True

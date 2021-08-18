@@ -318,7 +318,9 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
     : _doExit(0), _isVisible(0), _dirtyRedrawCount(VW_REDRAW_PER_NTF)
 {
     // Update ImGui
-    osGetWindowSize(_displayWidth, _displayHeight);
+    int dpiWidth, dpiHeight;
+    osGetWindowSize(_displayWidth, _displayHeight, dpiWidth, dpiHeight);
+    _dpiScale = (float)dpiWidth/96.; // No support of dynamic DPI change
 
     // Initialize the compression
     cmInitChunkCompress();
@@ -331,11 +333,13 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
     ImGuiIO& io     = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.DisplaySize  = ImVec2(_displayWidth, _displayHeight);
+    io.DisplayFramebufferScale  = ImVec2(1., 1.);  // High DPI is handled with increased font size and Imgui spatial constants
     io.IniFilename  = 0; // Disable config file save
     io.MouseDragThreshold = 1.; // 1 pixel threshold to detect that we are dragging
     io.ConfigInputTextCursorBlink = false;
     vwStyle();
     _newFontSizeToInstall = _main->getConfig().getFontSize();
+    ImGui::GetStyle().ScaleAllSizes(_dpiScale);
 
     // @#TODO: set window size & pos from config. And show the window only after that
 
@@ -465,16 +469,15 @@ vwPlatform::installFont(const void* fontData, int fontDataSize, int fontSize)
 bool
 vwPlatform::redraw(void)
 {
-    // Filter out some redraw based on the dirtyness of the state.
-    // Due to imgui which requires several frames to handle user events properly, we batch the display.
-    // Also we do a "bounce" after a delay, which is needed for some tooltip to appear, even if no user event occurs.
+    // Filter out some redraw based on the dirtiness of the display state.
+    // Dear Imgui requires several frames to handle user events properly, so we display per batch.
+    // Also a "bounce" is required after a delay for some tooltip to appear, even if no user event occurs.
     bsUs_t currentTimeUs = bsGetClockUs();
-    u64 tmp = _dirtyRedrawCount.load();
+    u64 tmp              = _dirtyRedrawCount.load();
     int dirtyRedrawCount = (int)(tmp&0xFFFFFFFF);
     int bounceCount      = (int)((tmp>>32)&0xFFFFFFFF);
-    if(dirtyRedrawCount<=0 &&  // Not a dirty display   or...
-       !(bounceCount==1 && currentTimeUs-_lastRenderingTimeUs>=BOUNCE_RENDER_GAP_US)) { // not (we need a bounce and waited enough)
-        return false; // Nothing to display
+    if(dirtyRedrawCount<=0 && !(bounceCount==1 && currentTimeUs-_lastRenderingTimeUs>=BOUNCE_RENDER_GAP_US)) {
+        return false; // Display is not dirty and it is not a bounce time: nothing to display
     }
 #define WRITE_DIRTY_COUNT(drc,bc) _dirtyRedrawCount.store((((u64)bc)<<32) | ((u32)(drc&0xFFFFFFFF)))
     if(dirtyRedrawCount>=0) {
@@ -492,7 +495,8 @@ vwPlatform::redraw(void)
 
     // Change font, if needed
     if(_newFontSizeToInstall>0) {
-        installFont(vwGetFontDataRobotoMedium(), vwGetFontDataSizeRobotoMedium(), _newFontSizeToInstall);
+        installFont(vwGetFontDataRobotoMedium(), vwGetFontDataSizeRobotoMedium(),
+                    bsRound(_dpiScale*_newFontSizeToInstall));
         _newFontSizeToInstall = -1;
     }
 
