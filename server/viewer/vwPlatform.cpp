@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// This file implements the base application functionalities directly on top of the OS, a bit like a "main".
-// It also manages openGL.
+// This file implements the base application glue directly on top of the OS, a bit like a "main".
+// Drawing is subcontracted to the graphic backend
 
 // System
 #include <stdio.h>
@@ -39,13 +39,13 @@ void crashErrorLogger(const char* msg);
 #endif
 
 #include "bsOs.h"
-#include "bsGl.h"
 #include "bsTime.h"
 #include "cmCompress.h"
 #include "vwPlatform.h"
 #include "vwFontData.h"
 #include "vwMain.h"
 #include "vwConfig.h"
+#include "vwGfxBackend.h"
 
 
 // Parameters
@@ -63,39 +63,6 @@ crashErrorLogger(const char* msg)
     fclose(errorFile);
 }
 #endif
-
-
-// ==============================================================================================
-// OpenGL Shader
-// ==============================================================================================
-
-static const GLchar* guiVertexShaderSrc =
-    "#version 300 es\n"
-    "uniform mat4 ProjMtx;\n"
-    "in vec2 Position;\n"
-    "in vec2 UV;\n"
-    "in vec4 Color;\n"
-    "out vec2 Frag_UV;\n"
-    "out vec4 Frag_Color;\n"
-    "void main()\n"
-    "{\n"
-    "   Frag_UV = UV;\n"
-    "   Frag_Color = Color;\n"
-    "   gl_Position = ProjMtx * vec4(Position.xy,0,1);\n"
-    "}\n";
-
-static const GLchar* guiFragmentShaderSrc =
-    "#version 300 es\n"
-    "precision mediump float;\n"
-    "uniform sampler2D Texture;\n"
-    "in vec2 Frag_UV;\n"
-    "in vec4 Frag_Color;\n"
-    "out vec4 Out_Color;\n"
-    "void main()\n"
-    "{\n"
-    "   Out_Color = vec4(Frag_Color.xyz, Frag_Color.w*texture(Texture, Frag_UV.st));\n"
-    "}\n";
-
 
 
 // Clipboard wrappers for ImGui
@@ -116,74 +83,6 @@ vwSetClipboardText(void* user_data, const char* text)
     osPushToClipboard(ClipboardType::UTF8, bsString(text).toUtf16());
 }
 
-
-static
-void
-vwStyle(void)
-{
-    // Dark side of the style, as a base
-    ImGui::StyleColorsDark();
-    // Customization
-    ImVec4* colors = ImGui::GetStyle().Colors;
-    colors[ImGuiCol_Text]                   = ImVec4(1.00, 1.00, 1.00, 1.00);
-    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50, 0.50, 0.50, 1.00);
-    colors[ImGuiCol_WindowBg]               = ImVec4(0.113, 0.117, 0.10, 1.00); // Less blue = "warmer" dark
-    colors[ImGuiCol_ChildBg]                = ImVec4(1.00, 1.00, 1.00, 0.00);
-    colors[ImGuiCol_PopupBg]                = ImVec4(0.15, 0.15, 0.15, 0.90);
-    colors[ImGuiCol_Border]                 = ImVec4(0.43, 0.43, 0.50, 0.50);
-    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00, 0.00, 0.00, 0.00);
-    colors[ImGuiCol_FrameBg]                = ImVec4(0.30, 0.31, 0.32, 1.00);
-    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.20, 0.40, 0.40, 1.00);
-    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.25, 0.25, 0.25, 1.00);
-    colors[ImGuiCol_TitleBg]                = ImVec4(0.30, 0.30, 0.30, 1.00);
-    colors[ImGuiCol_TitleBgActive]          = ImVec4(0.40, 0.40, 0.40, 1.00);
-    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.00, 0.00, 0.00, 0.51);
-    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14, 0.14, 0.14, 1.00);
-    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02, 0.02, 0.02, 0.53);
-    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31, 0.31, 0.31, 1.00);
-    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41, 0.41, 0.41, 1.00);
-    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51, 0.51, 0.51, 1.00);
-    colors[ImGuiCol_CheckMark]              = ImVec4(0.94, 0.94, 0.94, 1.00);
-    colors[ImGuiCol_SliderGrab]             = ImVec4(0.51, 0.51, 0.51, 1.00);
-    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.86, 0.86, 0.86, 1.00);
-    colors[ImGuiCol_Button]                 = ImVec4(0.30, 0.30, 0.30, 1.00);
-    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.50, 0.50, 0.50, 1.00);
-    colors[ImGuiCol_ButtonActive]           = ImVec4(0.25, 0.25, 0.25, 1.00);
-    colors[ImGuiCol_Header]                 = ImVec4(1.00, 0.70, 0.70, 0.31);
-    colors[ImGuiCol_HeaderHovered]          = ImVec4(0.75, 0.70, 0.70, 0.80);
-    colors[ImGuiCol_HeaderActive]           = ImVec4(0.58, 0.50, 0.52, 1.00);
-
-    colors[ImGuiCol_Tab]                    = ImVec4(0.13, 0.24, 0.41, 1.);
-    colors[ImGuiCol_TabHovered]             = ImVec4(0.26, 0.59, 0.98, 1.);
-    colors[ImGuiCol_TabActive]              = ImVec4(0.20, 0.41, 0.68, 1.);
-    colors[ImGuiCol_TabUnfocused]           = ImVec4(0.07, 0.10, 0.15, 1.);
-    colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.14, 0.26, 0.42, 1.);
-
-    colors[ImGuiCol_Separator]              = ImVec4(0.43, 0.43, 0.50, 0.50);
-    colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.72, 0.72, 0.72, 0.78);
-    colors[ImGuiCol_SeparatorActive]        = ImVec4(0.51, 0.51, 0.51, 1.00);
-    colors[ImGuiCol_ResizeGrip]             = ImVec4(0.91, 0.91, 0.91, 0.25);
-    colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.81, 0.81, 0.81, 0.67);
-    colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.46, 0.46, 0.46, 0.95);
-    colors[ImGuiCol_PlotLines]              = ImVec4(0.61, 0.61, 0.61, 1.00);
-    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00, 0.43, 0.35, 1.00);
-    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.73, 0.60, 0.15, 1.00);
-    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00, 0.60, 0.00, 1.00);
-    colors[ImGuiCol_TableHeaderBg]          = ImVec4(1.00, 0.70, 0.70, 0.31);
-    colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.41f, 0.41f, 0.45f, 1.00f);   // Prefer using Alpha=1.0 here
-    colors[ImGuiCol_TableBorderLight]       = ImVec4(0.33f, 0.33f, 0.35f, 1.00f);   // Prefer using Alpha=1.0 here
-    colors[ImGuiCol_TableRowBg]             = ImVec4(0.00, 0.00, 0.00, 0.00);
-    colors[ImGuiCol_TableRowBgAlt]          = ImVec4(0.30, 0.30, 0.30, 0.30);
-    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.87, 0.87, 0.87, 0.35);
-    colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80, 0.80, 0.80, 0.35);
-    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00, 1.00, 0.00, 0.90);
-    colors[ImGuiCol_NavHighlight]           = ImVec4(0.60, 0.60, 0.60, 1.00);
-    colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00, 1.00, 1.00, 0.70);
-
-    ImGui::GetStyle().WindowRounding    = 2.0;
-    ImGui::GetStyle().TabRounding       = 2.0;
-    ImGui::GetStyle().ScrollbarRounding = 2.0;
-}
 
 
 
@@ -337,7 +236,7 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
     io.IniFilename  = 0; // Disable config file save
     io.MouseDragThreshold = 1.; // 1 pixel threshold to detect that we are dragging
     io.ConfigInputTextCursorBlink = false;
-    vwStyle();
+    configureStyle();
     _newFontSizeToInstall = _main->getConfig().getFontSize();
     ImGui::GetStyle().ScaleAllSizes(_dpiScale);
 
@@ -373,30 +272,8 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
     io.GetClipboardTextFn = vwGetClipboardText;
     io.ClipboardUserData  = 0;
 
-    // Allocate the font (fully initialized later)
-    glGenTextures(1, &_fontTextureId);
-    glBindTexture(GL_TEXTURE_2D, _fontTextureId);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-
-    // Build and configure the OpenGL Vertex Array Object for GUI
-    _guiGlProgram.install(guiVertexShaderSrc, guiFragmentShaderSrc);
-    _unifAttribLocationTex      = glGetUniformLocation(_guiGlProgram.getId(), "Texture");
-    _unifAttribLocationProjMtx  = glGetUniformLocation(_guiGlProgram.getId(), "ProjMtx");
-    _attribLocationPosition     = glGetAttribLocation(_guiGlProgram.getId(),  "Position");
-    _attribLocationUV           = glGetAttribLocation(_guiGlProgram.getId(),  "UV");
-    _attribLocationColor        = glGetAttribLocation(_guiGlProgram.getId(),  "Color");
-    glEnableVertexAttribArray(_attribLocationPosition);
-    glEnableVertexAttribArray(_attribLocationUV);
-    glEnableVertexAttribArray(_attribLocationColor);
-    glVertexAttribPointer(_attribLocationPosition, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (GLvoid*)IM_OFFSETOF(ImDrawVert, pos));
-    glVertexAttribPointer(_attribLocationUV, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (GLvoid*)IM_OFFSETOF(ImDrawVert, uv));
-    glVertexAttribPointer(_attribLocationColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (GLvoid*)IM_OFFSETOF(ImDrawVert, col));
-    GL_CHECK();
-
-    // Base GL setup
-    glClearColor(0.3, 0.3, 0.3, 1.0);
+    // Initialize the graphical backend
+    vwBackendInit();
 
     // Notify the start of the main application
     _main->notifyStart(doLoadLastFile);
@@ -406,12 +283,7 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
 vwPlatform::~vwPlatform(void)
 {
     delete _main;
-    _guiGlProgram.deinstall();
-    if(_fontTextureId) {
-        glDeleteTextures(1, &_fontTextureId);
-        ImGui::GetIO().Fonts->TexID = 0;
-        _fontTextureId = 0;
-    }
+    vwBackendUninit();
     ImGui::DestroyContext();
     cmUninitChunkCompress();
 }
@@ -445,27 +317,6 @@ vwPlatform::run(void)
 }
 
 
-void
-vwPlatform::installFont(const void* fontData, int fontDataSize, int fontSize)
-{
-    // Some config
-    ImGuiIO& io = ImGui::GetIO();
-    io.Fonts->Clear();
-    io.Fonts->AddFontFromMemoryCompressedTTF(fontData, fontDataSize, fontSize);
-
-    // Build texture atlas
-    unsigned char* pixels;
-    int width, height;
-    io.Fonts->GetTexDataAsAlpha8(&pixels, &width, &height);
-
-    // Upload texture to graphics system
-    glBindTexture(GL_TEXTURE_2D, _fontTextureId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, pixels);
-    io.Fonts->TexID = (void *)(intptr_t)_fontTextureId; // Store our identifier
-    GL_CHECK();
-}
-
-
 bool
 vwPlatform::redraw(void)
 {
@@ -495,8 +346,8 @@ vwPlatform::redraw(void)
 
     // Change font, if needed
     if(_newFontSizeToInstall>0) {
-        installFont(vwGetFontDataRobotoMedium(), vwGetFontDataSizeRobotoMedium(),
-                    bsRound(_dpiScale*_newFontSizeToInstall));
+        vwBackendInstallFont(vwGetFontDataRobotoMedium(), vwGetFontDataSizeRobotoMedium(),
+                             bsRound(_dpiScale*_newFontSizeToInstall));
         _newFontSizeToInstall = -1;
     }
 
@@ -514,100 +365,77 @@ vwPlatform::redraw(void)
     ImGui::Render();
     _lastUpdateDurationUs = bsGetClockUs()-currentTimeUs;
 
-    // Open GL calls to draw GUI
-    // =========================
-
-    ImDrawData* drawData = ImGui::GetDrawData();
-    plAssert(drawData);
-    int frameBufferWidth  = (int)(drawData->DisplaySize.x * drawData->FramebufferScale.x);
-    int frameBufferHeight = (int)(drawData->DisplaySize.y * drawData->FramebufferScale.y);
-    if(frameBufferWidth==0 || frameBufferHeight==0) return false;
-    plScope("OpenGL engine");
-    plVar(frameBufferWidth, frameBufferHeight);
-
-    // Backup GL state
-    //vwGlBackupState backup;
-    // Setup render state: alpha-blending enabled, no face culling, no depth testing, scissor enabled, polygon fill
-    glEnable(GL_BLEND);
-    glBlendEquation(GL_FUNC_ADD);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_DEPTH_TEST);
-    GL_CHECK();
-    // Clear screen
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_SCISSOR_TEST);
-    GL_CHECK();
-
-    // Setup viewport, orthographic projection matrix
-    glViewport(0, 0, (GLsizei)frameBufferWidth, (GLsizei)frameBufferHeight);
-    const float ortho_projection[4][4] = {
-        { 2.0f/io.DisplaySize.x, 0.0f,                   0.0f, 0.0f },
-        { 0.0f,                  2.0f/-io.DisplaySize.y, 0.0f, 0.0f },
-        { 0.0f,                  0.0f,                  -1.0f, 0.0f },
-        {-1.0f,                  1.0f,                   0.0f, 1.0f },
-    };
-    glUseProgram(_guiGlProgram.getId());
-    glUniform1i(_unifAttribLocationTex, 0);
-    glUniformMatrix4fv(_unifAttribLocationProjMtx, 1, GL_FALSE, &ortho_projection[0][0]);
-    glBindVertexArray(_guiGlProgram.getVaoId());
-    glBindSampler(0, 0); // Rely on combined texture/sampler state.
-    GL_CHECK();
-
-    // Will project scissor/clipping rectangles into framebuffer space
-    ImVec2 clipOff   = drawData->DisplayPos;       // (0,0) unless using multi-viewports
-    ImVec2 clipScale = drawData->FramebufferScale; // (1,1) unless using retina display which are often (2,2)
-
-    glBindBuffer(GL_ARRAY_BUFFER, _guiGlProgram.getVboId());
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, _guiGlProgram.getIboId());
-
-    for(int n=0; n<drawData->CmdListsCount; ++n) {
-        plScope("ImGui list");
-        const ImDrawList* cmdList = drawData->CmdLists[n];
-        const ImDrawIdx* indexBufferOffset = 0;
-
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)cmdList->VtxBuffer.Size * sizeof(ImDrawVert),
-                     (const GLvoid*)cmdList->VtxBuffer.Data, GL_STREAM_DRAW);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)cmdList->IdxBuffer.Size * sizeof(ImDrawIdx),
-                     (const GLvoid*)cmdList->IdxBuffer.Data, GL_STREAM_DRAW);
-
-        for(int cmdIdx = 0; cmdIdx<cmdList->CmdBuffer.Size; ++cmdIdx) {
-            const ImDrawCmd* cmd = &cmdList->CmdBuffer[cmdIdx];
-            if(cmd->UserCallback) {
-                plScope("GL user callback");
-                cmd->UserCallback(cmdList, cmd);
-            }
-            else {
-                plScope("GL draw command");
-                plData("elements", cmd->ElemCount);
-                // Project scissor/clipping rectangles into framebuffer space
-                ImVec4 clipRect;
-                clipRect.x = (cmd->ClipRect.x-clipOff.x)*clipScale.x;
-                clipRect.y = (cmd->ClipRect.y-clipOff.y)*clipScale.y;
-                clipRect.z = (cmd->ClipRect.z-clipOff.x)*clipScale.x;
-                clipRect.w = (cmd->ClipRect.w-clipOff.y)*clipScale.y;
-                if(clipRect.x<frameBufferWidth && clipRect.y<frameBufferHeight && clipRect.z>=0.0f && clipRect.w>=0.0f) {
-                    // Apply scissor/clipping rectangle
-                    glScissor((int)cmd->ClipRect.x, (int)(frameBufferHeight-cmd->ClipRect.w),
-                              (int)(cmd->ClipRect.z-cmd->ClipRect.x), (int)(cmd->ClipRect.w-cmd->ClipRect.y));
-                    // Bind texture, Draw
-                    glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)cmd->TextureId);
-                    glDrawElements(GL_TRIANGLES, (GLsizei)cmd->ElemCount, GL_UNSIGNED_INT, indexBufferOffset);
-                }
-            }
-            indexBufferOffset += cmd->ElemCount;
-        }
-    }
-
-    // Restore
-    glDisable(GL_SCISSOR_TEST);
-    GL_CHECK();
-    //backup.restore();
-
-    // We drew something
-    return true;
+    // Draw
+    return vwBackendDraw();
 }
 
+
+void
+vwPlatform::configureStyle(void)
+{
+    // Dark side of the style, as a base
+    ImGui::StyleColorsDark();
+    // Customization
+    ImVec4* colors = ImGui::GetStyle().Colors;
+    colors[ImGuiCol_Text]                   = ImVec4(1.00, 1.00, 1.00, 1.00);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50, 0.50, 0.50, 1.00);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.113, 0.117, 0.10, 1.00); // Less blue = "warmer" dark
+    colors[ImGuiCol_ChildBg]                = ImVec4(1.00, 1.00, 1.00, 0.00);
+    colors[ImGuiCol_PopupBg]                = ImVec4(0.15, 0.15, 0.15, 0.90);
+    colors[ImGuiCol_Border]                 = ImVec4(0.43, 0.43, 0.50, 0.50);
+    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00, 0.00, 0.00, 0.00);
+    colors[ImGuiCol_FrameBg]                = ImVec4(0.30, 0.31, 0.32, 1.00);
+    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.20, 0.40, 0.40, 1.00);
+    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.25, 0.25, 0.25, 1.00);
+    colors[ImGuiCol_TitleBg]                = ImVec4(0.30, 0.30, 0.30, 1.00);
+    colors[ImGuiCol_TitleBgActive]          = ImVec4(0.40, 0.40, 0.40, 1.00);
+    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.00, 0.00, 0.00, 0.51);
+    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14, 0.14, 0.14, 1.00);
+    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02, 0.02, 0.02, 0.53);
+    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31, 0.31, 0.31, 1.00);
+    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41, 0.41, 0.41, 1.00);
+    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51, 0.51, 0.51, 1.00);
+    colors[ImGuiCol_CheckMark]              = ImVec4(0.94, 0.94, 0.94, 1.00);
+    colors[ImGuiCol_SliderGrab]             = ImVec4(0.51, 0.51, 0.51, 1.00);
+    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.86, 0.86, 0.86, 1.00);
+    colors[ImGuiCol_Button]                 = ImVec4(0.30, 0.30, 0.30, 1.00);
+    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.50, 0.50, 0.50, 1.00);
+    colors[ImGuiCol_ButtonActive]           = ImVec4(0.25, 0.25, 0.25, 1.00);
+    colors[ImGuiCol_Header]                 = ImVec4(1.00, 0.70, 0.70, 0.31);
+    colors[ImGuiCol_HeaderHovered]          = ImVec4(0.75, 0.70, 0.70, 0.80);
+    colors[ImGuiCol_HeaderActive]           = ImVec4(0.58, 0.50, 0.52, 1.00);
+
+    colors[ImGuiCol_Tab]                    = ImVec4(0.13, 0.24, 0.41, 1.);
+    colors[ImGuiCol_TabHovered]             = ImVec4(0.26, 0.59, 0.98, 1.);
+    colors[ImGuiCol_TabActive]              = ImVec4(0.20, 0.41, 0.68, 1.);
+    colors[ImGuiCol_TabUnfocused]           = ImVec4(0.07, 0.10, 0.15, 1.);
+    colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.14, 0.26, 0.42, 1.);
+
+    colors[ImGuiCol_Separator]              = ImVec4(0.43, 0.43, 0.50, 0.50);
+    colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.72, 0.72, 0.72, 0.78);
+    colors[ImGuiCol_SeparatorActive]        = ImVec4(0.51, 0.51, 0.51, 1.00);
+    colors[ImGuiCol_ResizeGrip]             = ImVec4(0.91, 0.91, 0.91, 0.25);
+    colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.81, 0.81, 0.81, 0.67);
+    colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.46, 0.46, 0.46, 0.95);
+    colors[ImGuiCol_PlotLines]              = ImVec4(0.61, 0.61, 0.61, 1.00);
+    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00, 0.43, 0.35, 1.00);
+    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.73, 0.60, 0.15, 1.00);
+    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00, 0.60, 0.00, 1.00);
+    colors[ImGuiCol_TableHeaderBg]          = ImVec4(1.00, 0.70, 0.70, 0.31);
+    colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.41f, 0.41f, 0.45f, 1.00f);   // Prefer using Alpha=1.0 here
+    colors[ImGuiCol_TableBorderLight]       = ImVec4(0.33f, 0.33f, 0.35f, 1.00f);   // Prefer using Alpha=1.0 here
+    colors[ImGuiCol_TableRowBg]             = ImVec4(0.00, 0.00, 0.00, 0.00);
+    colors[ImGuiCol_TableRowBgAlt]          = ImVec4(0.30, 0.30, 0.30, 0.30);
+    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.87, 0.87, 0.87, 0.35);
+    colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80, 0.80, 0.80, 0.35);
+    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00, 1.00, 0.00, 0.90);
+    colors[ImGuiCol_NavHighlight]           = ImVec4(0.60, 0.60, 0.60, 1.00);
+    colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00, 1.00, 1.00, 0.70);
+
+    ImGui::GetStyle().WindowRounding    = 2.0;
+    ImGui::GetStyle().TabRounding       = 2.0;
+    ImGui::GetStyle().ScrollbarRounding = 2.0;
+}
 
 
 // ==============================================================================================

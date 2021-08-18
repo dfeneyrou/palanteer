@@ -23,7 +23,6 @@
 #include "bs.h"
 #include "bsTime.h"
 #include "bsOs.h"
-#include "bsGl.h"
 #include "bsVec.h"
 #include "bsKeycode.h"
 
@@ -74,25 +73,21 @@ public:
 private:
     vwPlatform(const vwPlatform& other); // To please static analyzers
     vwPlatform& operator=(vwPlatform other);
-    void installFont(const void* fontData, int fontDataSize, int fontSize);
+    void configureStyle(void);
 
     // Platform state
     std::atomic<int> _doExit;
     std::atomic<int> _isVisible;
     std::atomic<u64> _dirtyRedrawCount;
-    vwMain*          _main = 0;
+    vwMain*          _main                 = 0;
     int              _newFontSizeToInstall = -1;
     bsUs_t           _lastMouseMoveTimeUs  = 0;
 
-    // ImGui & OpenGL
+    // ImGui
     int    _displayWidth  = -1;
     int    _displayHeight = -1;
-    float  _dpiScale      = 1.;
-    bsUs_t _lastUpdateDurationUs = 1;    // Update only
-    bsUs_t _lastRenderingDurationUs = 1; // Update and OpenGL rendering
-    bsUs_t _lastRenderingTimeUs = 0;
-    GLuint _fontTextureId = 0;
-    bsGlProgramVAO _guiGlProgram;
-    int _unifAttribLocationTex=0, _unifAttribLocationProjMtx=0;
-    int _attribLocationPosition=0, _attribLocationUV=0, _attribLocationColor=0;
+    float  _dpiScale      =  1.;
+    bsUs_t _lastUpdateDurationUs    = 1; // Update only
+    bsUs_t _lastRenderingDurationUs = 1; // Update and rendering
+    bsUs_t _lastRenderingTimeUs     = 0;
 };
