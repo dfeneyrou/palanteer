@@ -5,7 +5,7 @@ Palanteer is a set of lean and efficient tools to improve the quality of softwar
 
 Simple code instrumentation, mostly automatic in Python, delivers powerful features:
   - **Collection of meaningful atomic events** on timings, memory, locks wait and usage, context switches, data values..
-  - **Visual and interactive observation** of record: timeline, plot, histograms, flame graph...
+  - **Visual and interactive observation** of records: hierarchical logs, timeline, plot, histogram, flame graph...
   - **Remote command call and events observation can be scripted in Python**: deep testing has never been simpler
 
 Execution of unmodified Python programs can be analyzed directly with a syntax similar to the one of `cProfile`:
@@ -15,7 +15,7 @@ Execution of unmodified Python programs can be analyzed directly with a syntax s
    - Garbage collection runs
    - Support of multithread, coroutines, asyncio/gevent
 
-The collected events can either be **processed automatically by a script**, or analyzed with the **separate viewer** (see last section):
+The collected events can either be **processed automatically by an online script**, or analyzed with the **separate viewer** (see last section):
 <img src="https://dfeneyrou.github.io/palanteer/images/views.gif" alt="Palanteer viewer image" width="1000"/>
 
 Palanteer is an efficient, lean and comprehensive solution for better and enjoyable software development!

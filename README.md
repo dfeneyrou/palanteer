@@ -4,17 +4,17 @@ Palanteer is a set of lean and efficient tools to improve the quality of softwar
 
 Simple code instrumentation, mostly automatic in Python, delivers powerful features:
   - **Collection of meaningful atomic events** on timings, memory, locks wait and usage, context switches, data values..
-  - **Visual and interactive observation** of record: timeline, plot, histograms, flame graph...
+  - **Visual and interactive observation** of records: hierarchical logs, timeline, plot, histogram, flame graph...
   - **Remote command call and events observation can be scripted in Python**: deep testing has never been simpler
   - **C++**:
     - ultra-light single-header cross-platform instrumentation library
     - compile-time selection of groups of instrumentation
-    - compile-time hashing of static string to minimize their cost
+    - compile-time hashing of static strings to minimize their cost
     - compile-time striping of all instrumentation static strings
     - enhanced assertions, stack trace dump...
   - **Python**:
     - Automatic instrumentation of functions enter/leave, memory allocations, raised exceptions, garbage collection runs
-    - Support of asyncio/gevent
+    - Seamless support of multithreading, asyncio/gevent
 
 <img src="docs/images/views.gif " alt="Palanteer viewer image" width="1000"/>
 
@@ -82,8 +82,8 @@ int main(int argc, char** argv)
 
 Some C++ performance figures (see [here](https://dfeneyrou.github.io/palanteer/index.html#performance) for more details):
   - nanosecond resolution and ~25 nanoseconds cost per event on a standard x64 machine
-  - up to ~3 millions events per second when recording, the bottleneck being on the server processing side
-  - up to ~150 000 events per second when processing the flow through a Python script, the bottleneck being on the Python script side
+  - up to ~5 millions events per second when recording, bottleneck on the server processing side
+  - up to ~150 000 events per second when processing the flow through a Python script, bottleneck on the Python script side
 
 ## Python instrumentation example
 
