@@ -471,7 +471,7 @@ cmRecording::processLockUseEvent(plPriv::EventExt& evtx, bool& doInsertLockWaitE
         if(elem2.absYMin>value) elem2.absYMin = value;
         if(elem2.absYMax<value) elem2.absYMax = value;
         INSERT_IN_ELEM(elem2, elemIdx, lIdx, lock.usingStartTimeNs, value, 0);
-        if(_doForwardEvents) _itf->notifyFilteredEvent(elemIdx, PL_FLAG_TYPE_LOCK_ACQUIRED, _recStrings[evtx.nameIdx].hash, lock.usingStartTimeNs, value);
+        if(_doForwardEvents) _itf->notifyFilteredEvent(elemIdx, PL_FLAG_TYPE_LOCK_ACQUIRED, _recStrings[evtx.nameIdx].hash, lock.usingStartTimeNs, (u64)value);
     }
 
     return true;

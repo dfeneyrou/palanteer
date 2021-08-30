@@ -302,7 +302,9 @@ serverStart(PyObject* Py_UNUSED(self), PyObject* args)
     }
 
     // On Python equal or less than 3.6, multithreading&GIL is not activated by default. No-op on 3.7+ (and deprecated on 3.9)
+#if PY_MINOR_VERSION < 9
     PyEval_InitThreads();
+#endif
 
     Py_RETURN_NONE;
 }

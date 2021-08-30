@@ -183,9 +183,7 @@ fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<
     // 3) plDetachVirtualThread,  to detach the virtual thread. The thread is back to the OS thread
 
     // Declare the worker thread name with a dynamic string
-    char tmpStr[64];
-    snprintf(tmpStr, sizeof(tmpStr), "Fiber workers/Fiber worker %d", workerThreadNbr+1);
-    plDeclareThreadDyn(tmpStr);
+    plDeclareThreadDyn("Fiber workers/Fiber worker %d", workerThreadNbr+1);
 
     // Log on the OS thread
     plMarker("threading", "Fiber worker thread creation");
@@ -239,8 +237,7 @@ fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<
 
         // Give a name to this fiber
         if(!fiber.isNameAlreadyDeclared) {
-            snprintf(tmpStr, sizeof(tmpStr), "Fibers/Fiber %d", fiber.id);
-            plDeclareVirtualThread(fiber.id, tmpStr);  // ==> Second API under check
+            plDeclareVirtualThread(fiber.id, "Fibers/Fiber %d", fiber.id);  // ==> Second API under check
             fiber.isNameAlreadyDeclared = true;
         }
 
@@ -259,7 +256,7 @@ fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<
             plData("Worker Id", workerThreadNbr+1);
             plData("Fiber-job Id", fiber.currentJobId);
 
-            // Dice roll: 60% chance to end the job without interruption. Else it will go on the waiting list
+            // Dice roll: 40% chance to end the job without interruption. Else it will go on the waiting list
             doEndJob = (globalRandomGenerator.get(0, 99)>40);
             plData("Scheduling", doEndJob? "One chunk" : "Interrupted");
         }

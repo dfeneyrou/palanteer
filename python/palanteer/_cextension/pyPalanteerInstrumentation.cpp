@@ -517,7 +517,10 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
                     coroutineNameIdx = (int)gCoroutineNames.size();
                     gCoroutineNameToIdx.insert(coroutineNameHash, coroutineNameIdx);
                     gCoroutineNames.push_back(CoroutineNaming());
-                    snprintf(gCoroutineNames.back().name, PL_DYN_STRING_MAX_SIZE, "%s", name);
+                    int minSize = strlen(name)+1;
+                    if(minSize>PL_DYN_STRING_MAX_SIZE) minSize = PL_DYN_STRING_MAX_SIZE;
+                    memcpy(gCoroutineNames.back().name, name, minSize);
+                    gCoroutineNames.back().name[PL_DYN_STRING_MAX_SIZE-1] = 0;
                 }
             }
 

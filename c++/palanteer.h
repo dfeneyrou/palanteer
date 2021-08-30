@@ -410,7 +410,7 @@ plStats plGetStats(void);
 // This function is specific to the support of the virtual threads
 // It should be called once at virtual thread creation
 // The externalVirtualThreadId can have any value but shall uniquely identify the virtual thread.
-void plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* name);
+void plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* format, ...);
 
 // This function is specific to the support of the virtual threads
 // It must be called when attaching a virtual threads to the current worker thread.
@@ -430,9 +430,9 @@ void plDetachVirtualThread(bool isSuspended);
 #define plInitAndStart(appName_, ...) PL_UNUSED(appName_)
 #define plStopAndUninit()
 #define plGetStats() plStats { 0, 0, 0, 0, 0, 0, 0, 0 }
-#define plDeclareVirtualThread(externalVirtualThreadId_, name_)  do { PL_UNUSED(externalVirtualThreadId_); PL_UNUSED(name_); } while(0)
+#define plDeclareVirtualThread(externalVirtualThreadId_, format_, ...)  do { PL_UNUSED(externalVirtualThreadId_); PL_UNUSED(format_); } while(0)
 #define plDetachVirtualThread(isSuspended_) PL_UNUSED(isSuspended_);
-#define plAttachVirtualThread(externalVirtualThreadId_) { PL_UNUSED(externalVirtualThreadId_); return false; }
+#define plAttachVirtualThread(externalVirtualThreadId_) false && (externalVirtualThreadId_)
 
 #endif
 
@@ -451,11 +451,13 @@ void plDetachVirtualThread(bool isSuspended);
 #define plDeclareThread(name_)                                          \
     do { if(PL_IS_INIT_()) {                                            \
             plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
-            plPriv::threadCtx.realRscNameHash = plPriv::hashString(name_);  \
+            plPriv::threadCtx.realRscNameHash = plPriv::hashString(name_); \
         }                                                               \
     } while(0)
-#define plDeclareThreadDyn(name_)                                       \
+#define plDeclareThreadDyn(format_,...)                                 \
     do { if(PL_IS_INIT_()) {                                            \
+            char name_[PL_DYN_STRING_MAX_SIZE];                         \
+            plPriv::formatDynString(name_, format_,##__VA_ARGS__);      \
             plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
             plPriv::threadCtx.realRscNameHash = plPriv::hashString(name_); \
         }                                                               \
@@ -465,9 +467,12 @@ void plDetachVirtualThread(bool isSuspended);
     do { if(PL_IS_INIT_())                                              \
             plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
     } while(0)
-#define plDeclareThreadDyn(name_)                                       \
-    do { if(PL_IS_INIT_())                                              \
+#define plDeclareThreadDyn(format_,...)                                 \
+    do { if(PL_IS_INIT_()) {                                            \
+            char name_[PL_DYN_STRING_MAX_SIZE];                         \
+            plPriv::formatDynString(name_, format_,##__VA_ARGS__);      \
             plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name_, __LINE__, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_THREADNAME, 0); \
+        }                                                               \
     } while(0)
 #endif  // PL_VIRTUAL_THREADS==1
 #define plgDeclareThread(group_, name_)    PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plDeclareThread(name_),do {} while(0))
@@ -636,8 +641,8 @@ void plDetachVirtualThread(bool isSuspended);
 #define plScopeEnable()                             do { } while(0)
 #define plDeclareThread(name_)                      do { } while(0)
 #define plgDeclareThread(group_, name_)             do { } while(0)
-#define plDeclareThreadDyn(name_)                   do { } while(0)
-#define plgDeclareThreadDyn(group_, name_)          do { } while(0)
+#define plDeclareThreadDyn(format_, ...)            do { } while(0)
+#define plgDeclareThreadDyn(group_, format_, ...)   do { } while(0)
 #define plFunction()                                do { } while(0)
 #define plgFunction(group_)                         do { } while(0)
 #define plFunctionDyn()                             do { } while(0)
@@ -660,8 +665,8 @@ void plDetachVirtualThread(bool isSuspended);
 #define plgText(group_, name_, msg_)                do { } while(0)
 #define plMarker(category_, msg_)                   do { } while(0)
 #define plgMarker(group_, category_, msg_)          do { } while(0)
-#define plMarkerDyn(category_, msg_)                do { } while(0)
-#define plgMarkerDyn(group_, category_, msg_)       do { } while(0)
+#define plMarkerDyn(category_, msg_, ...)           do { } while(0)
+#define plgMarkerDyn(group_, category_, msg_ ,...)  do { } while(0)
 #define plVar(...)                                  do { } while(0)
 #define plgVar(...)                                 do { } while(0)
 #define plLockWait(name_)                           do { } while(0)
@@ -1479,6 +1484,18 @@ namespace plPriv {
         int   copySize = (int)strlen(s)+1; if(copySize>PL_DYN_STRING_MAX_SIZE) copySize = PL_DYN_STRING_MAX_SIZE;
         memcpy(allocStr, s, copySize); allocStr[PL_DYN_STRING_MAX_SIZE-1] = 0;
         return allocStr;
+    }
+
+    // Dynamic string formatter (just to handle the case with and without arguments)
+    inline void formatDynString(char* dynString, const char* format) {
+        int minSize = strlen(format)+1;
+        if(minSize>PL_DYN_STRING_MAX_SIZE) minSize = PL_DYN_STRING_MAX_SIZE;
+        memcpy(dynString, format, minSize);
+        dynString[PL_DYN_STRING_MAX_SIZE-1] = 0;
+    }
+    template<typename... Args>
+    inline void formatDynString(char* dynString, const char* format, Args... args) {
+        (void)snprintf(dynString, PL_DYN_STRING_MAX_SIZE, format, args...);
     }
 
     // Some masks
@@ -4309,11 +4326,18 @@ plGetStats(void) { return plPriv::implCtx.stats; }
 
 
 void
-plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* name)
+plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* format, ...)
 {
-    PL_UNUSED(externalVirtualThreadId); PL_UNUSED(name);
+    PL_UNUSED(externalVirtualThreadId); PL_UNUSED(format);
 #if PL_NOEVENT==0
 #if PL_VIRTUAL_THREADS==1
+
+    // Build the name
+    char name[PL_DYN_STRING_MAX_SIZE];
+    va_list args;
+    va_start(args, format);
+    (void)vsnprintf(name, sizeof(name), format, args);
+    va_end(args);
 
     // Ensure that the OS thread Id owns an internal Id (for context switches at least)
     plPriv::ThreadContext_t* tCtx = &plPriv::threadCtx;

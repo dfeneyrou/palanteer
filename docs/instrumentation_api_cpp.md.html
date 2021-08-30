@@ -176,10 +176,10 @@ void plDeclareThread(threadName);
 void plgDeclareThread(const char* group, const char* threadName);
 
 // Thread name declaration with a dynamic string name
-void plDeclareThreadDyn(threadName);
+void plDeclareThreadDyn(const char* nameFormat, ...);
 
 // If the group is enabled, declares a thread with the provided name as dynamic string
-void plgDeclareThreadDyn(const char* group, const char* threadName);
+void plgDeclareThreadDyn(const char* group, const char* nameFormat, ...);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some example of usage:
@@ -188,9 +188,10 @@ Some example of usage:
 plDeclareThread("Worker 1");
 
 // Example 2
-const char name[128];
-snprintf(name, 128, "Worker %d", workerIdx);
-plDeclareThreadDyn(name);
+plDeclareThreadDyn(threadName.c_str());
+
+// Example 3
+plDeclareThreadDyn("Worker %d", workerIdx);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Threads can also be clustered by prefixing the thread name with a cluster name, separated with "/" (similar to UNIX pathname). <br/>
@@ -214,7 +215,7 @@ plDeclareThread("Workers/Worker 1");
 plDeclareThread("Workers/Worker 2");
 
 // (Called at the start of yet another thread)
-plDeclareThread("Workers/Worker 3");
+plDeclareThreadDyn("Workers/Worker %d", workerIdx);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ### plScope
@@ -930,9 +931,11 @@ The support of virtual threads requires the following actions:
   - Notify `Palanteer` of any virtual thread switch through the [`plAttachVirtualThread`](#plattachvirtualthread) and [`plDetachVirtualThread`](#pldetachvirtualthread) API
     - this notification shall be called inside the assigned worker thread for proper association between the virtual thread and the OS worker thread
     - typically in the virtual thread switch hook of the virtual thread framework
+Optionally but recommended, the virtual thread name can be declared with [`plDeclareVirtualThread`](#pldeclarevirtualthread), typically in the virtual thread creation hook.
 
-Optionally but recommended, the virtual thread name can be declared with [`plDeclareVirtualThread`](#pldeclarevirtualthread):
-  - Typically in the virtual thread creation hook
+As an example, the Windows function `SwitchToFiber` call shall be preceded by a `plDetachVirtualThread` call and followed by a `plAttachVirtualThread` call. <br/>
+The available information shall be if the "old" job is suspended for later resume or finished, and after the switch the ID of the new fiber.
+
 
 The effects of using virtual threads are:
   - Each virtual thread is seen as a "normal" thread on the server side (viewer or scripting)
@@ -952,17 +955,14 @@ It can be called from any thread.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
-// externalVirtualThreadId: a unique external virtual thread identifier. Shall not be 0xFFFFFFFF
+// externalVirtualThreadId: a unique external virtual thread identifier
 // name: the name of the virtual thread
-void plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* name);
+void plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* nameFormat, ...);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Example of usage:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
-int fiberId = 37;
-char tmpStr[64];
-snprintf(tmpStr, sizeof(tmpStr), "Fibers/Fiber %d", fiberId+1);
-plDeclareVirtualThread(fiberId, tmpStr);
+plDeclareVirtualThread("Fibers/Fiber %d", fiberId);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Also as for OS threads, virtual threads can be grouped.
 
