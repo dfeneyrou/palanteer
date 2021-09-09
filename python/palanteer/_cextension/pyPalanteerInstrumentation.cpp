@@ -348,7 +348,7 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
             }
 
             // Check if the module name is filtered
-            gFilterOutClassName.find(palanteerStrHash, isNewFilterOut);
+            if(!isNewFilterOut) gFilterOutClassName.find(palanteerStrHash, isNewFilterOut);
 
             // Function/name
             gGlobMutex.lock(); // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
