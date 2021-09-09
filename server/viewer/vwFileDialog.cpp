@@ -201,15 +201,15 @@ vwFileDialog::draw(int fontSize)
                     int direction = (sortsSpecs->Specs->SortDirection==ImGuiSortDirection_Ascending)? 1 : -1;
                     if(sortsSpecs->Specs->ColumnIndex==0) {
                         std::sort(_fileEntries.begin(), _fileEntries.end(),
-                                  [direction](const Entry& a, const Entry& b)->bool { return direction*strcasecmp(a.name.toChar(), b.name.toChar())<=0; } );
+                                  [direction](const Entry& a, const Entry& b)->bool { return direction*strcasecmp(a.name.toChar(), b.name.toChar())<0; } );
                     }
                     if(sortsSpecs->Specs->ColumnIndex==1) {
                         std::sort(_fileEntries.begin(), _fileEntries.end(),
-                                  [direction](const Entry& a, const Entry& b)->bool { return (direction*(a.size-b.size))<=0; } );
+                                  [direction](const Entry& a, const Entry& b)->bool { return (direction*(a.size-b.size))<0; } );
                     }
                     if(sortsSpecs->Specs->ColumnIndex==2) {
                         std::sort(_fileEntries.begin(), _fileEntries.end(),
-                                  [direction](const Entry& a, const Entry& b)->bool { return direction*(a.date.isOlderThan(b.date)?1:-1)>=0; } );
+                                  [direction](const Entry& a, const Entry& b)->bool { return direction*(a.date.isOlderThan(b.date)?1:-1)>0; } );
                     }
                 }
                 sortsSpecs->SpecsDirty = false;
