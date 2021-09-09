@@ -1302,8 +1302,8 @@ public:
 #if USE_PL==1 || PL_EXPORT==1
 
 // Library version
-#define PALANTEER_VERSION "0.4.dev1"
-#define PALANTEER_VERSION_NUM 301  // Monotonic number. 100 per version component. Official releases are multiple of 100
+#define PALANTEER_VERSION "0.4"
+#define PALANTEER_VERSION_NUM 400  // Monotonic number. 100 per version component. Official releases are multiple of 100
 
 // Client-Server protocol version
 #define PALANTEER_CLIENT_PROTOCOL_VERSION 1
