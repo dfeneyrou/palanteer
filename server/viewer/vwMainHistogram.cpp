@@ -46,17 +46,24 @@ vwMain::Histogram::getDescr(void) const
     return tmpStr;
 }
 
-
+// elemIdx may be negative if not known yet (case of saved layout)
 void
-vwMain::addHistogram(int id, u64 threadUniqueHash, u64 hashPath, s64 startTimeNs, s64 timeRangeNs)
+vwMain::addHistogram(int id, u64 threadUniqueHash, u64 hashPath, int elemIdx, s64 startTimeNs, s64 timeRangeNs)
 {
     // Sanity
     if(!_record) return;
     plScope("addHistogram");
-    plgVar(HISTO, threadUniqueHash, hashPath, startTimeNs, getNiceDuration(timeRangeNs));
+    plgVar(HISTO, threadUniqueHash, hashPath, elemIdx, startTimeNs, getNiceDuration(timeRangeNs));
 
     // Add the half-initialized histogram entry
-    _histograms.push_back( { id, -1, threadUniqueHash, hashPath, "(Not present)", startTimeNs, timeRangeNs, 0, false } );
+    if(elemIdx<0) {
+        _histograms.push_back( { id, elemIdx, threadUniqueHash, hashPath, "(Not present)", startTimeNs, timeRangeNs, 0, false } );
+    } else {
+        char tmpStr[256];
+        cmRecord::Elem& elem = _record->elems[elemIdx];
+        snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", _record->getString(elem.nameIdx).value.toChar(), getFullThreadName(elem.threadId));
+        _histograms.push_back( { id, elemIdx, threadUniqueHash, hashPath, tmpStr, startTimeNs, timeRangeNs, 0, false } );
+    }
     setFullScreenView(-1);
     plMarker("user", "Add a histogram");
 }

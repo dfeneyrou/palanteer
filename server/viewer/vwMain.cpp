@@ -1663,7 +1663,7 @@ vwMain::createLayoutViews(const vwConfig::ScreenLayout& layout)
         // Histogram
         READ_VIEW(histogram, 9, 3, "%d %" PRIX64 " %" PRIX64, &syncMode, &hash, &hash2);
         if(isFound) {
-            addHistogram(view.id, hash, hash2, 0, _record->durationNs);
+            addHistogram(view.id, hash, hash2, -1, 0, _record->durationNs);
             SET_VIEW_ATTRIBUTES(_histograms);
             continue;
         }

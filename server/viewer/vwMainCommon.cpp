@@ -826,8 +826,9 @@ vwMain::displayHistoContextualMenu(double headerWidth, double comboWidth)
 
         // Create new histograms
         for(auto& pmi : _plotMenuItems) {
-            if     (pmi.comboHistoSelectionIdx==0) addHistogram(getId(), _plotMenuThreadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, 0, _record->durationNs);
-            else if(pmi.comboHistoSelectionIdx==1) addHistogram(getId(), _plotMenuThreadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, pmi.startTimeNs, pmi.timeRangeNs);
+            const cmRecord::Elem& elem = _record->elems[pmi.elemIdx];
+            if     (pmi.comboHistoSelectionIdx==0) addHistogram(getId(), _plotMenuThreadUniqueHash, elem.partialHashPath, pmi.elemIdx, 0, _record->durationNs);
+            else if(pmi.comboHistoSelectionIdx==1) addHistogram(getId(), _plotMenuThreadUniqueHash, elem.partialHashPath, pmi.elemIdx, pmi.startTimeNs, pmi.timeRangeNs);
         }
     }
 
