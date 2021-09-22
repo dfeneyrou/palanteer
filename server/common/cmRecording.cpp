@@ -316,7 +316,7 @@ cmRecording::processLockNotifyEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int
     itemHashPath = bsHashStepChain(_recStrings[evtx.nameIdx].hash, cmConst::LOCK_NTF_NAMEIDX);
     elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOCK_NTF_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::LOCK_NTF_NAMEIDX, (u32)-1, evtx.threadId, -1,
+        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::LOCK_NTF_NAMEIDX, (u32)-1, -1, -1,
                 evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, false, 1., 1. } );
         _recElemPathToId.insert(itemHashPath, cmConst::LOCK_NTF_NAMEIDX, _recElems.size()-1);
         if(_doForwardEvents && doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, evtx.flags);
@@ -366,17 +366,23 @@ cmRecording::processLockWaitEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int l
         }
     }
     tc.lockWaitCurrentlyWaiting = (evtx.flags&PL_FLAG_SCOPE_BEGIN); // Keep the last state
+    if(tc.lockWaitCurrentlyWaiting) {
+        tc.lockWaitBeginTimeNs = evtx.vS64;
+    }
 
     // Get the elem from the path hash
     u64  itemHashPath = bsHashStepChain(tc.threadHash, cmConst::LOCK_WAIT_NAMEIDX);
     int* elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOCK_WAIT_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
         _recElems.push_back( { itemHashPath, bsHashStep(cmConst::LOCK_WAIT_NAMEIDX), 0, cmConst::LOCK_WAIT_NAMEIDX, (u32)-1, evtx.threadId, 0,
-                evtx.nameIdx, evtx.nameIdx, (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, true, 0., 1. } );
+                evtx.nameIdx, evtx.nameIdx, (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, true } );
         _recElemPathToId.insert(itemHashPath, cmConst::LOCK_WAIT_NAMEIDX, _recElems.size()-1);
     }
     int elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
     ElemBuild& elem  = _recElems[elemIdx];
+    double value = (double)(evtx.vS64-tc.lockWaitBeginTimeNs);  // 0 for "begin", the duration for "end"
+    if(elem.absYMin>value) elem.absYMin = value;
+    if(elem.absYMax<value) elem.absYMax = value;
     INSERT_IN_ELEM(elem, elemIdx, tc.lockWaitChunkLocs.size()*cmChunkSize+tc.lockWaitChunkData.size()-1, evtx.vS64, (evtx.flags&PL_FLAG_SCOPE_BEGIN)? 1.:0., 1LL<<evtx.threadId);
 }
 
@@ -390,7 +396,7 @@ cmRecording::processLockUseEvent(plPriv::EventExt& evtx, bool& doInsertLockWaitE
     int* elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOCK_USE_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
         _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::LOCK_USE_NAMEIDX, (u32)-1, -1, -1,
-                evtx.nameIdx, evtx.nameIdx, PL_FLAG_TYPE_LOCK_ACQUIRED, true, false, false, 0., 1. } );
+                evtx.nameIdx, evtx.nameIdx, PL_FLAG_TYPE_LOCK_ACQUIRED, true, false, false } );
         _recElemPathToId.insert(itemHashPath, cmConst::LOCK_USE_NAMEIDX, _recElems.size()-1);
         if(_doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, PL_FLAG_TYPE_LOCK_ACQUIRED);
         // Create the lock
@@ -438,16 +444,23 @@ cmRecording::processLockUseEvent(plPriv::EventExt& evtx, bool& doInsertLockWaitE
                                                           evtx.threadId, 0, evtx.flags, 0, evtx.lineNbr, 0,
                                                           (u64)evtx.vS64 } );
 
-    // Update the elem
-    u32 lIdx = _recGlobal.lockUseChunkLocs.size()*cmChunkSize+_recGlobal.lockUseChunkData.size()-1;
-    INSERT_IN_ELEM(elem, elemIdx, lIdx, evtx.vS64, (evtx.flags==PL_FLAG_TYPE_LOCK_ACQUIRED)? 1.:0., 1LL<<evtx.threadId);
-
-    // Elem 2: Per thread and per nameIdx, for plot & histogram
     if(lock.isInUse) {
         // Lock is acquired, store the information
         lock.usingStartThreadId = evtx.threadId;
         lock.usingStartTimeNs   = evtx.vS64;
     }
+
+    // Update the elem
+    u32 lIdx = _recGlobal.lockUseChunkLocs.size()*cmChunkSize+_recGlobal.lockUseChunkData.size()-1;
+    if(!lock.isInUse) {
+        // The lock duration is known when it is released
+        double value = (double)(evtx.vS64-lock.usingStartTimeNs);
+        if(elem.absYMin>value) elem.absYMin = value;
+        if(elem.absYMax<value) elem.absYMax = value;
+    }
+    INSERT_IN_ELEM(elem, elemIdx, lIdx, evtx.vS64, (evtx.flags==PL_FLAG_TYPE_LOCK_ACQUIRED)? 1.:0., 1LL<<evtx.threadId);
+
+    // Elem 2: Per thread and per nameIdx, for plot & histogram
     int threadId = lock.usingStartThreadId;
     u64 partialItemHashPath = bsHashStepChain(_recStrings[evtx.nameIdx].hash, cmConst::LOCK_USE_NAMEIDX);
     itemHashPath = bsHashStep(_recThreads[evtx.threadId].threadHash, partialItemHashPath);
@@ -489,10 +502,10 @@ cmRecording::processCtxSwitchEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
                                                     (u64)evtx.vS64 } ); // No CPU=0xFFFF
     ++_recCtxSwitchEventQty;
     ++tc.ctxSwitchEventQty;
-    // Get the elem from the path hash
+    // Get the elem from the path hash   @#SIMPLIFY The assumption about mandatory thread declaration below is no more true. We can use the threadHash as for all other cases. Iterator shall be updated too
     // Note that we use the "threadId" and not its hash name here, because no need for persistency across run for any config (none existing)
     //  and also ctx switch events would be dropped at the beginning of the record because they are sent before the thread declaration due to the
-    //  double buffering mechanism in the client side (ctx switch events bypass this double buffering)
+    //  double buffering mechanism in the client side (ctx switch events bypass this double buffering on some OS (Linux...))
     u64 itemHashPath = bsHashStepChain(evtx.threadId, cmConst::CTX_SWITCH_NAMEIDX);
     int* elemIdxPtr  = _recElemPathToId.find(itemHashPath, cmConst::CTX_SWITCH_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
@@ -542,7 +555,7 @@ cmRecording::processSoftIrqEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     u64 itemHashPath = bsHashStepChain(evtx.threadId,      cmConst::SOFTIRQ_NAMEIDX);
     int* elemIdxPtr  = _recElemPathToId.find(itemHashPath, cmConst::SOFTIRQ_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::SOFTIRQ_NAMEIDX, (u32)-1, evtx.threadId, 0,
+        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::SOFTIRQ_NAMEIDX, (u32)-1, -1, 0,
                 PL_INVALID, PL_INVALID, (evtx.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN, true, false, false } );
         _recElemPathToId.insert(itemHashPath, cmConst::SOFTIRQ_NAMEIDX, _recElems.size()-1);
     }

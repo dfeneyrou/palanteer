@@ -650,6 +650,35 @@ TimelineDrawHelper::drawLocks(double& yThread)
         DRAWLIST->AddText(ImVec2(winX+50+textPixMargin, yThread+fontSpacing), isLockNameHovered? IM_COL32(255, 255, 255, 64) : vwConst::uWhite,
                           record->getString(record->locks[lockIdx].nameIdx).value.toChar());
 
+        // Menu on lock name
+        ImGui::PushID(lockIdx);
+        if(isLockNameHovered && ImGui::IsMouseReleased(2)) {
+            // Find the matching elem = lock used for this name (all threads)
+            u64 itemHashPath = bsHashStepChain(record->getString(record->locks[lockIdx].nameIdx).hash, cmConst::LOCK_USE_NAMEIDX);
+            for(int elemIdx=0; elemIdx<record->elems.size(); ++elemIdx) {
+                if(record->elems[elemIdx].hashPath!=itemHashPath) continue;
+                main->_plotMenuItems.clear(); // Reset the popup menu state
+                main->prepareGraphContextualMenu(elemIdx, tl->getStartTimeNs(), tl->getTimeRangeNs(), false, false);
+                ImGui::OpenPopup("lock all thread use menu");
+                break;
+            }
+        }
+        // Popup
+        if(ImGui::BeginPopup("lock all thread use menu", ImGuiWindowFlags_AlwaysAutoResize)) {
+            double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+            ImGui::TextColored(vwConst::grey, "<lock use> %s (all threads)", record->getString(record->locks[lockIdx].nameIdx).value.toChar());
+            // Plot & histogram
+            if(!main->_plotMenuItems.empty()) {
+                ImGui::Separator();
+                ImGui::Separator();
+                if(!main->displayPlotContextualMenu(-1, "Plot", headerWidth)) ImGui::CloseCurrentPopup();
+                ImGui::Separator();
+                if(!main->displayHistoContextualMenu(headerWidth)) ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+
         // Next lock
         yThread += 1.5*fontHeight;
     } // End of loop on used locks
@@ -1476,11 +1505,20 @@ vwMain::drawTimeline(int tlWindowIdx)
 
     // Force scrolling to see a particular thread
     if(tl.viewThreadId>=0) {
-        int nestingLevelQty = _record->threads[tl.viewThreadId].levels.size();
-        double y = tl.valuePerThread[tl.viewThreadId]-scrollbarY;
-        // Only if the thread is not fully visible
-        if(y+ctx.threadTitleHeight+nestingLevelQty*ctx.fontHeight>ImGui::GetWindowHeight() || y<=ctx.winY) {
-            ImGui::SetScrollY(tl.valuePerThread[tl.viewThreadId]);
+        if(tl.viewThreadId==vwConst::LOCKS_THREADID) {
+            int lockQty = tl.cachedLockUse.size();
+            double y = tl.valuePerThread[tl.viewThreadId]-scrollbarY;
+            // Only if the lock&resource section is not fully visible
+            if(y+ctx.threadTitleHeight+lockQty*1.5*ctx.fontHeight>ImGui::GetWindowHeight() || y<=ctx.winY) {
+                ImGui::SetScrollY(tl.valuePerThread[tl.viewThreadId]);
+            }
+        } else {
+            int nestingLevelQty = _record->threads[tl.viewThreadId].levels.size();
+            double y = tl.valuePerThread[tl.viewThreadId]-scrollbarY;
+            // Only if the thread is not fully visible
+            if(y+ctx.threadTitleHeight+nestingLevelQty*ctx.fontHeight>ImGui::GetWindowHeight() || y<=ctx.winY) {
+                ImGui::SetScrollY(tl.valuePerThread[tl.viewThreadId]);
+            }
         }
         tl.viewThreadId = -1;
     }

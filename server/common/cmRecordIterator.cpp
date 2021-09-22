@@ -1089,6 +1089,7 @@ cmRecordIteratorMarker::init(const cmRecord* record, int threadId, u32 nameIdx, 
     plgScope(ITMARKER, "cmRecordIteratorMarker::init");
     plgVar(ITMARKER, threadId);
     _record  = record;
+    _lastLiveEvtChunk = &(record->markerLastLiveEvtChunk);
     _pmIdx   = 0;
 
     // Get the hashpath, either relative to a thread or global
@@ -1118,6 +1119,7 @@ cmRecordIteratorMarker::init(const cmRecord* record, int elemIdx, s64 timeNs, do
     plgScope(ITMARKER, "cmRecordIteratorMarker::init");
     plgVar(ITMARKER, elemIdx);
     _record  = record;
+    _lastLiveEvtChunk = &(record->markerLastLiveEvtChunk);
     _pmIdx   = 0;
     findLevelAndIdx(elemIdx, timeNs, nsPerPix, _record->markerChunkLocs);
 }
@@ -1256,10 +1258,15 @@ cmRecordIteratorLockUseGraph::init(const cmRecord* record, int threadId, u32 nam
     plgScope(ITLOCK, "cmRecordIteratorLockUseGraph::init");
     plgVar(ITLOCK, threadId, nameIdx);
     _record  = record;
+    _lastLiveEvtChunk = &(record->lockUseLastLiveEvtChunk);
     _pmIdx   = 0;
 
-    // Get the lock wait plot elem for this thread.
-    u64 hashPath    = bsHashStepChain(record->threads[threadId].threadHash, record->getString(nameIdx).hash, cmConst::LOCK_USE_NAMEIDX);
+    u64 hashPath;
+    if(threadId>=0) {
+        hashPath = bsHashStepChain(record->threads[threadId].threadHash, record->getString(nameIdx).hash, cmConst::LOCK_USE_NAMEIDX);
+    } else  {
+        hashPath = bsHashStepChain(record->getString(nameIdx).hash, cmConst::LOCK_USE_NAMEIDX);
+    }
     int* elemIdxPtr = record->elemPathToId.find(hashPath, cmConst::LOCK_USE_NAMEIDX);
     if(elemIdxPtr) findLevelAndIdx(*elemIdxPtr, timeNs, nsPerPix, _record->lockUseChunkLocs);
 }
@@ -1360,6 +1367,7 @@ cmRecordIteratorLockNtf::init(const cmRecord* record, u32 nameIdx, s64 timeNs, d
     plgScope(ITLOCK, "cmRecordIteratorLockUse::init");
     plgVar(ITLOCK, nameIdx);
     _record  = record;
+    _lastLiveEvtChunk = &(record->lockNtfLastLiveEvtChunk);
     _pmIdx   = 0;
 
     // Get the lock wait plot elem for this thread.

@@ -110,6 +110,7 @@ public:
     const char* getValueAsChar(const cmRecord::Evt& e) const;
     const char* getFullThreadName(int threadId) const { return _fullThreadNames[threadId].toChar(); }
     const char* getUnitFromFlags(int flags) const;
+    const char* getElemName(const bsString& baseName, int flags);
     int         getId(void);
     void        releaseId(int id);
 
@@ -831,6 +832,7 @@ private:
     struct HistoData {
         u32 qty;
         u32 cumulQty;
+        int threadId;
         u32 lIdx;   // Of the highest/lowest value for this cell
         s64 timeNs; // Of the highest/lowest value for this cell (depending on the plot config)
     };

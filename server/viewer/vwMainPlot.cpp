@@ -74,13 +74,13 @@ vwMain::preparePlot(PlotWindow& p)
                 threadHash = t.threadHash;
                 break;
             }
-            if(threadHash==0) continue; // Thread is not resolved yet
+            if(threadHash==0 && c.threadUniqueHash!=0) continue; // Required thread is not resolved yet
             u64 hashPathWithThread = bsHashStep(threadHash, c.hashPath);
 
             for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
                 cmRecord::Elem& elem = _record->elems[elemIdx];
-                if(( elem.isThreadHashed && elem.hashPath!=hashPathWithThread) ||
-                   (!elem.isThreadHashed && elem.hashPath!=c.hashPath)) continue;
+                if((c.threadUniqueHash!=0 && elem.hashPath!=hashPathWithThread) ||
+                   (c.threadUniqueHash==0 && elem.hashPath!=c.hashPath)) continue;
                 c.elemIdx   = elemIdx;
                 c.isEnabled = true;
                 if(!p.isUnitSet) {
@@ -108,18 +108,12 @@ vwMain::preparePlot(PlotWindow& p)
         cmRecord::Elem& elem = _record->elems[c.elemIdx];
         const cmRecord::String& s = _record->getString(elem.nameIdx);
         c.isHexa = s.isHexa;
+        int eType = elem.flags&PL_FLAG_TYPE_MASK;
 
         // Compute its name and thread names
-        int eType = elem.flags&PL_FLAG_TYPE_MASK;
-        if     (eType==PL_FLAG_TYPE_LOCK_WAIT)     snprintf(tmpStr, sizeof(tmpStr), "<lock wait> %s",     s.value.toChar());
-        else if(eType==PL_FLAG_TYPE_LOCK_ACQUIRED) snprintf(tmpStr, sizeof(tmpStr), "<lock acquired> %s", s.value.toChar());
-        else if(eType==PL_FLAG_TYPE_LOCK_RELEASED) snprintf(tmpStr, sizeof(tmpStr), "<lock released> %s", s.value.toChar());
-        else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) snprintf(tmpStr, sizeof(tmpStr), "<lock notified> %s", s.value.toChar());
-        else if(eType==PL_FLAG_TYPE_MARKER)        snprintf(tmpStr, sizeof(tmpStr), "<marker> %s",        s.value.toChar());
-        else snprintf(tmpStr, sizeof(tmpStr), "%s", s.value.toChar());
-        p.curveNames.push_back(tmpStr);
-        p.maxWidthCurveName  = bsMax(p.maxWidthCurveName,  (double)ImGui::CalcTextSize(tmpStr).x);
-        snprintf(tmpStr, sizeof(tmpStr), " [%s]", getFullThreadName(elem.threadId));
+        p.curveNames.push_back(getElemName(s.value, elem.flags));
+        p.maxWidthCurveName  = bsMax(p.maxWidthCurveName,  (double)ImGui::CalcTextSize(p.curveNames.back().toChar()).x);
+        snprintf(tmpStr, sizeof(tmpStr), " [%s]", (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
         p.curveThreadNames.push_back(tmpStr);
         p.maxWidthThreadName = bsMax(p.maxWidthThreadName, (double)ImGui::CalcTextSize(tmpStr).x);
         double nsPerPix = MIN_PIX_PER_POINT*p.timeRangeNs/winWidth;
@@ -511,7 +505,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
                     int pathQty = 1;
                     int path[cmConst::MAX_LEVEL_QTY+1] = {curve.elemIdx};
                     while(pathQty<cmConst::MAX_LEVEL_QTY+1 && path[pathQty-1]>=0) { path[pathQty] = _record->elems[path[pathQty-1]].prevElemIdx; ++pathQty; }
-                    int offset = snprintf(tmpStr, sizeof(tmpStr), "[%s] ", getFullThreadName(threadId));
+                    int offset = snprintf(tmpStr, sizeof(tmpStr), "[%s] ", (threadId>=0)? getFullThreadName(threadId) : "(all)");
                     for(int i=pathQty-2; i>=0; --i) {
                         offset += snprintf(tmpStr+offset, sizeof(tmpStr)-offset, "%s>", _record->getString(_record->elems[path[i]].nameIdx).value.toChar());
                     }
@@ -573,7 +567,6 @@ vwMain::drawPlot(int curPlotWindowIdx)
         const PlotCurve& curve = pw.curves[globalClosestPoint.curveIdx];
         int closestPlotIdx = curve.elemIdx;
         cmRecord::Elem& elem  = _record->elems[closestPlotIdx];
-        int threadId     = elem.threadId;
         int nestingLevel = elem.nestingLevel;
         int nameIdx      = elem.nameIdx;
         int flags        = elem.flags;
@@ -581,9 +574,9 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
         // Highlight in other windows
         if(elem.nameIdx!=elem.hlNameIdx) // "Flat" event, so we highlight its block scope
-            setScopeHighlight(elem.threadId, pcp.timeNs, PL_FLAG_SCOPE_BEGIN|PL_FLAG_TYPE_DATA_TIMESTAMP, elem.nestingLevel-1, elem.hlNameIdx);
+            setScopeHighlight(pcp.evt.threadId, pcp.timeNs, PL_FLAG_SCOPE_BEGIN|PL_FLAG_TYPE_DATA_TIMESTAMP, elem.nestingLevel-1, elem.hlNameIdx);
         else
-            setScopeHighlight(elem.threadId, pcp.timeNs, elem.flags, elem.nestingLevel, elem.hlNameIdx);
+            setScopeHighlight(pcp.evt.threadId, pcp.timeNs, elem.flags, elem.nestingLevel, elem.hlNameIdx);
 
         // Manage tooltip
         if(ImGui::IsMouseReleased(0) && pw.dragMode==NONE) {
@@ -592,9 +585,9 @@ vwMain::drawPlot(int curPlotWindowIdx)
             // Synchronize the text (after getting the nesting level and lIdx for this date on this thread)
             int nestingLevel;
             u32 lIdx;
-            cmGetRecordPosition(_record, threadId, pcp.timeNs, nestingLevel, lIdx);
-            synchronizeText(pw.syncMode, threadId, nestingLevel, lIdx, pcp.timeNs, pw.uniqueId);
-            ensureThreadVisibility(pw.syncMode, threadId);
+            cmGetRecordPosition(_record, pcp.evt.threadId, pcp.timeNs, nestingLevel, lIdx);
+            synchronizeText(pw.syncMode, pcp.evt.threadId, nestingLevel, lIdx, pcp.timeNs, pw.uniqueId);
+            ensureThreadVisibility(pw.syncMode, pcp.evt.threadId);
         }
         // Show the tooltip
         if(pw.doShowPointTooltip) {
@@ -604,7 +597,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
             if(pcp.evt.flags&PL_FLAG_SCOPE_BEGIN) { // Case scope: build title and collect the children
                 durationNs = (s64)pcp.value;
                 snprintf(titleStr, sizeof(titleStr), "%s { %s }", _record->getString(nameIdx).value.toChar(), getNiceDuration(durationNs));
-                cmRecordIteratorScope it(_record, threadId, nestingLevel, pcp.lIdx);
+                cmRecordIteratorScope it(_record, pcp.evt.threadId, nestingLevel, pcp.lIdx);
                 it.getChildren(pcp.evt.linkLIdx, pcp.lIdx, false, false, true, _workDataChildren, _workLIdxChildren);
             }
             else { // Case non-scope: just build the title
@@ -621,7 +614,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
             else if(elem.nameIdx==elem.hlNameIdx) newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*pcp.value; // For scopes, the value is the duration
             else {
                 // For "flat" items, the duration is the one of the parent
-                cmRecordIteratorHierarchy it(_record, threadId, nestingLevel, pcp.lIdx);
+                cmRecordIteratorHierarchy it(_record, pcp.evt.threadId, nestingLevel, pcp.lIdx);
                 newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*it.getParentDurationNs();
             }
             if(newTimeRangeNs>0.) {

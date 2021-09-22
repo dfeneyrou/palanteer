@@ -131,10 +131,11 @@ class vwConfig {
     void   randomizeCurveColors(void);
     void   randomizeThreadColors(void);
     void   setThreadColorIdx(int threadId, int colorIdx);
-    int    getThreadColorIdx(int threadId) const { return _threads[threadId].colorIdx; }
+    int    getThreadColorIdx(int threadId) const { plAssert(threadId>=0); return _threads[threadId].colorIdx; }
     ImVec4 getThreadColor   (int threadId, bool isLight=false) const {
         if      (threadId==vwConst::LOCKS_THREADID)      return ImVec4(0.,  0.,  0.,  1.);
         else if (threadId==vwConst::CORE_USAGE_THREADID) return ImVec4(0.1, 0.1, 0.1, 1.);
+        else if (threadId<0)                             return ImVec4(0.9, 0.9, 0.9, 1.);
         else return (isLight? _colorPaletteLight:_colorPaletteDark)[_threads[threadId].colorIdx];
     }
 

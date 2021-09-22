@@ -61,7 +61,8 @@ vwMain::addHistogram(int id, u64 threadUniqueHash, u64 hashPath, int elemIdx, s6
     } else {
         char tmpStr[256];
         cmRecord::Elem& elem = _record->elems[elemIdx];
-        snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", _record->getString(elem.nameIdx).value.toChar(), getFullThreadName(elem.threadId));
+        snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", getElemName(_record->getString(elem.nameIdx).value.toChar(), elem.flags),
+                 (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
         _histograms.push_back( { id, elemIdx, threadUniqueHash, hashPath, tmpStr, startTimeNs, timeRangeNs, 0, false } );
     }
     setFullScreenView(-1);
@@ -86,17 +87,18 @@ vwMain::_computeChunkHistogram(Histogram& h)
             threadHash = t.threadHash;
             break;
         }
-        if(threadHash==0) return true; // Thread is not resolved yet
+        if(threadHash==0 && h.threadUniqueHash!=0) return true; // Required thread is not resolved yet
         u64 hashPathWithThread = bsHashStep(threadHash, h.hashPath);
 
         // Find the elem
         for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
             cmRecord::Elem& elem = _record->elems[elemIdx];
-            if(( elem.isThreadHashed && elem.hashPath!=hashPathWithThread) ||
-               (!elem.isThreadHashed && elem.hashPath!=h.hashPath)) continue;
+            if((h.threadUniqueHash!=0 && elem.hashPath!=hashPathWithThread) ||
+               (h.threadUniqueHash==0 && elem.hashPath!=h.hashPath)) continue;
             // Complete the histogram initialization
             char tmpStr[256];
-            snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", _record->getString(elem.nameIdx).value.toChar(), getFullThreadName(elem.threadId));
+            snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", getElemName(_record->getString(elem.nameIdx).value.toChar(), elem.flags),
+                     (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
             h.elemIdx = elemIdx;
             h.name    = tmpStr;
             h.isHexa  = _record->getString(elem.nameIdx).isHexa;
@@ -124,7 +126,7 @@ vwMain::_computeChunkHistogram(Histogram& h)
         }
         _histoBuild.maxValuePerBin.resize(MAX_BIN_QTY);
         for(int i=0; i<MAX_BIN_QTY; ++i) {
-            frd[i] = {0, 0, 0, (s64)-1};
+            frd[i] = {0, 0, -1, 0, (s64)-1};
             _histoBuild.maxValuePerBin[i] = -1e300;
         }
 
@@ -165,8 +167,9 @@ vwMain::_computeChunkHistogram(Histogram& h)
             frd[idx].qty++;
             if(ptValue>_histoBuild.maxValuePerBin[idx]) {
                 _histoBuild.maxValuePerBin[idx] = ptValue;
-                frd[idx].timeNs     = evt.vS64;
-                frd[idx].lIdx       = PL_INVALID;
+                frd[idx].timeNs   = evt.vS64;
+                frd[idx].threadId = evt.threadId;
+                frd[idx].lIdx     = PL_INVALID;
             }
             if(ptValue<absMinValue) absMinValue = ptValue;
             if(ptValue>absMaxValue) absMaxValue = ptValue;
@@ -185,15 +188,16 @@ vwMain::_computeChunkHistogram(Histogram& h)
             // Get the bin index, if time range matches
             if(evt.vS64<h.startTimeNs) continue;
             if(evt.vS64>h.startTimeNs+h.timeRangeNs) break; // Stop if time is past
-            double ptValue = evt.threadId;
+            double ptValue = evt.threadId;  // For the lock notification, the value is the thread id (what else?)
             int idx = bsMinMax((int)((ptValue-elem.absYMin)*yToBinIdx+0.5), 0, MAX_BIN_QTY-1);
 
             // Update the bin & global statistics
             frd[idx].qty++;
             if(ptValue>_histoBuild.maxValuePerBin[idx]) {
                 _histoBuild.maxValuePerBin[idx] = ptValue;
-                frd[idx].timeNs     = evt.vS64;
-                frd[idx].lIdx       = PL_INVALID;
+                frd[idx].timeNs   = evt.vS64;
+                frd[idx].threadId = evt.threadId;
+                frd[idx].lIdx     = PL_INVALID;
             }
             if(ptValue<absMinValue) absMinValue = ptValue;
             if(ptValue>absMaxValue) absMaxValue = ptValue;
@@ -208,6 +212,7 @@ vwMain::_computeChunkHistogram(Histogram& h)
         }
     }
     else if((elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOCK_ACQUIRED) { // Lock use case (specific iterator)
+
         while(_histoBuild.itLockUse.getNextLock(ptTimeNs, ptValue, evt)) {
             // Get the bin index, if time range matches
             if(ptTimeNs<h.startTimeNs) continue;
@@ -218,8 +223,9 @@ vwMain::_computeChunkHistogram(Histogram& h)
             frd[idx].qty++;
             if(ptValue>_histoBuild.maxValuePerBin[idx]) {
                 _histoBuild.maxValuePerBin[idx] = ptValue;
-                frd[idx].timeNs     = ptTimeNs;
-                frd[idx].lIdx       = PL_INVALID;
+                frd[idx].timeNs   = ptTimeNs;
+                frd[idx].threadId = evt.threadId;
+                frd[idx].lIdx     = PL_INVALID;
             }
             if(ptValue<absMinValue) absMinValue = ptValue;
             if(ptValue>absMaxValue) absMaxValue = ptValue;
@@ -244,8 +250,9 @@ vwMain::_computeChunkHistogram(Histogram& h)
             frd[idx].qty++;
             if(ptValue>_histoBuild.maxValuePerBin[idx]) {
                 _histoBuild.maxValuePerBin[idx] = ptValue;
-                frd[idx].timeNs     = ptTimeNs;
-                frd[idx].lIdx       = lIdx;
+                frd[idx].timeNs   = ptTimeNs;
+                frd[idx].threadId = evt.threadId;
+                frd[idx].lIdx     = lIdx;
             }
             if(ptValue<absMinValue) absMinValue = ptValue;
             if(ptValue>absMaxValue) absMaxValue = ptValue;
@@ -370,9 +377,10 @@ vwMain::prepareHistogram(Histogram& h)
         HistoData& hd   = h.data[i/(int)h.fsCumulFactor];
         HistoData& hdfr = h.fullResData[i];
         if(hdfr.qty==0) continue;
-        hd.qty   += hdfr.qty;
-        hd.lIdx   = hdfr.lIdx;
-        hd.timeNs = hdfr.timeNs; // Highest value by design
+        hd.qty     += hdfr.qty;
+        hd.threadId = hdfr.threadId;
+        hd.lIdx     = hdfr.lIdx;
+        hd.timeNs   = hdfr.timeNs; // Highest value by design
         if(hd.qty>h.maxQty) h.maxQty = hd.qty;
     }
 
@@ -609,9 +617,9 @@ vwMain::drawHistogram(int histogramIdx)
         // External highlight?
         if(!isWindowHovered && highlightedIdx==-1) {
             if(elem.nameIdx!=elem.hlNameIdx) { // "Flat" event, so we highlight its block scope
-                if(isScopeHighlighted(elem.threadId, hd.timeNs, PL_FLAG_SCOPE_BEGIN|PL_FLAG_TYPE_DATA_TIMESTAMP, elem.nestingLevel-1, elem.hlNameIdx, false)) highlightedIdx = barIdx;
+                if(isScopeHighlighted(hd.threadId, hd.timeNs, PL_FLAG_SCOPE_BEGIN|PL_FLAG_TYPE_DATA_TIMESTAMP, elem.nestingLevel-1, elem.hlNameIdx, false)) highlightedIdx = barIdx;
             } else {
-                if(isScopeHighlighted(elem.threadId, hd.timeNs, elem.flags, elem.nestingLevel, elem.hlNameIdx, false)) highlightedIdx = barIdx;
+                if(isScopeHighlighted(hd.threadId, hd.timeNs, elem.flags, elem.nestingLevel, elem.hlNameIdx, false)) highlightedIdx = barIdx;
             }
         }
         // Draw
@@ -694,9 +702,9 @@ vwMain::drawHistogram(int histogramIdx)
 
         // Highlight in other windows
         if(elem.nameIdx!=elem.hlNameIdx) // "Flat" event, so we highlight its block scope
-            setScopeHighlight(elem.threadId, hd.timeNs, PL_FLAG_SCOPE_BEGIN|PL_FLAG_TYPE_DATA_TIMESTAMP, elem.nestingLevel-1, elem.hlNameIdx);
+            setScopeHighlight(hd.threadId, hd.timeNs, PL_FLAG_SCOPE_BEGIN|PL_FLAG_TYPE_DATA_TIMESTAMP, elem.nestingLevel-1, elem.hlNameIdx);
         else
-            setScopeHighlight(elem.threadId, hd.timeNs, elem.flags, elem.nestingLevel, elem.hlNameIdx);
+            setScopeHighlight(hd.threadId, hd.timeNs, elem.flags, elem.nestingLevel, elem.hlNameIdx);
 
         // Tooltip
         bsString deltaString;
@@ -728,31 +736,33 @@ vwMain::drawHistogram(int histogramIdx)
         ImGui::EndTooltip();
 
         // Synchronized navigation
-        if(h.syncMode>0 && (ImGui::IsMouseDoubleClicked(0) || (ImGui::IsMouseReleased(0) && h.dragMode==NONE))) { // No synchronized navigation for isolated windows
+        if(h.syncMode>0 && (ImGui::IsMouseDoubleClicked(0) || (ImGui::IsMouseClicked(0) && h.dragMode==NONE))) { // No synchronized navigation for isolated windows
             double syncStartTimeNs, newTimeRangeNs;
             getSynchronizedRange(h.syncMode, syncStartTimeNs, newTimeRangeNs);
 
             // Simple click: set timeline position at middle of the screen
             // Double click: adapt also the scale to have the scope at a fixed percentage of the size of the screen
             double scopeDurationNs = 0;
-            if(ImGui::IsMouseDoubleClicked(0)) {
-                if     (hd.lIdx==PL_INVALID) { } // Marker case (we do not know the parent, so no duration)
-                else if(elem.nameIdx==elem.hlNameIdx) scopeDurationNs = h.absMinValue+yDelta*highlightedIdx; // For scopes, the value is the duration
-                else {
-                    // For "flat" items, the duration is the one of the parent
-                    cmRecordIteratorHierarchy it(_record, elem.threadId, elem.nestingLevel, hd.lIdx);
-                    scopeDurationNs = it.getParentDurationNs();
-                }
-                if(scopeDurationNs>0.) newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*scopeDurationNs;
-                synchronizeNewRange(h.syncMode, bsMax(0., hd.timeNs-0.5*(newTimeRangeNs-scopeDurationNs)), newTimeRangeNs);
+            if     (hd.lIdx==PL_INVALID) { } // Marker case (we do not know the parent, so no duration)
+            else if(elem.nameIdx==elem.hlNameIdx) scopeDurationNs = h.absMinValue+yDelta*highlightedIdx; // For scopes, the value is the duration
+            else {
+                // For "flat" items, the duration is the one of the parent
+                cmRecordIteratorHierarchy it(_record,hd.threadId, elem.nestingLevel, hd.lIdx);
+                scopeDurationNs = it.getParentDurationNs();
             }
-            if(ImGui::IsMouseReleased(0) && h.dragMode==NONE) {
-                ensureThreadVisibility(h.syncMode, elem.threadId);
+            if(ImGui::IsMouseDoubleClicked(0) && scopeDurationNs>0.) newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*scopeDurationNs;
+            synchronizeNewRange(h.syncMode, bsMax(0., hd.timeNs-0.5*(newTimeRangeNs-scopeDurationNs)), newTimeRangeNs);
+
+            if(ImGui::IsMouseClicked(0) && h.dragMode==NONE) {
+                // Double click: view the thread. Single click: view the lock section (if it is a lock)
+                bool isLock = (eType==PL_FLAG_TYPE_LOCK_NOTIFIED || eType==PL_FLAG_TYPE_LOCK_ACQUIRED || eType==PL_FLAG_TYPE_LOCK_WAIT);
+                ensureThreadVisibility(h.syncMode, (ImGui::IsMouseDoubleClicked(0) || !isLock)? hd.threadId : vwConst::LOCKS_THREADID);
+
                 // Synchronize the text (after getting the nesting level and lIdx for this date on this thread)
                 int nestingLevel;
                 u32 lIdx;
-                cmGetRecordPosition(_record, elem.threadId, hd.timeNs, nestingLevel, lIdx);
-                synchronizeText(h.syncMode, elem.threadId, nestingLevel, lIdx, hd.timeNs, h.uniqueId);
+                cmGetRecordPosition(_record, hd.threadId, hd.timeNs, nestingLevel, lIdx);
+                synchronizeText(h.syncMode, hd.threadId, nestingLevel, lIdx, hd.timeNs, h.uniqueId);
             }
         }
     } // End of processing of the highlight
@@ -822,7 +832,7 @@ vwMain::drawHistogram(int histogramIdx)
                 int pathQty = 1;
                 int path[cmConst::MAX_LEVEL_QTY+1] = {h.elemIdx};
                 while(pathQty<cmConst::MAX_LEVEL_QTY+1 && path[pathQty-1]>=0) { path[pathQty] = _record->elems[path[pathQty-1]].prevElemIdx; ++pathQty; }
-                int offset = snprintf(tmpStr, sizeof(tmpStr), "[%s] ", getFullThreadName(elem.threadId));
+                int offset = snprintf(tmpStr, sizeof(tmpStr), "[%s] ", (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)*");
                 for(int i=pathQty-2; i>=0; --i) {
                     offset += snprintf(tmpStr+offset, sizeof(tmpStr)-offset, "%s>", _record->getString(_record->elems[path[i]].nameIdx).value.toChar());
                 }
@@ -915,7 +925,8 @@ vwMain::drawHistogram(int histogramIdx)
             // Plot all corresponding names
             for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
                 const cmRecord::Elem& elem2 = _record->elems[elemIdx];
-                if(elem2.threadId==elem.threadId && elem2.nameIdx==elem.nameIdx) {
+                if(elem.isPartOfHStruct==elem2.isPartOfHStruct && elem2.threadId==elem.threadId &&
+                   elem2.nameIdx==elem.nameIdx && elem2.flags==elem.flags) {
                     pw.curves.push_back( { h.threadUniqueHash, elem2.partialHashPath, elemIdx, true } );
                 }
             }
@@ -937,7 +948,6 @@ vwMain::drawHistogram(int histogramIdx)
                 }
                 ImGui::EndCombo();
             }
-
         }
 
         ImGui::EndPopup();

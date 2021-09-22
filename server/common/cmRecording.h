@@ -207,6 +207,7 @@ private:
         LOC_STORAGE_REC(lockWait);
         bsVec<u32> lockWaitNameIdxs;
         bool       lockWaitCurrentlyWaiting = false;
+        s64        lockWaitBeginTimeNs = 0;
         // Levels
         bsVec<NestingLevelBuild> levels;
     };

@@ -204,6 +204,22 @@ vwMain::getUnitFromFlags(int flags) const
 }
 
 
+const char*
+vwMain::getElemName(const bsString& baseName, int flags)
+{
+    static char valueStr[128];
+    switch(flags&PL_FLAG_TYPE_MASK) {
+    case PL_FLAG_TYPE_LOCK_WAIT:     snprintf(valueStr, sizeof(valueStr), "<lock wait> %s",     baseName.toChar()); break;
+    case PL_FLAG_TYPE_LOCK_ACQUIRED: snprintf(valueStr, sizeof(valueStr), "<lock acquired> %s", baseName.toChar()); break;
+    case PL_FLAG_TYPE_LOCK_RELEASED: snprintf(valueStr, sizeof(valueStr), "<lock released> %s", baseName.toChar()); break;
+    case PL_FLAG_TYPE_LOCK_NOTIFIED: snprintf(valueStr, sizeof(valueStr), "<lock notified> %s", baseName.toChar()); break;
+    case PL_FLAG_TYPE_MARKER:        snprintf(valueStr, sizeof(valueStr), "<marker> %s",        baseName.toChar()); break;
+    default:                         snprintf(valueStr, sizeof(valueStr), "%s", baseName.toChar());
+    }
+    return valueStr;
+}
+
+
 
 // Global record precomputations
 // =============================
@@ -439,7 +455,7 @@ vwMain::prepareGraphContextualMenu(int elemIdx, s64 startTimeNs, s64 timeRangeNs
     }
 
     // Add to the ctx menu
-    _plotMenuThreadUniqueHash = _record->threads[elem.threadId].threadUniqueHash;
+    _plotMenuThreadUniqueHash = (elem.threadId>=0)? _record->threads[elem.threadId].threadUniqueHash : 0;
     _plotMenuItems.push_back( { name, unit, elemIdx, elem.nameIdx, elem.flags, matchingPwIdxs, startTimeNs, timeRangeNs } );
 }
 
@@ -466,7 +482,7 @@ vwMain::prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64
     plAssert(!parents.empty(), "At least current item is expected");
 
     // Compute scope hashpath in reverse order
-    _plotMenuThreadUniqueHash = _record->threads[threadId].threadUniqueHash;
+    _plotMenuThreadUniqueHash = (threadId>=0)? _record->threads[threadId].threadUniqueHash : 0;
     u64 hashPath = bsHashStep(cmConst::SCOPE_NAMEIDX);
     for(int i=parents.size()-1; i>=0; --i) {
         hashPath = bsHashStep(_record->getString(parents[i].evt.nameIdx).hash, hashPath);
@@ -694,7 +710,7 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double hea
         }
 
         // Loop on potential plots
-        u64 threadUniqueHash = _record->threads[threadId].threadUniqueHash;
+        u64 threadUniqueHash = (threadId>=0)? _record->threads[threadId].threadUniqueHash : 0;
         for(auto& pmi : _plotMenuItems) {
             // Case insertion in existing plot window
             if(pmi.comboSelectionExistingIdx>=0) {
