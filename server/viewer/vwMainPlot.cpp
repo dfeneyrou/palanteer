@@ -38,10 +38,13 @@ constexpr double MIN_PIX_PER_POINT = 3.;
 bsString
 vwMain::PlotWindow::getDescr(void) const
 {
-    char tmpStr[512];
+    char tmpStr[2048];
     int offset = snprintf(tmpStr, sizeof(tmpStr), "plot %d", syncMode);
-    for(const PlotCurve& c : curves) offset += snprintf(tmpStr+offset, sizeof(tmpStr)-offset,
-                                                        " %" PRIX64 " %" PRIX64, c.threadUniqueHash, c.hashPath);
+    for(const PlotCurve& c : curves) {
+        offset += snprintf(tmpStr+offset, bsMax((int)(sizeof(tmpStr)-offset), 0),
+                           " %" PRIX64 " %" PRIX64, c.threadUniqueHash, c.hashPath);
+    }
+
     return tmpStr;
 }
 

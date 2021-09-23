@@ -1680,6 +1680,8 @@ vwMain::createLayoutViews(const vwConfig::ScreenLayout& layout)
                 if(sscanf(s, "%" PRIX64 " %" PRIX64, &hash, &hash2)!=2) break;
                 while(*s && *s!=' ') ++s;  // Skip the number and its space separation
                 while(*s==' ') ++s;
+                while(*s && *s!=' ') ++s;  // Skip the second number and its space separation
+                while(*s==' ') ++s;
                 elemHashPaths.push_back(hash); // Thread Unique Hash
                 elemHashPaths.push_back(hash2); // Element hashPath
             }
@@ -1692,7 +1694,7 @@ vwMain::createLayoutViews(const vwConfig::ScreenLayout& layout)
                 pw.timeRangeNs = _record->durationNs;
                 SET_VIEW_ATTRIBUTES(_plots);
                 for(int i=0; i<elemHashPaths.size(); i+=2) {
-                    pw.curves.push_back( { elemHashPaths[i+0], elemHashPaths[i+1], -1, false } );
+                    pw.curves.push_back( { elemHashPaths[i+0], elemHashPaths[i+1], -1, false, false } );
                 }
             }
             continue;
