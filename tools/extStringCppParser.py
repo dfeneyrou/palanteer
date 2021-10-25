@@ -23,13 +23,18 @@
 # SOFTWARE.
 
 
-# Palanteer: C++ code 'parser' to generate external strings lookup
+# Palanteer: Generate an external strings lookup from C++ code
+#            and/or from a binary (for the automatic instrumentation case)
 #
-# What it does:
+# What it does for source code filenames:
 #  - loop on all the provided C/C++ files
 #   - identify Palanteer calls and corresponding parameters + file basenames
 #   - compute and display the tuple <key> <string> on stdout
-
+#
+# What it does for a provided binary:
+#  - calls "nm" on the Linux elf binary
+#  - collect all symbols from the text section
+#  - format and display the tuples <key> <string> on stdout (2 per function: filename and functio
 
 import sys
 
@@ -39,6 +44,7 @@ if sys.version_info.major < 3:
 import os
 import os.path
 import re
+import subprocess
 
 
 # Constants
@@ -46,6 +52,8 @@ import re
 
 # Regexp to detect if a word which starts with pl[g] (so that it looks like a command) followed with a parenthesis
 MATCH_DETECT = re.compile(".*?(^|[^a-zA-Z\d])pl(g?)([a-zA-Z]*)\s*\((.*)")
+# Regexp to extract the symbols from the text section, and also the weak ones
+MATCH_INFO_LINE = re.compile("^([0-9a-z]+)\s+[TW]\s(.*?)\s(\S+):(\d+)$", re.IGNORECASE)
 
 # Commands whose parameters shall be processed. Associated values are: 0=convert only strings   1=convert all parameters
 PL_COMMANDS_TYPE = {
@@ -55,8 +63,6 @@ PL_COMMANDS_TYPE = {
     "Data": 0,
     "Text": 0,
     "DeclareThread": 0,
-    "IdleBegin": 0,
-    "IdleEnd": 0,
     "LockNotify": 0,
     "LockNotifyDyn": 0,
     "LockWait": 0,
@@ -79,16 +85,16 @@ PL_COMMANDS_TYPE = {
 # =======
 
 
-def computeHash(s, isHash64bits):
+def computeHash(s, isHash64bits, hashSalt):
     if isHash64bits:
-        h = 14695981039346656037
+        h = 14695981039346656037 + hashSalt
         for c in s:
             h = ((h ^ ord(c)) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
         if h == 0:
             h = 1  # Special case for our application (0 is reserved internally)
         return h
     else:
-        h = 2166136261
+        h = 2166136261 + hashSalt
         for c in s:
             h = ((h ^ ord(c)) * 16777619) & 0xFFFFFFFF
         if h == 0:
@@ -96,18 +102,22 @@ def computeHash(s, isHash64bits):
         return h
 
 
-def addString(s, hashToStringlkup, collisions, isHash64bits):
-    h = computeHash(s, isHash64bits)
+def addString(
+    s, hashToStringlkup, collisions, isHash64bits, hashSalt, h=None, doOverride=False
+):
+    if h == None:
+        h = computeHash(s, isHash64bits, hashSalt)
     if h in hashToStringlkup:
         # String already in the lookup?
         if s == hashToStringlkup[h]:
             return
         # Collision!
-        if h in collisions:
-            collisions[h].append(s)
-        else:
-            collisions[h] = [hashToStringlkup[h], s]
-        return
+        if not doOverride:
+            if h in collisions:
+                collisions[h].append(s)
+            else:
+                collisions[h] = [hashToStringlkup[h], s]
+            return
     # Add the new entry to the lookup
     hashToStringlkup[h] = s
 
@@ -120,28 +130,41 @@ def main(argv):
 
     # Command line parameters parsing
     # ===============================
+    hashSalt = 0
     isHash64bits = True
     doPrintUsage = False
+    exeName = None
     fileNames = []
     i = 1
     while i < len(argv):
         if argv[i] == "--hash32":
             isHash64bits = False
+        elif argv[i] == "--salt" and i + 1 < len(argv):
+            i = i + 1
+            hashSalt = int(argv[i])
+        elif argv[i] == "--exe" and i + 1 < len(argv):
+            i = i + 1
+            exeName = argv[i]
         elif argv[i][0] == "-":
             doPrintUsage = True  # Unknown option
             print("Unknown option '%s'" % argv[i], file=sys.stderr)
         else:
             fileNames.append(argv[i])
         i = i + 1
-    if not fileNames:
+    if not fileNames and not exeName:
         doPrintUsage = True
     if doPrintUsage:
         print(
             """This tool is a part of Palanteer and useful for the 'external string' feature.
 It parses C++ files and dumps on stdout a hashed string lookup for the Palanteer calls.
 
-Syntax: %s [--hash32] <filenames>+
+Syntax: %s [options] [<source filenames>*]
 
+Options:
+  --hash32      : generate 32 bits hash (to use with PL_SHORT_STRING_HASH=1)
+  --salt <value>: hash salt value (shall match PL_HASH_SALT, default value is 0)
+  --exe  <name> : ELF executable from which to extract the function names and addresses
+                  Useful only when using PL_IMPL_AUTO_INSTRUMENT (Linux only)
 Note 1: The 'hand-made' code parsing is simple but should be enough for most need.
         It may fail in some corner cases (C macro masking values etc...).
 Note 2: If Palanteer commands are encapsulated inside custom macros in your code, the list of command
@@ -151,18 +174,66 @@ Note 2: If Palanteer commands are encapsulated inside custom macros in your code
         )
         sys.exit(1)
 
-    # Process files
-    # =============
-    hashToStringlkup = {}
-    collisions = {}
+    # Process the executables
+    # =======================
+
+    hashToStringlkup, collisions = {}, {}
+
+    if exeName and sys.platform == "linux":
+        if not os.path.exists(exeName):
+            printf("Input executable '%s' does not exist" % exeName, file=sys.stderr)
+            sys.exit(1)
+
+        # Collect the information from 'nm'
+        # As the base virtual address is substracted from the logged function address, no need to care about ASLR
+        nmProcess = subprocess.run(
+            ["nm", "--line-numbers", "--demangle", exeName],
+            universal_newlines=True,
+            capture_output=True,
+        )
+
+        for l in nmProcess.stdout.split("\n"):
+            # Filter on symbols from the text section only
+            m = MATCH_INFO_LINE.match(l)
+            if not m:
+                continue
+
+            # The hash value in this automatic instrumentation case is the base address of the function
+            hashValue = int(m.group(1), 16) + hashSalt
+            # Add the function name
+            addString(
+                m.group(2),
+                hashToStringlkup,
+                collisions,
+                isHash64bits,
+                hashSalt,
+                hashValue,
+            )
+
+            # Add the function filename, augmented with the line number
+            # The override of any former value is due to the potential emission of dual constructor/destructor symbols by GCC/Clang
+            # (see https://stackoverflow.com/questions/6921295/dual-emission-of-constructor-symbols for details)
+            addString(
+                "%s:%s" % (m.group(3), m.group(4)),
+                hashToStringlkup,
+                collisions,
+                isHash64bits,
+                hashSalt,
+                hashValue + 1,
+                doOverride=True,
+            )
+
+    # Process source files
+    # ====================
+
     addString(
-        "", hashToStringlkup, collisions, isHash64bits
+        "", hashToStringlkup, collisions, isHash64bits, hashSalt
     )  # Add the empty string which are used internally
 
     for f in fileNames:
         # Insert the file basename, as it is what the palanteer client is using
         basename = os.path.basename(f)
-        addString(basename, hashToStringlkup, collisions, isHash64bits)
+        addString(basename, hashToStringlkup, collisions, isHash64bits, hashSalt)
 
         # Load the file
         lines = []
@@ -238,10 +309,18 @@ Note 2: If Palanteer commands are encapsulated inside custom macros in your code
                     if not p:
                         continue
                     if p[0] == '"' and p[-1] == '"':
-                        addString(p[1:-1], hashToStringlkup, collisions, isHash64bits)
+                        addString(
+                            p[1:-1],
+                            hashToStringlkup,
+                            collisions,
+                            isHash64bits,
+                            hashSalt,
+                        )
                     # Commands of type 1 stringifies all parameters. Also with quote (for assertions)
                     if cmdType == 1:
-                        addString(p, hashToStringlkup, collisions, isHash64bits)
+                        addString(
+                            p, hashToStringlkup, collisions, isHash64bits, hashSalt
+                        )
 
     # Output
     sortedK = sorted(hashToStringlkup.keys(), key=lambda x: hashToStringlkup[x].lower())

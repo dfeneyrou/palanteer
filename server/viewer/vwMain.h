@@ -140,7 +140,6 @@ private:
     void clearViews(void);
     void clearRecord(void);
     void removeSomeRecords(const bsVec<bsString>& recordsToDelete);
-    bool updateExternalStringsFile(const bsString& appPath, const bsString& extStringFile);
 
     // Other shared methods
     int    getDisplayWidth(void);
@@ -916,7 +915,7 @@ private:
         bsString path;
         u64      size;
         bsDate   date;
-        char     nickname[32];
+        char     nickname[64];
     };
     struct AppRecordInfos {
         int      idx = -1;

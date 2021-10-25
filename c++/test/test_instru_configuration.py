@@ -473,3 +473,44 @@ def test_compactmodel():
         "Crash event due to the assert has been received",
     )
     process_stop()
+
+
+# @declare_test("config instrumentation")  NOT YET FUNCTIONAL
+def test_autoinstrumentation():
+    """Config auto instrumentation PL_IMPL_AUTO_INSTRUMENT=1"""
+    if sys.platform == "win32":
+        LOG("Skipped: Auto instrumentation is applicable only under Linux and with GCC")
+        return
+    build_target(
+        "testprogram",
+        "USE_PL=1 PL_IMPL_AUTO_INSTRUMENT=1",
+    )
+
+    # Create the lookup
+    res = run_cmd(
+        [
+            os.path.join("..", "..", "..", "tools") + "/extStringCppParser.py",
+            "--exe",
+            "./bin/testprogram",
+        ]
+    )
+    fh = open("./bin/testprogram.txt", "w")
+    fh.write(res.stdout)
+    fh.close()
+
+    # Set the external string
+    # @#BUG Test is failing due to the spec not going through the inversed hash
+    set_external_strings("./bin/testprogram.txt")
+
+    data_configure_events(EvtSpec("RandomLCM::getNext()"))
+    try:
+        launch_testprogram()
+        CHECK(True, "Connection established")
+    except ConnectionError:
+        CHECK(False, "No connection")
+
+    CHECK(
+        data_collect_events(timeout_sec=2.0),
+        "Auto instrumented function related events are received",
+    )
+    process_stop()

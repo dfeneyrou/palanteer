@@ -140,6 +140,67 @@ They fully define the [memory usage](index.html#c++memoryusage) of the library.
 | [PL_IMPL_PRINT_STDERR](#pl_impl_print_stderr)       | Low level error text display function | printf on stderr |
 
 
+### PL_IMPL_AUTO_INSTRUMENT
+
+The automatic C++ functions instrumentation feature is based on `GCC` built-in mechanism enabled with the `-finstrument-functions` flag. <br/>
+It inserts a hook at the entering and leaving of each instrumented function.
+
+The default value is "disabled":
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_AUTO_INSTRUMENT 0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Enabling the feature requires additional steps described [here](getting_started.md.html#quickc++automaticfunctionsinstrumentation), with a discussion about the use cases.
+
+
+**Principles**
+
+The hooks introduced when using the `-finstrument-functions` flag provide the bare address of the called function.
+To get a readable name, additional work is required:
+  - either dynamically by calling a special service (`dlfcn` library) at run time to read the debug symbol, then demangle it.
+    - (+) this solution allows a fully integrated feature without any external step
+    - (-) the overhead easily reaches 1 µs per event, so a factor ~100x compared to the manually instrumented version
+  - either externally, by just storing the function address and resolving its name later, outside of the program.
+    - (+) the overhead of this solution is minimal, reduced to the additional calls of the hooks.
+    - (-) an additional and external step is required to resolve the function name.
+
+Only the external resolution of the function name is compatible with the "high performance" target: `Palanteer` uses this scheme. <br/>
+And fortunately, this requirement is very close to the `external strings` feature and shares its resolution mechanism:
+  - the event carries a representation of the filename and name of the scope as string hashes, which are resolved on server side
+  - the tool `extStringCppParser.py` used to generate the external strings from the source code can also extract functions addresses and string names from the ELF binary (using `nm`)
+  - the main difference is that the automatically instrumented functions have a hash-representation which varies at each build, while the external strings have a constant hash-representation for a given string content.
+
+The last piece of the puzzle is the matching of the collected function addresses during runtime, after relocation in a virtual memory space, with the function addresses from the ELF binary. <br/>
+ASLR (Address Space Layout Randomization) is enabled by default on many Linux distributions. Its aim is to protect against certain types of attacks by changing the base virtual address of programs at each run. <br/>
+This base address shall thus be retrieved at runtime and substracted from the function addresses from the hook. This is done by calling the `dlsym()` function from the `dl` library, and enabled by this `PL_IMPL_AUTO_INSTRUMENT=1` flag.
+
+**Excluding some functions**
+
+Any functions used inside the low level `Palanteer` event logging **must not** be auto-instrumented. Else an infinite call recursion is created and the program crashes due to a stack overflow. <br/>
+As the library uses small inlined functions during logging for efficiency reasons, this means that the following parts shall be excluded from the auto-instrumentation:
+  1. the file `palanteer.h` (because "header only" library so it contains functions during event logging)
+  2. all inlined standard library functions used during logging, directly or indirectly
+
+Thanks to the GCC flag `-finstrument-functions-exclude-file-list` excluding file by substring pattern matching, enforcing (1) is straighforward. <br/>
+The (2) depends on the GCC installation paths.
+
+On a Debian 11, the exclusion parameter value `-finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/` does the job, the last two parameters excludes all the standard library calls. <br/>
+A more fine grained working exclusion set (Debian 11 at least) is: `-finstrument-functions-exclude-file-list=palanteer.h,atomic,chrono,/bits/ -finstrument-functions-exclude-function-list=atomic,thread,operator,condition_variable`
+
+  - it uses also the `-finstrument-functions-exclude-function-list` flag which excludes function based on a substring pattern matching.
+  - it excludes more precisely the part of the standard library used in the event logging, letting some parts of it auto-instrumented (compared to the version (1))
+  - it was not easily found as any function called internally shall also be excluded, which means that the standard library structure and internals shall be taken into account.
+
+!!!
+    The recommended exclusion set is to use `-finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/` (to adapt to the GCC installation if needed) <br/>
+    Indeed, the fine-grained exclusion method is much trickier to set properly and:
+      - does not bring any real value as the standard library is heavily templatized and the function names get very long and are unreadable.
+      - create an heavy logging which affects the reliability of the performance measures.
+
+!!! tip
+    If you quickly encounter a `segmentation fault` specifically with automatic function instrumentation, this is probably due to an incorrect exclusion list. This can be checked under a debugger by looking at the stack trace. <br/>
+    Beware that 2 code paths shall be considered: the event logging itself (using `atomic`, `thread`...), and the contention resolution in case of buffer saturation which additionally uses `std::this_thread::yield()` with many sub function calls.
+
 ### PL_IMPL_CATCH_SIGNALS
 
 Catching signals allows the identification of some class of issues and their location (if it is an internal signal and if the stacktrace dump is enabled).
@@ -620,6 +681,32 @@ The following points shall be checked:
   - The function `plInitAndStart` is called
     - The stacktrace decoding initialization is done at this momen
     - If no event recording is desired, the mode `PL_MODE_INACTIVE` shall be used.
+
+<br/>
+**The external string lookup tool is saying that I have "collisions"**
+
+It may happen statistically that different strings are associated to the same hash value, especially with short hashs on 32 bits. <br/>
+It is called a "hash collision".
+
+In this case, the collided strings will simply be displayed with the value of the first one which has been encountered. <br/>
+The string lookup generation tool checks for collision and returns a non zero status in this case, listing on stderr the colliding strings.
+
+The mechanism to use in this case is to use the configuration flag PL_HASH_SALT, initially set to 0. <br/>
+By giving it another positive value, all hashes are scrambled and collision is likely to disapear.
+
+<br/>
+**I have a segmentation fault quickly after launching an auto-instrumented program**
+
+Check the list of excluded functions. As explained in [PL_IMPL_AUTO_INSTRUMENT](#pl_impl_auto_instrument), it is crucial to exclude all
+functions that are used during the event logging in order to avoid a deadly infinite call recursion.
+
+<br/>
+**My auto-instrumented program displays a lot of hexadecimal values instead of function names**
+
+These are the value of the string hashes of names that could not be resolved by using the strings lookup. <br/>
+Note that each program built may scramble the function addresses, so a new string lookup is required each time you rebuild the program.
+
+A description of how to build and use such strings lookup is present in the [getting started](getting_started.md.html#gettingstarted/quickc++automaticfunctionsinstrumentation) section
 
 
 

@@ -106,6 +106,7 @@ bool            osDirectoryExists(const bsString& path);
 size_t          osGetSize(const bsString& path);
 bsDate          osGetCreationDate(const bsString& path);
 bool            osLoadFileContent(const bsString& path, bsVec<u8>& buffer, int maxSize=-1);
+bool            osCopyFile(const bsString& srcPath, const bsString& dstPath);
 bsDirStatusCode osRemoveFile(const bsString& path);
 bsDirStatusCode osRemoveDir(const bsString& path, bool onlyIfEmpty=true);
 u32             osGetDriveBitmap(void); // One bit per drive (bit 0 is A:, etc...). No bit set means no such concept

@@ -224,13 +224,12 @@ cmRecord::loadExternalStrings(void)
 #define ADD_STRING(h, s) _extStringsHashToStrIdx.insert((u32)h, h, _extStrings.size()); _extStrings.push_back(s)
 
     // Build the lookup
-    ADD_STRING(2166136261, "");         // Empty string 32 bits hash (FNV 32 offset)
-    ADD_STRING(BS_FNV_HASH_OFFSET, ""); // Empty string 64 bits hash
+    ADD_STRING(2166136261+options.values[PL_TLV_HAS_HASH_SALT], "");         // Empty string 32 bits hash (FNV 32 offset)
+    ADD_STRING(BS_FNV_HASH_OFFSET+options.values[PL_TLV_HAS_HASH_SALT], ""); // Empty string 64 bits hash
 
     // Read the file content
     bsVec<u8> b;
-    bsString appRecordPath = recordPath.subString(0, recordPath.rfindChar(PL_DIR_SEP_CHAR)); // Get the directory of the record file
-    if(!osLoadFileContent(appRecordPath+ PL_DIR_SEP "externalStrings", b)) {
+    if(!osLoadFileContent(recordPath.subString(0, recordPath.size()-4)+"_externalStrings", b)) {
         return; // This is normal if no external string lookup has been provided
     }
 

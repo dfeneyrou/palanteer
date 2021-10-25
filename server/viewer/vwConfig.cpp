@@ -310,6 +310,37 @@ vwConfig::setKeepOnlyLastNRecord(const bsString& appName, bool state, int n)
 }
 
 
+void
+vwConfig::getExtStringsPath(const bsString& appName, bsString& path)
+{
+    path.clear();
+    for(const AppExtStringsPath& k : _appExtStringsPath) {
+        if(k.name!=appName) continue;
+        path = k.path;
+        return;
+    }
+}
+
+
+void
+vwConfig::setExtStringsPath(const bsString& appName, const bsString& path)
+{
+    plgScope(CFG, "setKeepOnlyLastNRecord");
+    // Find the entry
+    for(AppExtStringsPath& k : _appExtStringsPath) {
+        if(k.name!=appName) continue;
+        if(k.path==path) return; // No change
+        k.path = path;
+        _globalNeedsSaving  = true;
+        return;
+    }
+    // Entry not found: add it
+    _appExtStringsPath.push_back({appName, path});
+    plgVar(CFG, appName.toChar());
+    _globalNeedsSaving  = true;
+}
+
+
 
 // Application-specific configuration
 // ==================================
@@ -652,6 +683,9 @@ vwConfig::saveGlobal(void)
     for(const KeepAppRecordParam& k : _keepOnlyLastRecord) {
         fprintf(fh, "keepOnlyLastRecord %d %d %s\n", k.state, k.recordQty, k.name.toChar());
     }
+    for(const AppExtStringsPath& k : _appExtStringsPath) {
+        fprintf(fh, "appExtStringsPath %s|%s\n", k.path.toChar(), k.name.toChar()); // '|' is the separator between the strings (which can contain spaces)
+    }
 
     fclose(fh);
     return true;
@@ -662,7 +696,8 @@ void
 vwConfig::loadGlobal(void)
 {
     plgScope(CFG, "loadGlobal");
-    char tmpStr[256];
+    char tmpStr[512];
+    char tmpStr2[512];
     constexpr int lineSize = 1024;
     char line[lineSize];
     FILE* fh = fopen((_configPath+"palanteer.cfg").toChar(), "r");
@@ -726,10 +761,18 @@ vwConfig::loadGlobal(void)
 
         if(!strncmp(line, "keepOnlyLastRecord", kwLength)) {
             int state, n;
-            if(sscanf(line+kwLength+1, "%d %d %[^\n]", &state, &n, tmpStr)!=3)
+            if(sscanf(line+kwLength+1, "%d %d %255[^\n]", &state, &n, tmpStr)!=3)
                 { _main->log(cmLogKind::LOG_WARNING, "Unable to read global config for field 'keepOnlyLastRecord'\n"); }
             else {
                 _keepOnlyLastRecord.push_back({ tmpStr, state, n });
+            }
+        }
+
+        if(!strncmp(line, "appExtStringsPath", kwLength)) {
+            if(sscanf(line+kwLength+1, "%255[^|\n]|%255[^\n]", tmpStr2, tmpStr)!=2)
+                { _main->log(cmLogKind::LOG_WARNING, "Unable to read global config for field 'appExtStringsPath'\n"); }
+            else {
+                _appExtStringsPath.push_back({ tmpStr, tmpStr2 });
             }
         }
 

@@ -897,6 +897,35 @@ osLoadFileContent(const bsString& path, bsVec<u8>& buffer, int maxSize)
 }
 
 
+bool
+osCopyFile(const bsString& srcPath, const bsString& dstPath)
+{
+    constexpr int chunkSize = 256*1024;
+    bool isSuccess = false;
+    u8* chunk = 0;
+    FILE *fSrc = 0, *fDst = 0;
+
+    // Open the 2 files
+    fSrc = osFileOpen(srcPath, "rb");
+    if(!(fSrc=osFileOpen(srcPath, "rb"))) goto end;
+    if(!(fDst=osFileOpen(dstPath, "wb"))) goto end;
+
+    // Read per chunk
+    chunk = new u8[chunkSize];
+    int readBytes;
+    while((readBytes=(int)fread(chunk, 1, chunkSize, fSrc))>0) {
+        fwrite(chunk, 1, readBytes, fDst);
+    }
+    isSuccess = true;
+
+ end:
+    if(fSrc) fclose(fSrc);
+    if(fDst) fclose(fDst);
+    delete[] chunk;
+    return isSuccess;
+}
+
+
 bsDirStatusCode
 osMakeDir(const bsString& path)
 {

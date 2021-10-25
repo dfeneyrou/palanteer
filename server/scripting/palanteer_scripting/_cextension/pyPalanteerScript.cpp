@@ -324,7 +324,7 @@ setRecordFilename(PyObject* Py_UNUSED(self), PyObject* args)
 {
     const char* recordFilename;
     if(PyArg_ParseTuple(args, "z", &recordFilename)) {
-        pyPlInstance->setRecordingConfig(!bsString(recordFilename).empty(), recordFilename);
+        pyPlInstance->setRecordFilename(recordFilename);
     }
     else PyErr_SetString(PyExc_TypeError, "String parameter or None expected");
 

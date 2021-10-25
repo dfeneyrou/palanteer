@@ -15,6 +15,7 @@
     - ultra-light single-header cross-platform library
     - very low overhead
     - support of Fibers / userland threads
+    - support for automatic instrumentation (GCC only)
   - Python:
     - One module for manual instrumentation
     - Unmodified program can be analyzed as for `cProfile` with `-m` option
@@ -41,6 +42,7 @@
  - C++
     - Compile-time selection of per-user groups of events
     - Very low overhead, typically few nanoseconds
+    - Automatic instrumentation with `-finstrument-functions` flag (GCC only) possible
  - Python
     - Automatic instrumentation of functions enter/leave
     - Automatic tracking of interpreter memory allocations
@@ -191,6 +193,25 @@ plMarker("user input", "Left arrow pressed");
 
 All your data, whatever the quantity, can be smoothly visualized. And all of them can be viewed at least as a curve or histogram.
 
+### Automatic functions instrumentation (GCC only)
+
+GCC provides a way to automatically instrument entering and leaving functions.
+`Palanteer` leverages this mechanism to create function scopes automatically by injecting `plBegin` and `plEnd` calls. <br/>
+It just requires the [addition of a few flags](getting_started.md.html#quickc++automaticfunctionsinstrumentation) on the compilation line of the files to instrument.
+
+This feature brings a quick and easy way to:
+  - profile your program
+    - timeline of the functions execution, flame graph, plots...
+    - memory consumption dynamic, hotspots and leaks (with false positive)
+  - visualize the behavior of your program
+    - checking that the behavior and code path is the one expected
+    - diving into a new program is much easier when you can clearly see all call paths
+
+!!! warning Some words of caution
+    Automatic scope instrumentation is by nature unsupervised, so non-optimal for the quantity of generated events. <br/>
+    Some types of information are unaltered by an heavy instrumentation. Memory usage is one of them. <br/>
+    In contrast, timings are affected depending on the nested call quantity. Profiling values cannot be considered as "reliable" if the scope contains many nested sub scopes. GCC provides some ways to mitigate this issue, at least partially.
+
 ### Compile-time instrumentation groups
 
 Grouping events by user-defined categories is one of the key features. <br/>
@@ -232,7 +253,7 @@ plgMarker(MYGROUP, "user input", "Left arrow pressed");
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! warning   Important!
-    Once used in a `Palanteer` API, the group **must be defined**, else the preprocessor rants (a lot...).
+    Once used in a `Palanteer` API, the group **must** be defined, else the preprocessor rants (a lot...).
 
 A typical instrumentation covers the structure of the program but also inputs, outputs of computations, statistics, states...
 Remember that quantity is not a problem when using groups!
@@ -340,8 +361,8 @@ Most features of `Palanteer` can be selected individually at compile time.
 | [Event logging](#easylogging)                                                                                     | Enabled if `USE_PL`==1 and `PL_NOEVENT` is not 1                     | Disabled (`USE_PL` not defined)    |
 | [`Palanteer` assertions](#enhancedassertions)                                                                     | Enabled if `USE_PL`==1 and `PL_NOASSERT` is not 1                    | Disabled (`USE_PL` not defined)    |
 | [Remote control](#remotecontrol)                                                                                  | Enabled if `USE_PL`==1 and `PL_NOCONTROL` is not 1                   | Disabled (`USE_PL` not defined)    |
-| [Event logging from group _YYY_](base_concepts.md.html#groups)                                                    | Enabled if event logging is enabled and `PL_GROUP_YYY` is 1          | `PL_GROUP_YYY` **must be defined** |
-| [Assertions from group _YYY_](base_concepts.md.html##groups)                                                      | Enabled if `Palanteer` assertions is enabled and `PL_GROUP_YYY` is 1 | `PL_GROUP_YYY` **must be defined** |
+| [Event logging from group _YYY_](base_concepts.md.html#groups)                                                    | Enabled if event logging is enabled and `PL_GROUP_YYY` is 1          | `PL_GROUP_YYY` **must** be defined |
+| [Assertions from group _YYY_](base_concepts.md.html##groups)                                                      | Enabled if `Palanteer` assertions is enabled and `PL_GROUP_YYY` is 1 | `PL_GROUP_YYY` **must** be defined |
 | [External strings](#externalstrings)                                                                              | Enabled if `PL_EXTERNAL_STRINGS` is set to 1                         | Disabled                           |
 | [Simple (standard) `Palanteer` assertions](#enhancedassertions)                                                   | Enabled if `PL_SIMPLE_ASSERT` is set to 1                            | Enhanced assertions                |
 | [Memory tracking with new/delete overload](instrumentation_configuration_cpp.md.html#pl_impl_overload_new_delete) | Enabled if `PL_OVERLOAD_NEW_DELETE` is set to 1                      | Enabled                            |

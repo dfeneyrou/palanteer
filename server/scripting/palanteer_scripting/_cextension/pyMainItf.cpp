@@ -136,7 +136,7 @@ pyMainItf::notifyRecordStarted(const bsString& appName, const bsString& buildNam
 {
     bsString errorMsg;
     _recording->beginRecord(appName, buildName, timeTickOrigin, tickToNs, options,
-                            RECORD_CACHE_MB, errorMsg, false);
+                            RECORD_CACHE_MB, _recordFilename, false, errorMsg);
     if(!errorMsg.empty()) {
         notifyErrorForDisplay(ERROR_GENERIC, errorMsg);
         return false;
@@ -616,9 +616,13 @@ pyMainItf::notifyFilteredEvent(int elemIdx, int flags, u64 nameHash, s64 dateNs,
 
 
 void
-pyMainItf::setRecordingConfig(bool isEnabled, const char* forcedFilename)
+pyMainItf::setRecordFilename(const char* recordFilename)
 {
-    _recording->setRecordingConfig(isEnabled, forcedFilename);
+    if(recordFilename) {
+        _recordFilename = recordFilename;
+    } else {
+        _recordFilename.clear();
+    }
 }
 
 

@@ -76,7 +76,7 @@ cmRecording::~cmRecording(void)
 
 cmRecord*
 cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
-                         const cmTlvs& options, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord)
+                         const cmTlvs& options, int cacheMBytes, const bsString& recordFilename, bool doCreateLiveRecord, bsString& errorMsg)
 {
     plScope("beginRecord");
     errorMsg.clear();
@@ -84,32 +84,11 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64
     _recordBuildName.clear();
     _recordPath.clear();
 
-    if(_isRecordingEnabled) {
-        _recordAppName   = appName.empty()? "no_name" : appName;
+    // Is record storage enabled? (it may not be, in live scripting case)
+    if(!recordFilename.empty()) {
+        _recordAppName   = appName;
         _recordBuildName = buildName;
-
-        // Automatic record location
-        if(_forcedRecordFilename.empty()) {
-            // Ensure that the storage structure exists
-            time_t now = time(0);
-            tm*    t = localtime(&now);
-            plAssert(t);
-            if(!osDirectoryExists(_storagePath+_recordAppName)) {
-                if(osMakeDir(_storagePath+_recordAppName)!=bsDirStatusCode::OK) {
-                    plMarker("Error", "unable to create the folder for storing all records");
-                    errorMsg = bsString("Unable to create the folder ")+_storagePath+_recordAppName+"\nPlease check the write permissions";
-                    return 0;
-                }
-            }
-
-            char recordName[256];
-            snprintf(recordName, sizeof(recordName), PL_DIR_SEP "rec_%04d-%02d-%02d_%02dh%02dm%02ds.plt",
-                     1900+t->tm_year, 1+t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-            _recordPath = _storagePath + _recordAppName + recordName;
-        }
-        else {
-            _recordPath = _forcedRecordFilename;
-        }
+        _recordPath      = recordFilename;
 
         // Open the record file
         _recFd = osFileOpen(_recordPath, "wb"); // Write only

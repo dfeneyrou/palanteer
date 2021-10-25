@@ -87,6 +87,8 @@ class vwConfig {
     // Catalog management (global because accessed even when no record is loaded)
     void setKeepOnlyLastNRecord(const bsString& appName, bool  state, int  n);
     void getKeepOnlyLastNRecord(const bsString& appName, bool& state, int& n);
+    void setExtStringsPath(const bsString& appName, const bsString& path);
+    void getExtStringsPath(const bsString& appName, bsString& path);
 
 
     // Application-under-analysis specific parameters
@@ -195,6 +197,11 @@ class vwConfig {
         int      recordQty;
     };
 
+    struct AppExtStringsPath {
+        bsString name;
+        bsString path;
+    };
+
     // Common fields
     vwMain*       _main;
     bsString      _programDataPath;
@@ -202,6 +209,7 @@ class vwConfig {
     bsVec<ImVec4> _colorPaletteDark;
     bsVec<ImVec4> _colorPaletteLight;
     bsVec<KeepAppRecordParam> _keepOnlyLastRecord;
+    bsVec<AppExtStringsPath>   _appExtStringsPath;
     bool _globalNeedsSaving = false;
     bool _appliNeedsSaving  = false;
 

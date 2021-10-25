@@ -46,7 +46,7 @@ public:
     void clearAllSpecs(void);
     void clearBufferedEvents(void);
     void addSpec(const char* threadName, pyiSpec* parentPath, pyiSpec* elemArray, int elemQty);
-    void setRecordingConfig(bool isEnabled, const char* forcedFilename);
+    void setRecordFilename(const char* recordFilename);  // Zero means no recording
     void getUnresolvedElemInfos(pyiDebugSpecInfo** infoArray, int* infoQty);
 
     // Interface for the common library
@@ -86,6 +86,7 @@ public:
     bool _isRecordOnGoing     = false;
     bool _isStringHashShort   = false;
     bool _areStringsExternal  = false;
+    bsString _recordFilename; // Empty means no recording
 
     // Batch notifications
     bsVec<pyiString> _batchedStrings;

@@ -15,6 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // This file implements a virtual memory allocator in order to nicely represent the program memory allocations
+// See http://gee.cs.oswego.edu/dl/html/malloc.html
 
 // System
 #include <math.h>

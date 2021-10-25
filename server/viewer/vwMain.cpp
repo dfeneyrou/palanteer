@@ -1164,19 +1164,47 @@ vwMain::notifyRecordStarted(const bsString& appName, const bsString& buildName, 
                             const cmTlvs& options)
 {
     plData("Subaction", plMakeString("Notif record started"));
+
+    // Ensure that the record storage repository exists
+    if(!osDirectoryExists(_storagePath+appName)) {
+        if(osMakeDir(_storagePath+appName)!=bsDirStatusCode::OK) {
+            plMarker("Error", "unable to create the folder for storing all records");
+            notifyErrorForDisplay(ERROR_GENERIC, bsString("Unable to create the folder ")+_storagePath+appName+
+                                  "\nPlease check the write permissions");
+            return false;
+        }
+    }
+
+    // Build the record filename
+    char   recordName[256];
+    time_t now = time(0);
+    tm*    t   = localtime(&now);
+    plAssert(t);
+    snprintf(recordName, sizeof(recordName), PL_DIR_SEP "rec_%04d-%02d-%02d_%02dh%02dm%02ds",
+             1900+t->tm_year, 1+t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+    bsString recordFilename = _storagePath + appName + bsString(recordName) + ".plt";
+
+    // Copy the external string file, if any
+    bsString appExtStringsPath;
+    getConfig().getExtStringsPath(appName, appExtStringsPath);
+    if(!appExtStringsPath.empty()) {
+        osCopyFile(appExtStringsPath, _storagePath + appName + bsString(recordName) + "_externalStrings");
+    }
+
     // Notify the recording
     bsString errorMsg;
     cmRecord* record = _recording->beginRecord(appName, buildName, timeTickOrigin, tickToNs, options,
-                                               getConfig().getCacheMBytes(), errorMsg, true);
+                                               getConfig().getCacheMBytes(), recordFilename, true, errorMsg);
     if(!record) {
         notifyErrorForDisplay(ERROR_GENERIC, errorMsg);
+        osRemoveFile(_storagePath + appName + bsString(recordName) + "_externalStrings");
         return false;
     }
     // Notify the GUI
     cmRecord** recordPtr = _msgRecordStarted.t1GetFreeMsg();
     if(!recordPtr) {
         delete _record;
-        return false;  // No message available (weird...)
+        return false;  // No message available (which would be very weird...)
     }
     _doClearRecord = true;
     *recordPtr = record;
@@ -1402,6 +1430,10 @@ vwMain::removeSomeRecords(const bsVec<bsString>& recordsToDelete)
         // Remove the record file
         log(LOG_INFO, "Removing record %s", path.toChar());
         osRemoveFile(path);
+        // Remove the nickname and external string file, if they exist
+        bsString baseName = path.subString(0, path.size()-4);
+        osRemoveFile(baseName+"_nickname");
+        osRemoveFile(baseName+"_externalStrings");
     }
 
     // Update the record list
@@ -1410,58 +1442,6 @@ vwMain::removeSomeRecords(const bsVec<bsString>& recordsToDelete)
         findRecord(currentDisplayedPath, _underDisplayAppIdx, _underDisplayRecIdx); // @#TBC See if we can simplify this "find record" and indexes stuff
     }
     dirty();
-}
-
-
-bool
-vwMain::updateExternalStringsFile(const bsString& appPath, const bsString& extStringFile)
-{
-    if(!osFileExists(extStringFile)) return false;
-    bsHashMap<u64, int> hashToStrIdx;
-    bsVec<bsString>     extStrings;
-    extStrings.reserve(128);
-
-    // Loop on the two files to fusion
-    bsVec<u8> b;
-    for(int i=0; i<2; ++i) {
-        // Load the file
-        if(!osLoadFileContent(i? extStringFile : appPath+"/externalStrings", b)) continue;
-
-        // Update the lookup
-        int offset = 0;
-        while(offset<=b.size()-20) { // 20 = 4 'at' symbols + 16 hash digits
-            // Parse
-            while(offset<=b.size()-2 && (b[offset]!='@' || b[offset+1]!='@')) ++offset;
-            if(offset>b.size()-20) break;
-            u64 key;
-            if(sscanf((char*)&b[offset], "@@%16" PRIX64 "@@", &key)!=1) {
-                while(offset<b.size() && b[offset]!='\n') ++offset;
-                continue;
-            }
-            offset += 20;
-            int startOffset = offset;
-            while(offset<b.size() && b[offset]!='\n') ++offset;
-            // Store the entry
-            hashToStrIdx.insert((u32)key, key, extStrings.size());
-            extStrings.push_back(bsString((char*)&b[startOffset], (char*)&b[offset]));
-        }
-    }
-    if(extStrings.empty()) return false;
-
-    // Save the new lookup
-    FILE* fd = osFileOpen(appPath+"/externalStrings", "wb");
-    if(!fd) return false;
-    bsVec<bsHashMap<u64, int>::Node> nodes; nodes.reserve(extStrings.size());
-    hashToStrIdx.exportData(nodes);
-    std::sort(nodes.begin(), nodes.end(), [&extStrings](const bsHashMap<u64, int>::Node& a, const bsHashMap<u64, int>::Node& b)->bool {
-        return strcasecmp(extStrings[a.value].toChar(), extStrings[b.value].toChar())<0;
-    } );
-    for(int i=0; i<nodes.size(); ++i) {
-        fprintf(fd, "@@%016" PRIX64 "@@%s\n", nodes[i].key, extStrings[nodes[i].value].toChar());
-    }
-    fclose(fd);
-
-    return true;
 }
 
 

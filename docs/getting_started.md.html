@@ -183,6 +183,91 @@ plStopAndUninit()
     The example program `./python/testprogram/testprogram.py` covers many instrumentation topics. <br/>
     Looking at its documented source code and its behavior in front of the viewer, is definitely a good quick starter.
 
+## Quick C++ automatic functions instrumentation
+
+The automatic C++ functions instrumentation feature is a quick and easy way to profile or observe your program.
+
+!!! tip
+    Be aware that this potentially heavy instrumentation is non-optimal and may alter the timings that you would observe in standard conditions.
+
+More details on this procedure can be found in the description of the configuration flag [PL_IMPL_AUTO_INSTRUMENT](instrumentation_configuration_cpp.md.html#pl_impl_auto_instrument).
+
+
+The steps to enables the automatic instrumentation of functions are:
+
+**1) Add the compilation flag PL_IMPL_AUTO_INSTRUMENT=1 where `Palanteer` is implemented**
+
+This `Palanteer` flag activates the collection the virtual base address at runtime and adds the implementation of the `GCC` hooks.
+
+**2) Add the following compilation flags on each file to auto-instrument**
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+-g -finstrument-functions -finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These flags add the debug symbols in the executable (whatever the optimization level), enable the addition of the hooks and exclude some files from the auto-instrumentation (the provided exclusion list fits a Debian distribution). <br/>
+Indeed, it is important to not instrument the functions used during the low level event logging to avoid a "Larsen effect". <br/>
+The [PL_IMPL_AUTO_INSTRUMENT section](instrumentation_configuration_cpp.md.html#pl_impl_auto_instrument) discusses this important point with more details.
+
+**3) Add the "-ldl" to the linker command line**
+
+Getting the virtual base address of the program at run time requires calling the `dlsym()` function from the `dl` library.
+
+**4) Generate the lookup *function address->strings* from the ELF binary**
+
+It shall be generated with the external string lookup generation tool, after each new built ELF executable, as the function address are tighly linked to it.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
+./tools/extStringCppParser.py -exe ./build/bin/testprogram  > ./build/bin/testprogram.txt
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! note
+    This tool can create a string lookup including both the strings from parsing the source (external string feature) and the strings from the ELF binary (automatic instrumentation feature)
+
+This lookup is text based, one entry per line, formatted as shown in the example below (see also [Quick C++ external string configuration](#quickc++externalstringconfiguration) in the next section):
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
+@@000000000000ADB0@@evaluatePerformance(plMode, char const*, int)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**5) Provide the lookup path to the viewer**
+
+In the record catalog tab of the viewer, right clicking on the application name proposes to select the lookup *path*. <br/>
+The lookup file pointed by this lookup path is copied at recording time so that the record is associated with this particular lookup for this particular binary. <br/>
+The copied lookup for a particular record can always be replaced: right clicking on the record name proposes such action. This is convenient if the lookup at recording time was not the right one. Generating the lookup inside your build system, in association with the program build, is the best way to prevent any lookup mismatch problem.
+
+If no lookup is provided or a string is not present inside the lookup, only the string hash will be shown instead of the text content (ex: `@@458F1F00DF1C00B1@@`)
+
+<br/>
+When using CMake, the steps **1)** to **4)** can be implemented as:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ make
+# Enable the automatic function instrumentation feature
+add_definitions(-DPL_IMPL_AUTO_INSTRUMENT=1)
+
+# Compilation: add required flags (independent of the optimization level)
+add_compile_options(-g -finstrument-functions -finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/)
+
+# Link:
+# add "dl" to the dependency library list in target_link_libraries(...)
+
+# Command which builds the lookup from the sources (external strings feature) and the binary (auto instrumentation feature)
+# This working example is copied from the testprogram CMakeFile.txt. You shall adapt it by replacing the target "testprogram" with your own, and optionally modify
+# some options of the "extStringCppParser.py" tool as it currently generates the lookup for both the external strings feature and automatic instrumentation, 
+# with a hash salt of zero and a 64 bit hash.
+add_custom_command(TARGET "testprogram" POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/extStringCppParser.py" --exe "$<TARGET_FILE:testprogram>" ${TESTPROGRAM_SRC} > "$<TARGET_FILE:testprogram>.txt"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Generating the string lookup..."
+    )
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! error
+    This feature is supported only on Linux with GCC compiler
+
+!!! tip
+    Clang contains also the same mechanism but unfinished and cannot be used in the context of `Palanteer`. Indeed, it is not possible to exclude any files or functions. <br/>
+    And all functions used during the low level event logging shall be excluded to avoid a fatal "Larsen effect". <br/>
+    Clang support will be added as soon as a usable way is available.
+
 ## Quick C++ external string configuration
 
 The external string feature strips all static strings from the instrumentation and assertions at compile time, so that:
@@ -191,7 +276,7 @@ The external string feature strips all static strings from the instrumentation a
   * the binary size is reduced (`text` or `.rodata` section)
 
 
-**1) Activate the feature by adding the compilation flag PL_EXTERNAL_STRINGS=1**
+**1) Activate the feature by adding the compilation flag PL_EXTERNAL_STRINGS=1 on all instrumented files**
 
 On Linux, you can verify the absence of such static strings with:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
@@ -207,6 +292,9 @@ strings ./bin/testprogram
 ./tools/extStringCppParser.py ./c++/testprogram/testProgram.cpp > testProgramLookup.txt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+!!! note
+    This tool can create a string lookup including both the strings from parsing the source (external string feature) and the strings from the ELF binary (automatic instrumentation feature)
+
 This lookup is text based, one entry per line, formatted as shown in the example below:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
 @@458F1F00DF1C00B1@@Too big command received
@@ -214,8 +302,8 @@ This lookup is text based, one entry per line, formatted as shown in the example
 
 **3a) Register the lookup into the viewer for this program name**
 
-In the record catalog, the contextual menu on the program name proposes to "update the external string lookup". <br/>
-Select the generated lookup file, it will be copied internally and used to decode any record using the external string feature. <br/>
+In the record catalog tab of the viewer, right clicking on the application name proposes to "update pathname of the external strings lookup". <br/>
+The lookup file pointed by this lookup path is copied at recording time. It can always be replaced later: right clicking on the record name proposes such action. <br/>
 If no lookup is provided or a string is not present inside the lookup, only the string hash will be shown instead of the text content (ex: `@@458F1F00DF1C00B1@@`)
 
 **3b) Register this lookup through the scripting python module**

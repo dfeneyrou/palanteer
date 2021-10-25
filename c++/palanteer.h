@@ -161,11 +161,37 @@
 #define PL_IMPL_PRINT_STDERR(msg, isCrash, isLastFromCrash) fprintf(stderr, "%s", msg)
 #endif
 
+// Enable the automatic instrumentation of functions (only GCC). Disabled by default.
+// In addition to setting this Palanteer flag, it is required to add some compiler flags for all files to be auto-instrumented:
+//   * -g     (or equivalent to get debug symbols. This is independent on the optimization level)
+//   * -finstrument-functions
+//   * -finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/   (valid for Debian 11)
+// Note that palanteer.h *must* be excluded to avoid "Larsen" effects. Same for some inlined standard library functions used when logging.
+// The symptom of not properly respecting these constraints is a "segmentation fault" due to a stack overflow.
+// The exclusion list above works at least for a Debian 11 distribution.
+// Some more points shall be taken into account:
+//  * intensive instrumentation may alter the observation of the performances in real conditions
+//  * inlined functions are also instrumented, even if no more present
+//    It is thus recommended to exclude the STL (see exclude file or function list flags, the "/include/c++" part), as it both
+//      floods events due to its code structure, and uses unreadable names
+//  * the mechanism to resolve the function names is the use of external strings (not done at run-time for efficiency reasons).
+//     - The external string tool can be used to extract also the ELF debug symbols, independently of the use of the external string feature.
+//       ex: ./tools/extStringCppParser.py --exe ./bin/testprogram > ./bin/testprogram.txt
+//     - The viewer shall be configured to get the path of the external string file and update it at recording time.
+//     - This lookup shall be generated during the build after the generated ELF, as it is tighly linked to it
+//
+// Warning: Auto instrumentation allows a quick and easy glance at the program behavior. It is great to understand the dynamic of a program.
+// However, the measured timings shall be considered with caution due to the potentially heavy and non-optimal logging altering
+//   the dynamic behavior of the program.
+#ifndef PL_IMPL_AUTO_INSTRUMENT
+#define PL_IMPL_AUTO_INSTRUMENT 0
+#endif
+
 #endif // ifdef PL_IMPLEMENTATION
 
 
 // Configuration in the section below is applicable in all files where Palanteer is used
-// So declare the customisations __in all files__ or modify this file.
+// So declare the customisations __in all files__ (not scalable), encapsulate this file (best), or modify this file.
 
 // A "compact" software implies the following constraints:
 //  - not more than 65535 unique strings
@@ -697,11 +723,13 @@ void plDetachVirtualThread(bool isSuspended);
 #define PL_UNLIKELY(x) (__builtin_expect(!!(x), 0))
 #define PL_NOINLINE_PRE
 #define PL_NOINLINE_POST __attribute__ ((noinline))
+#define PL_NOINSTRUMENT  __attribute__ ((no_instrument_function))
 #else
 #define PL_LIKELY(x)   (x)
 #define PL_UNLIKELY(x) (x)
 #define PL_NOINLINE_PRE
 #define PL_NOINLINE_POST
+#define PL_NOINSTRUMENT
 #endif
 
 #define PL_UNUSED(x) ((void)(x))
@@ -1429,7 +1457,7 @@ namespace plPriv {
     // Note: The effective clock frequency will be measured/calibrated at initialization time. This is also convenient for custom clock getter.
     inline clockType_t getClockTick(void) {
         // RDTSC instruction is ~7x times more precise than the std::chrono or Windows' QPC timer.
-        //  And nowadays it is reliable (it was not the case on older processors were its frequency was changing with power plans).
+        //  And nowadays it is reliable (it was not the case on older processors where its frequency was changing with power plans).
         //  The potential wrong instruction order (no fence here) is considered as noise on the timestamp, with the benefit of a much smaller average resolution.
 #if defined(_WIN32)
         // Windows
@@ -1437,7 +1465,7 @@ namespace plPriv {
         return (clockType_t) int64_t(__rdtsc());
 #elif defined(__x86_64__)
         // Linux
-        // Kernel events can be configured to use it too, so no extra work
+        // Kernel events can be configured to use RDTSC too, so no extra work on converting clocks under Linux
         uint64_t low, high;
         asm volatile ("rdtsc" : "=a" (low), "=d" (high));
 #if PL_SHORT_DATE==1
@@ -1975,10 +2003,15 @@ namespace plPriv {
 
 #endif // if PL_IMPL_STACKTRACE==1
 
-// Networking
-// ==========
+
 #if PL_NOCONTROL==0 || PL_NOEVENT==0
 
+#if PL_IMPL_AUTO_INSTRUMENT==1 && defined(__unix__)
+#include <dlfcn.h>  // For Dl_info and dladdr
+#endif
+
+// Networking
+// ==========
 #if defined(__unix__)
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -2441,6 +2474,10 @@ namespace plPriv {
         uint32_t      stringUniqueId = 0;
         uint32_t      magic = 1;
         double        maxSendingLatencyNs = 100000000.;
+        // Automatic instrumentation
+#if PL_IMPL_AUTO_INSTRUMENT==1
+        char* baseVirtualAddress = 0;
+#endif
         // Communication buffers
 #if PL_NOCONTROL==0
         uint8_t reqBuffer[PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY];
@@ -3893,6 +3930,35 @@ void operator delete[](void *ptr, const std::nothrow_t &) throw() { PL_DELETE_(p
 #endif // if PL_NOEVENT==0 && PL_IMPL_OVERLOAD_NEW_DELETE==1
 
 
+// =======================================================================================================
+// [PUBLIC IMPLEMENTATION] Automatic function instrumentation hooks
+// =======================================================================================================
+
+#if PL_NOEVENT==0 && PL_IMPL_AUTO_INSTRUMENT==1
+
+extern "C"
+void PL_NOINSTRUMENT
+__cyg_profile_func_enter (void* funcAddress, void* caller) {
+    (void)caller;
+    if(PL_IS_ENABLED_() && plPriv::implCtx.baseVirtualAddress!=0) {
+        plPriv::hashStr_t baseHash = (plPriv::hashStr_t)((char*)funcAddress-plPriv::implCtx.baseVirtualAddress+PL_HASH_SALT);
+        plPriv::eventLogRaw(baseHash+1, baseHash, 0, 0, 0, PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC());
+    }
+}
+
+
+extern "C"
+void PL_NOINSTRUMENT
+__cyg_profile_func_exit (void* funcAddress, void* caller)  {
+    (void)caller;
+    if(PL_IS_ENABLED_() && plPriv::implCtx.baseVirtualAddress!=0) {
+        plPriv::hashStr_t baseHash = (plPriv::hashStr_t)((char*)funcAddress-plPriv::implCtx.baseVirtualAddress+PL_HASH_SALT);
+        plPriv::eventLogRaw(baseHash+1, baseHash, 0, 0, 0, PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_END | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC());
+    }
+}
+
+#endif // if PL_NOEVENT==0 && PL_IMPL_AUTO_INSTRUMENT==1
+
 
 // =======================================================================================================
 // [PUBLIC IMPLEMENTATION] Public API implementation for event logging
@@ -3941,6 +4007,10 @@ void
 plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doWaitForServerConnection)
 {
     auto& ic = plPriv::implCtx;
+    ic.mode = mode;
+    (void)buildName;
+
+    // Sanity
     static_assert(PL_MAX_THREAD_QTY<=254, "Maximum supported thread quantity reached (limitation on exchange structure side)");
     static_assert(PL_IMPL_COLLECTION_BUFFER_BYTE_QTY>(int)2*sizeof(plPriv::EventInt), "Too small collection buffer"); // Much more expected anyway...
     static_assert(PL_IMPL_DYN_STRING_QTY>=32, "Invalid configuration");  // Stack trace requires dynamic strings
@@ -3951,9 +4021,12 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
     static_assert(sizeof(plPriv::EventExt)==24, "Bad size of full exchange event structure");
 #endif
     plAssert(!ic.allocCollectBuffer, "Double call to 'plInitAndStart' detected");
+#if PL_IMPL_AUTO_INSTRUMENT==1 && (!defined(__GNUC__) || defined(__clang__))
+    // Clang misses the file exclusion feature (-finstrument-functions-exclude-file-list) which is mandatory to avoid
+    // "Larsen effect" by excluding palanteer.h and all functions from the standard library used when logging (atomic, thread...).
+    #error "Sorry, auto instrumentation is supported only for GCC"
 #endif
-    ic.mode = mode;
-    (void)buildName;
+#endif
 
     // Register POSIX signals
     memset(ic.signalsOldHandlers, 0, sizeof(ic.signalsOldHandlers));
@@ -3993,6 +4066,14 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
 
 #if PL_NOEVENT==0 && PL_VIRTUAL_THREADS==1
     memset(ic.vThreadCtx, 0, sizeof(ic.vThreadCtx));  // Initialize the virtual thread contexts
+#endif
+
+#if PL_IMPL_AUTO_INSTRUMENT==1 && defined(__unix__) && (PL_NOCONTROL==0 || PL_NOEVENT==0)
+    // Initialize the automatic instrumentation mode (gcc only) with -finstrument-functions
+    Dl_info info;
+    if(dladdr((void*)&plInitAndStart, &info)) {
+        ic.baseVirtualAddress = (char*)info.dli_fbase;
+    }
 #endif
 
 #if PL_NOCONTROL==0 || PL_NOEVENT==0
@@ -4229,7 +4310,7 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
         ic.txIsStarted = false;
         ic.threadServerTx = new std::thread(plPriv::transmitToServer);
         std::unique_lock<std::mutex> lk(ic.threadInitMx);
-        ic.threadInitCv.wait(lk, [&ic] { return ic.txIsStarted; });
+        ic.threadInitCv.wait(lk, [&] { return ic.txIsStarted; });
     }
 
 #if PL_NOCONTROL==0
@@ -4240,7 +4321,7 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
         ic.rxIsStarted = false;
         ic.threadServerRx = new std::thread(plPriv::receiveFromServer);
         std::unique_lock<std::mutex> lk(ic.threadInitMx);
-        ic.threadInitCv.wait(lk, [&ic] { return ic.rxIsStarted; });
+        ic.threadInitCv.wait(lk, [&] { return ic.rxIsStarted; });
     }
 #endif // if PL_NOCONTROL==0
 

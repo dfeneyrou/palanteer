@@ -18,7 +18,7 @@ file(GLOB DEPS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/setup.py.in
 # Create the setup.py on the build side (copy of the (manual usage) setup.py but with path automatically set by cmake)
 configure_file(${SETUP_PY_IN} ${SETUP_PY})
 
-# Command which build and install the library.
+# Command which builds and installs the library.
 # Officially, it creates an artificial "dependency_timestamp" file, which is easier to track than the real output of the build
 add_custom_command(OUTPUT ${FAKE_OUTPUT}
   COMMAND ${Python3_EXECUTABLE} ${SETUP_PY} bdist_wheel

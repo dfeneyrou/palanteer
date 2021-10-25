@@ -366,7 +366,6 @@ vwMain::drawCatalog(void)
 
         // Get some information on this application
         bool doOpenAppMenu            = false;
-        bool doOpenDeleteExtStrings   = false;
         bool doOpenDeleteAppAll       = false;
         bool doOpenDeleteAppAllwoNick = false;
         bool doOpenKeepLast           = false;
@@ -374,8 +373,10 @@ vwMain::drawCatalog(void)
         int  appRecordTotalSize   = 0;
         bool keepOnlyLastRecordState;
         int  keepOnlyLastRecordQty;
+        bsString appExtStringsPath;
 
         getConfig().getKeepOnlyLastNRecord(appInfo.name, keepOnlyLastRecordState, keepOnlyLastRecordQty);
+        getConfig().getExtStringsPath(appInfo.name, appExtStringsPath);
         for(RecordInfos& ri : appInfo.records) {
             if(ri.nickname[0]!=0) ++countAppWithNickname;
             appRecordTotalSize += ri.size;
@@ -465,6 +466,16 @@ vwMain::drawCatalog(void)
                         dirty();
                     }
 
+                    // External string lookup update
+                    if(!appExtStringsPath.empty()) {
+                        ImGui::Separator();
+                        if(ImGui::MenuItem("Update the external strings lookup content"))  {
+                            osCopyFile(appExtStringsPath, ri.path.subString(0, ri.path.size()-4)+"_externalStrings");
+                            ImGui::CloseCurrentPopup();
+                        }
+                        if(ImGui::IsItemHovered() && !appExtStringsPath.empty()) ImGui::SetTooltip("from %s", appExtStringsPath.toChar());
+                    }
+
                     // End the contextual menu
                     ImGui::EndPopup();
                 }
@@ -535,16 +546,6 @@ vwMain::drawCatalog(void)
             ImGui::Separator();
             ImGui::Separator();
 
-            // External string
-            if(ImGui::MenuItem("Update external strings lookup")) {
-                _fileDialogExtStrings->open(getConfig().getLastFileExtStringsPath());
-                dirty();
-            }
-            if(osFileExists(appInfo.path+ PL_DIR_SEP "externalStrings") && ImGui::MenuItem("Remove external strings lookup")) {
-                doOpenDeleteExtStrings = true;
-            }
-            ImGui::Separator();
-
             // Keep only the last N records without nickname
             ImGui::Checkbox("Keep only last", &keepOnlyLastRecordState); ImGui::SameLine();
             ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000").x);
@@ -563,28 +564,25 @@ vwMain::drawCatalog(void)
             if(ImGui::MenuItem("Delete all records")) doOpenDeleteAppAll = true;
 
 
+            // External string
+            ImGui::Separator();
+            ImGui::Separator();
+            if(ImGui::MenuItem(appExtStringsPath.empty()? "Set pathname of the external strings lookup" : "Update pathname of the external strings lookup")) {
+                _fileDialogExtStrings->open(getConfig().getLastFileExtStringsPath());
+                dirty();
+            }
+            if(ImGui::IsItemHovered() && !appExtStringsPath.empty()) ImGui::SetTooltip("%s", appExtStringsPath.toChar());
+
+            if(!appExtStringsPath.empty() && ImGui::MenuItem("Unset pathname of the  external strings lookup")) {
+                getConfig().setExtStringsPath(appInfo.name, "");
+            }
+
             // Collapse/open headers
             ImGui::Separator();
             ImGui::Separator();
             if(ImGui::MenuItem("Open all headers"))     nextHeaderAction = 1;
             if(ImGui::MenuItem("Collapse all headers")) nextHeaderAction = 2;
 
-            ImGui::EndPopup();
-        }
-
-        // Modal popup to confirm the deletion of the external string lookup
-        if(doOpenDeleteExtStrings) ImGui::OpenPopup("Delete the external string lookup");
-        if(ImGui::BeginPopupModal("Delete the external string lookup", 0, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::Text("Really delete the the external string lookup?\n\n");
-            ImGui::Separator();
-            if(ImGui::Button("OK", ImVec2(120, 0))) {
-                osRemoveFile(appInfo.path+ PL_DIR_SEP "externalStrings");
-                plMarker("menu", "Remove external string file");
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if(ImGui::Button("Cancel", ImVec2(120, 0))) { ImGui::CloseCurrentPopup(); }
-            ImGui::SetItemDefaultFocus();
             ImGui::EndPopup();
         }
 
@@ -641,9 +639,8 @@ vwMain::drawCatalog(void)
         // Handle the external string file dialog
         if(_fileDialogExtStrings->draw(getConfig().getFontSize())) dirty();
         if(_fileDialogExtStrings->hasResult()) {
-            if(updateExternalStringsFile(appInfo.path, _fileDialogExtStrings->getResult())) {
-                getConfig().setLastFileExtStringsPath(_fileDialogExtStrings->getResult());
-            }
+            getConfig().setExtStringsPath(appInfo.name, _fileDialogExtStrings->getResult());
+            getConfig().setLastFileExtStringsPath(_fileDialogExtStrings->getResult());
             _fileDialogExtStrings->clearResult();
         }
 

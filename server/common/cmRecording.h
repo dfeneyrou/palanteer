@@ -34,7 +34,7 @@ public:
 
     // Core methods
     cmRecord* beginRecord(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
-                          const cmTlvs& options, int cacheMBytes, bsString& errorMsg, bool doCreateLiveRecord);
+                          const cmTlvs& options, int cacheMBytes, const bsString& recordFilename, bool doCreateLiveRecord, bsString& errorMsg);
     void endRecord(void);
     bool isRecording(void) { return _recFd!=0; }
     const bsString& storeNewString(const bsString& newString, u64 hash);
@@ -43,10 +43,6 @@ public:
     const bsString& getRecordPath(void) const { return _recordPath; }
 
     // Accessors
-    void setRecordingConfig(bool isEnabled, const char* forcedFilename) {
-        _isRecordingEnabled   = isEnabled;
-        _forcedRecordFilename = forcedFilename;
-    }
     const bsString& getRecordsDataPath(void) const { return _storagePath; }
     void doPauseStoring(bool state);
     u64  getThreadNameHash(int threadId) const { return _recThreads[threadId].threadUniqueHash; }
@@ -63,9 +59,7 @@ private:
     cmRecording& operator=(cmRecording other);
 
     cmInterface* _itf = 0;
-    bool         _isRecordingEnabled = true; // Enabled by default (viewer case)
     bool         _doForwardEvents = false;
-    bsString     _forcedRecordFilename;      // Empty means automatic naming
 
     // Reception
     bsString         _storagePath;

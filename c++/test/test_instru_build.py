@@ -155,28 +155,28 @@ def test_build_instru21():
     build_target("testprogram", test_build_instru21.__doc__)
 
 
-# Other features with deactivated Palanter
+# Other features with deactivated Palanteer
 @declare_test("build instrumentation")
 def test_build_instru22():
     """USE_PL=0 PL_CONTEXT_SWITCH=0"""
     build_target("testprogram", test_build_instru22.__doc__)
 
 
-# Other features with deactivated Palanter
+# Other features with deactivated Palanteer
 @declare_test("build instrumentation")
 def test_build_instru23():
     """USE_PL=0 PL_OVERLOAD_NEW_DELETE=0"""
     build_target("testprogram", test_build_instru23.__doc__)
 
 
-# Other features with deactivated Palanter
+# Other features with deactivated Palanteer
 @declare_test("build instrumentation")
 def test_build_instru24():
     """USE_PL=0 PL_CATCH_SIGNALS=0"""
     build_target("testprogram", test_build_instru24.__doc__)
 
 
-# Other features with deactivated Palanter
+# Other features with deactivated Palanteer
 @declare_test("build instrumentation")
 def test_build_instru25():
     """USE_PL=0 PL_IMPL_STACKTRACE=0"""
@@ -207,12 +207,41 @@ def test_build_instru28():
 # Short date (32 bits wrapping) feature
 @declare_test("build instrumentation")
 def test_build_instru29():
-    """USE_PL=0 PL_SHORT_DATE=1"""
+    """USE_PL=1 PL_SHORT_DATE=1"""
     build_target("testprogram", test_build_instru29.__doc__)
 
 
 # Compact model feature
 @declare_test("build instrumentation")
 def test_build_instru30():
-    """USE_PL=0 PL_COMPACT_MODEL=1"""
+    """USE_PL=1 PL_COMPACT_MODEL=1"""
     build_target("testprogram", test_build_instru30.__doc__)
+
+
+@declare_test("build instrumentation")
+def test_build_instru31():
+    """USE_PL=0 PL_COMPACT_MODEL=1"""
+    build_target("testprogram", test_build_instru31.__doc__)
+
+
+# Auto instrumentation feature
+@declare_test("build instrumentation")
+def test_build_instru32():
+    """USE_PL=1 PL_IMPL_AUTO_INSTRUMENT=1"""
+    if sys.platform == "win32":
+        LOG(
+            "Skipped: auto instrumentation is currently supported only with GCC compiler"
+        )
+        return
+    build_target("testprogram", test_build_instru32.__doc__)
+
+
+@declare_test("build instrumentation")
+def test_build_instru33():
+    """USE_PL=0 PL_IMPL_AUTO_INSTRUMENT=1"""
+    if sys.platform == "win32":
+        LOG(
+            "Skipped: auto instrumentation is currently supported only with GCC compiler"
+        )
+        return
+    build_target("testprogram", test_build_instru33.__doc__)
