@@ -12,6 +12,7 @@ Simple code instrumentation, mostly automatic in Python, delivers powerful featu
     - compile-time hashing of static strings to minimize their cost
     - compile-time striping of all instrumentation static strings
     - enhanced assertions, stack trace dump...
+    - automatic code instrumentation (Linux GCC only)
   - **Python**:
     - Automatic instrumentation of functions enter/leave, memory allocations, raised exceptions, garbage collection runs
     - Seamless support of multithreading, asyncio/gevent
