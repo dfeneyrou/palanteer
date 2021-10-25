@@ -116,13 +116,26 @@ jobs:
     - name: Install dependencies
       shell: cmd
       run: python -m pip install --upgrade pip setuptools wheel
+    - name: Create a wheel package instrumentation module for python 3.9
+      run: |
+          cd python
+          python setup.py bdist_wheel
+          cd ..\server\scripting
+          python setup.py bdist_wheel
+
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.10'
+    - name: Install dependencies
+      shell: cmd
+      run: python -m pip install --upgrade pip setuptools wheel
     - name: Create a source package for python instrumentation module
       run: |
           cd python
           python setup.py sdist
           cd ..\server\scripting
           python setup.py sdist
-    - name: Create a wheel package instrumentation module for python 3.9
+    - name: Create a wheel package instrumentation module for python 3.10
       run: |
           cd python
           python setup.py bdist_wheel

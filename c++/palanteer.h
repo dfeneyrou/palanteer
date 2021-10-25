@@ -1516,7 +1516,7 @@ namespace plPriv {
 
     // Dynamic string formatter (just to handle the case with and without arguments)
     inline void formatDynString(char* dynString, const char* format) {
-        int minSize = strlen(format)+1;
+        int minSize = (int)(strlen(format)+1);
         if(minSize>PL_DYN_STRING_MAX_SIZE) minSize = PL_DYN_STRING_MAX_SIZE;
         memcpy(dynString, format, minSize);
         dynString[PL_DYN_STRING_MAX_SIZE-1] = 0;

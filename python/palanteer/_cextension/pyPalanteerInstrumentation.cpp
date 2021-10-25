@@ -114,7 +114,7 @@ plPriv::hashStr_t gFilterOutFunctionDb[] = {
 
 
 // Python compatibility
-#if PY_VERSION_HEX<0x031000B1
+#if PY_VERSION_HEX<0x030a00b1
   #define USE_TRACING_ACCESS use_tracing
 #else
   #define USE_TRACING_ACCESS cframe->use_tracing
@@ -517,7 +517,7 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
                     coroutineNameIdx = (int)gCoroutineNames.size();
                     gCoroutineNameToIdx.insert(coroutineNameHash, coroutineNameIdx);
                     gCoroutineNames.push_back(CoroutineNaming());
-                    int minSize = strlen(name)+1;
+                    int minSize = (int)(strlen(name)+1);
                     if(minSize>PL_DYN_STRING_MAX_SIZE) minSize = PL_DYN_STRING_MAX_SIZE;
                     memcpy(gCoroutineNames.back().name, name, minSize);
                     gCoroutineNames.back().name[PL_DYN_STRING_MAX_SIZE-1] = 0;
