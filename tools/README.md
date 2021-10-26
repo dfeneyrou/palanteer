@@ -10,7 +10,7 @@ and also the filenames, and output them in a "lookup" file that the server under
 
 **extStringDecoder.py** <br/>
 This tool is associated to the "external string" feature of the C++ instrumentation library. <br/>
-It simply replaces the hashs in the input stream thanks to the provided lookup file. <br/>
+It simply replaces the hashes in the input stream thanks to the provided lookup file. <br/>
 Its typical usage is to "decode" assertions from the console, when using the "external string" feature.
 
 **palanteer_stub.py** <br/>

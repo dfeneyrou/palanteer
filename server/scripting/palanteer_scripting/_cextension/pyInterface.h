@@ -45,9 +45,14 @@ struct pyiEvent {
     u64 value;  // Placeholder to cast in the corresponding type
 };
 
+struct pyiPath {
+    const char* name;
+    u64         hash;
+};
+
 struct pyiSpec {
-    const char** path;
-    int pathQty;
+    pyiPath* path;
+    int      pathQty;
 };
 
 struct pyiCli {

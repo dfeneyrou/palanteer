@@ -150,11 +150,9 @@ pyMainItf::notifyRecordStarted(const bsString& appName, const bsString& buildNam
 
     std::lock_guard<std::mutex> lk(_mx);
     // Clean the event specifications, so they can manage the new record
+    // Changing the state of the external strings or using another auto instrumented program requires new specifications (computed hash will change)
     for(Spec& f : _specs) {
-        f.threadHash = 0;
-        for(SpecElemToken& set : f.parentPath) set.hash = 0;
         for(SpecElem& se : f.elems) {
-            for(SpecElemToken& set : se.tokens) set.hash = 0;
             se.resolution = NO_ELEMENTS_SEEN;
         }
         f.parentElemIdx = -1;
@@ -393,7 +391,7 @@ pyMainItf::clearBufferedEvents(void)
 
 
 void
-pyMainItf::addSpec(const char* threadName, pyiSpec* parentPath, pyiSpec* elemArray, int elemQty)
+pyMainItf::addSpec(const char* threadName, u64 threadHash, pyiSpec* parentPath, pyiSpec* elemArray, int elemQty)
 {
     std::lock_guard<std::mutex> lk(_mx);
 
@@ -404,24 +402,25 @@ pyMainItf::addSpec(const char* threadName, pyiSpec* parentPath, pyiSpec* elemArr
 
     // Copy the fields
     f.threadName = threadName;
+    f.threadHash = threadHash;
     f.parentPath.resize(parentPath->pathQty);
     for(int i=0; i<parentPath->pathQty; ++i) {
-        const char* s = parentPath->path[i];
-        if     (!strcmp(s, "."))  f.parentPath[i] = { "", 3 };
-        else if(!strcmp(s, "**")) f.parentPath[i] = { "", 2 };
-        else if(!strcmp(s, "*"))  f.parentPath[i] = { "", 1 };
-        else                      f.parentPath[i] = {  s, 0 };
+        const pyiPath& s = parentPath->path[i];
+        if     (!strcmp(s.name, "."))  f.parentPath[i] = { "", 3 };
+        else if(!strcmp(s.name, "**")) f.parentPath[i] = { "", 2 };
+        else if(!strcmp(s.name, "*"))  f.parentPath[i] = { "", 1 };
+        else                           f.parentPath[i] = { s.name, 0, s.hash };
     }
     f.elems.resize(elemQty);
     for(int j=0; j<elemQty; ++j) {
         f.elems[j].resolution = NO_ELEMENTS_SEEN;
         f.elems[j].tokens.resize(elemArray[j].pathQty);
         for(int i=0; i<elemArray[j].pathQty; ++i) {
-            const char* s = elemArray[j].path[i];
-            if     (!strcmp(s, "."))  f.elems[j].tokens[i] = { "", 3 };
-            else if(!strcmp(s, "**")) f.elems[j].tokens[i] = { "", 2 };
-            else if(!strcmp(s, "*"))  f.elems[j].tokens[i] = { "", 1 };
-            else                      f.elems[j].tokens[i] = {  s, 0 };
+            const pyiPath& s = elemArray[j].path[i];
+            if     (!strcmp(s.name, "."))  f.elems[j].tokens[i] = { "", 3 };
+            else if(!strcmp(s.name, "**")) f.elems[j].tokens[i] = { "", 2 };
+            else if(!strcmp(s.name, "*"))  f.elems[j].tokens[i] = { "", 1 };
+            else                           f.elems[j].tokens[i] = { s.name, 0, s.hash };
        }
     }
 
@@ -445,16 +444,25 @@ void
 pyMainItf::computeSpecHashes(Spec& f)
 {
     // Thread name
-    if(f.threadName.empty()) f.threadHash = 0;
-    else f.threadHash = _isStringHashShort? bsHash32String(f.threadName.toChar()) : bsHashString(f.threadName.toChar());
+    if(f.threadName.empty()) {
+        f.threadHash = 0;
+    }
+    else if(f.threadHash==0) {
+        f.threadHash = _isStringHashShort? bsHash32String(f.threadName.toChar()) : bsHashString(f.threadName.toChar());
+    }
+
     // Parent path
     for(SpecElemToken& set : f.parentPath) {
-        set.hash = _isStringHashShort? bsHash32String(set.name.toChar()) : bsHashString(set.name.toChar());
+        if(set.hash==0) {
+            set.hash = _isStringHashShort? bsHash32String(set.name.toChar()) : bsHashString(set.name.toChar());
+        }
     }
     // Events path
     for(SpecElem& se : f.elems) {
         for(SpecElemToken& set : se.tokens) {
-            set.hash = _isStringHashShort? bsHash32String(set.name.toChar()) : bsHashString(set.name.toChar());
+            if(set.hash==0) {
+                set.hash = _isStringHashShort? bsHash32String(set.name.toChar()) : bsHashString(set.name.toChar());
+            }
         }
     }
 }

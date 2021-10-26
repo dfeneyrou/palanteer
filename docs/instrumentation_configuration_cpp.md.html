@@ -587,7 +587,7 @@ To be compatible with the "compact model", the following constraints shall be fu
 
 In this mode, the following settings are forced:
   - `PL_SHORT_DATE` is set to 1 (32 bits clock)
-  - `PL_SHORT_STRING_HASH` is set to 1 (32 bits string hashs)
+  - `PL_SHORT_STRING_HASH` is set to 1 (32 bits string hashes)
 
 The default value is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -685,7 +685,7 @@ The following points shall be checked:
 <br/>
 **The external string lookup tool is saying that I have "collisions"**
 
-It may happen statistically that different strings are associated to the same hash value, especially with short hashs on 32 bits. <br/>
+It may happen statistically that different strings are associated to the same hash value, especially with short hashes on 32 bits. <br/>
 It is called a "hash collision".
 
 In this case, the collided strings will simply be displayed with the value of the first one which has been encountered. <br/>

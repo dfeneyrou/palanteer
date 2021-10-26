@@ -2,6 +2,7 @@
 
 # System import
 import time
+import glob
 
 # Local import
 from testframework import *  # Framework (Decorators, LOG, CHECK, KPI)
@@ -14,6 +15,11 @@ from palanteer_scripting import *  # Palanteer API
 
 # Useful variables
 spec_add_fruit = EvtSpec(thread="Control", events=["Add fruit"])
+
+
+@clean_suite("config instrumentation")
+def clean_config_instrumentation():
+    set_external_strings()
 
 
 @declare_test("config instrumentation")
@@ -432,7 +438,24 @@ def test_external_short_string():
     process_stop()
 
     # With decoding
-    set_external_strings(lkup={0x5FD6210E: "Add fruit"})
+
+    # Create the lookup
+    rootPath = os.path.join("..", "..", "..")
+    res = run_cmd(
+        [
+            sys.executable,
+            os.path.join(rootPath, "tools", "extStringCppParser.py"),
+            "--hash32",
+        ]
+        + glob.glob(os.path.join(rootPath, "c++", "testprogram", "*.cpp"))
+    )
+    fh = open("./bin/testprogram.txt", "w")
+    fh.write(res.stdout)
+    fh.close()
+
+    # Set the external string
+    set_external_strings("./bin/testprogram.txt")
+
     try:
         launch_testprogram()
         CHECK(True, "Connection established")
@@ -445,6 +468,7 @@ def test_external_short_string():
         "The strings of the path are no more obfuscated",
     )
     process_stop()
+    set_external_strings()
 
 
 @declare_test("config instrumentation")
@@ -475,7 +499,7 @@ def test_compactmodel():
     process_stop()
 
 
-# @declare_test("config instrumentation")  NOT YET FUNCTIONAL
+@declare_test("config instrumentation")
 def test_autoinstrumentation():
     """Config auto instrumentation PL_IMPL_AUTO_INSTRUMENT=1"""
     if sys.platform == "win32":
@@ -489,6 +513,7 @@ def test_autoinstrumentation():
     # Create the lookup
     res = run_cmd(
         [
+            sys.executable,
             os.path.join("..", "..", "..", "tools") + "/extStringCppParser.py",
             "--exe",
             "./bin/testprogram",
@@ -499,18 +524,21 @@ def test_autoinstrumentation():
     fh.close()
 
     # Set the external string
-    # @#BUG Test is failing due to the spec not going through the inversed hash
     set_external_strings("./bin/testprogram.txt")
 
-    data_configure_events(EvtSpec("RandomLCM::getNext()"))
+    data_configure_events(
+        EvtSpec("RandomLCM::getNext()")
+    )  # This symbol is present only in the auto-instrumented version
     try:
         launch_testprogram()
         CHECK(True, "Connection established")
     except ConnectionError:
         CHECK(False, "No connection")
 
+    events = data_collect_events(timeout_sec=2.0)
     CHECK(
-        data_collect_events(timeout_sec=2.0),
+        events,
         "Auto instrumented function related events are received",
     )
     process_stop()
+    set_external_strings()

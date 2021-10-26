@@ -152,8 +152,11 @@ class EvtSpec:
     """Describes a subset of events to capture"""
 
     def __init__(self, events, thread=None, parent=None):
+        # Hash will be overwritten before sending to the extension
+        # In the common case, a null hash is sent as we cannot compute it from the string content without knowing
+        # the hash size and salt. These null hashes will be recomputed once this info is known.
+        # Only the strings mentioned in the external strings lookup will be non-zero and used as is (no recomputation)
         self.threadName = thread if thread else ""
-        self.tokenAlloc = []  # To avoid garbage collection issues...
         # Parent
         self.parentSpec = self._extractElemPath(parent)
         # Elems
@@ -186,7 +189,7 @@ class EvtSpec:
                 result.append(t)
 
         # Beginning with "./**" voids these 2 terms
-        if len(result) > 2 and result[0] == "." and result[1] == "**":
+        while len(result) > 2 and result[0] == "." and result[1] == "**":
             result = result[2:]
         return tuple(result)
 
@@ -258,7 +261,8 @@ class _EvtContext:
         self.lock = threading.Lock()
         self.wake_from_events = threading.Event()
         self.specs = []  # Persistent
-        self.lkup_hash_to_external_string_value = {}
+        self.lkup_hash_to_external_string_value = {}  # Recording string decoding lookup
+        self.lkup_external_string_value_to_hash = {}  # Spec string to hash lookup
         self.reset()
 
     def reset(self):
@@ -484,6 +488,11 @@ def set_external_strings(filename=None, lkup={}):
                     hash_value, str_value = int(m.group(1), 16), m.group(2)
                     lkup[hash_value] = str_value
         _event_ctx.lkup_hash_to_external_string_value.update(lkup)
+
+    # Compute the inverse lookup (to convert the event specification)
+    _event_ctx.lkup_external_string_value_to_hash = {}
+    for k, v in _event_ctx.lkup_hash_to_external_string_value.items():
+        _event_ctx.lkup_external_string_value_to_hash[v] = k
 
 
 def hash_string(s, is_short_hash=False):
@@ -897,8 +906,33 @@ def data_configure_events(specs):
         specs = [specs]
 
     for specId, spec in enumerate(specs):
+        # Associate the string hashes from the external string lookup, or 0 to compute then later
+        # In the common case, a null hash is sent as we cannot compute it from the string content without knowing
+        # the hash size and salt. These null hashes will be recomputed once this info is known
+        # Only the strings mentioned in the external strings lookup will be non-zero and used as is (no recomputation)
+        updatedParentSpec = tuple(
+            [
+                (ps, _event_ctx.lkup_external_string_value_to_hash.get(ps, 0))
+                for ps in spec.parentSpec
+            ]
+        )
+        updatedElemSpec = []
+        for ec in spec.elemSpec:
+            updatedElemSpec.append(
+                tuple(
+                    [
+                        (es, _event_ctx.lkup_external_string_value_to_hash.get(es, 0))
+                        for es in ec
+                    ]
+                )
+            )
+
+        # Send the spec to the extension (which handles the recording and event flow)
         palanteer_scripting._cextension.add_spec(
-            spec.threadName, spec.parentSpec, spec.elemSpec
+            spec.threadName,
+            _event_ctx.lkup_external_string_value_to_hash.get(spec.threadName, 0),
+            updatedParentSpec,
+            updatedElemSpec,
         )
         _event_ctx.specs.append(spec)
 

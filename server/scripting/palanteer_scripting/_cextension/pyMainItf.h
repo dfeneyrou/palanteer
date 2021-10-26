@@ -45,7 +45,7 @@ public:
     bool cli(const bsVec<bsString>& commands) { return _live->remoteCli(commands); }
     void clearAllSpecs(void);
     void clearBufferedEvents(void);
-    void addSpec(const char* threadName, pyiSpec* parentPath, pyiSpec* elemArray, int elemQty);
+    void addSpec(const char* threadName, u64 threadHash, pyiSpec* parentPath, pyiSpec* elemArray, int elemQty);
     void setRecordFilename(const char* recordFilename);  // Zero means no recording
     void getUnresolvedElemInfos(pyiDebugSpecInfo** infoArray, int* infoQty);
 

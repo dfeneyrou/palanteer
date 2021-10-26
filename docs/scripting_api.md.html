@@ -22,12 +22,12 @@ Some typical usages are:
  - monitoring
  - ...
 
-This API aims at being simple to use. As multi-threading would introduce a lot of complexity for few benefits, calls are synchronous and poll rather than blocking.
+This API aims at being simple to use. As multi-threading would introduce a lot of complexity for few benefits, calls are synchronous and work through polling rather than blocking APIs.
 
 !!!
     For a proper usage of monitoring in production, it is recommended to:
-     - use a light instrumentation (using groups in C++, with only manual instrumentation in Python) to maintain the optimal program performances and limit the network flow
-     - not record in a file at the same time. For ever-lasting runs, the limit of 2 billion events is bound to be reached.
+     - use a light instrumentation (i.e. manual instrumentation) to maintain the optimal program performances and limit the network flow
+     - not record in a file at the same time. Indeed, for ever-lasting runs, the limit of 2 billion events is bound to be reached.
 
 !!! warning
     The module is not thread-safe, it is up to the user to add protections if multi-threading is really required.
@@ -101,20 +101,27 @@ def uninitialize_scripting()
 
 ### set_external_strings
 
-This function sets the lookup to convert an obfuscated strings into the original one.
-
-It installs the union of the two sources, from a file and from a Python dictionary. <br/>
-The lookup generation is explained [here](getting_started.md.html#quickc++externalstringconfiguration).
-
-The string resolution is done at string reception time, so it is advised to install it before running a program. <br/>
+This function sets the lookup to recover the original content of obfuscated strings. <br/>
+The lookup generation is explained [here](getting_started.md.html#quickc++externalstringconfiguration). <br/>
 The lookup is persistent until another one is installed.
+
+The string resolution based on this lookup is done at two moments:
+ 1. when configuring the event specifications, to convert the strings into a hash (indeed, only string hashes are used internally for comparison)
+   - for the C++ functions auto-instrumentation, this lookup is mandatory for scripting based on function names
+   - for the external strings feature, using the lookup could be skipped, as the hash could be computed from the string content (knowing the hash size and the salt). <br/>
+     But as the C++ functions auto-instrumentation may be coupled with the external strings features, it is kept as is for consistency reasons.
+ 1. when receiving a string from the program
+
+For these reasons, the string lookup shall be installed before configuring the event specification and running the program.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
 # filename: the filename which contains the lookup content (text format)
-# lkup: a Python 'dict'
+# lkup: a Python 'dict' with integer keys and string value
 def set_external_strings(filename=None, lkup={})
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If the two parameters are provided, the final lookup is the union of the file content and the Python dictionary. <br/>
 
 An example of call is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
@@ -122,9 +129,9 @@ set_external_strings("lookup.txt")
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!!
-    Scripts work with hashed strings so without any lookup requirement. <br/>
-    Even CLI calls are functional as the parameter specification is not obfuscated on program side. Moreover, the CLI answers are sent in clear because they are dynamic strings. <br/>
-    So, registering a string lookup with this function is useful mainly for developers when debugging scripts, as non-obfuscated strings are required.
+    For pure external string feature (i.e. without C++ auto-instrumentation), scripts work directly, without requiring any lookup. Indeed, the string hashes from the event specifications are computed internally with the right hash size and hash salt retrieved from the observed program. <br/>
+    CLI calls are also directly functional as the parameter specification is not obfuscated on program side (because it is parsed to determine the CLI syntax). Moreover, the CLI answers are sent in clear because they are dynamic strings. <br/>
+    In this particular case, registering a strings lookup is useful mainly for developers when debugging scripts, as non-obfuscated strings are required to read the received event path.
 
 
 ## Process

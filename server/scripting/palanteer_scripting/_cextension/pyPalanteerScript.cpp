@@ -423,27 +423,38 @@ addSpec(PyObject* Py_UNUSED(self), PyObject* args)
 {
     // Parse the parameters
     const char* threadName = 0;
-    PyObject* objParentPath, *objElemArray;
-    if(!PyArg_ParseTuple(args, "sOO", &threadName, &objParentPath, &objElemArray)) {
+    u64         threadHash = 0LL;
+    PyObject*   objParentPath, *objElemArray;
+    if(!PyArg_ParseTuple(args, "sKOO", &threadName, &threadHash, &objParentPath, &objElemArray)) {
         PyErr_SetString(PyExc_TypeError, "Unable to decode the parameters.");
         return 0;
     }
 
     // Parse the parent path (tuple of strings)
-    pyiSpec parentPath = {0, 0};
     if(!PyTuple_Check(objParentPath)) {
-        PyErr_SetString(PyExc_TypeError, "Parent path shall be a tuple of strings.");
+        PyErr_SetString(PyExc_TypeError, "Parent path shall be a tuple.");
         return 0;
     }
+    pyiSpec parentPath = {0, 0};
     parentPath.pathQty = (int)PyTuple_Size(objParentPath);
-    parentPath.path = (const char**) alloca(parentPath.pathQty*sizeof(const char*));
+    parentPath.path    = (pyiPath*) alloca(parentPath.pathQty*sizeof(pyiPath));
     for(int i=0; i<parentPath.pathQty; ++i) {
         PyObject* pathChunk = PyTuple_GET_ITEM(objParentPath, i);
-        if(!PyUnicode_Check(pathChunk)) {
-            PyErr_SetString(PyExc_TypeError, "Parent path shall be a tuple of strings.");
+
+        if(!PyTuple_Check(pathChunk) || PyTuple_Size(pathChunk)!=2) {
+            PyErr_SetString(PyExc_TypeError, "Parent path's chunk shall be a tuple of size 2.");
             return 0;
         }
-        parentPath.path[i] = PyUnicode_AsUTF8(pathChunk);
+
+        const char* name = 0;
+        u64         hash = 0LL;
+        if(!PyArg_ParseTuple(pathChunk, "sK", &name, &hash)) {
+            PyErr_SetString(PyExc_TypeError, "Unable to decode the parent path chunk tuple.");
+            return 0;
+        }
+
+        parentPath.path[i].name = name;
+        parentPath.path[i].hash = hash;
     }
 
     // Parse the list of elements (list of tuples of strings)
@@ -451,7 +462,7 @@ addSpec(PyObject* Py_UNUSED(self), PyObject* args)
         PyErr_SetString(PyExc_TypeError, "The elem array shall be a list.");
         return 0;
     }
-    int elemQty = (int)PyList_Size(objElemArray);
+    int      elemQty   = (int)PyList_Size(objElemArray);
     pyiSpec* elemArray = (pyiSpec*) alloca(elemQty*sizeof(pyiSpec));
     for(int j=0; j<elemQty; ++j) {
         PyObject* objElem = PyList_GET_ITEM(objElemArray, j);
@@ -461,20 +472,30 @@ addSpec(PyObject* Py_UNUSED(self), PyObject* args)
         }
 
         elemArray[j].pathQty = (int)PyTuple_Size(objElem);
-        elemArray[j].path = (const char**) alloca(elemArray[j].pathQty*sizeof(const char*));
+        elemArray[j].path = (pyiPath*) alloca(elemArray[j].pathQty*sizeof(pyiPath));
         for(int i=0; i<elemArray[j].pathQty; ++i) {
             PyObject* pathChunk = PyTuple_GET_ITEM(objElem, i);
-            if(!PyUnicode_Check(pathChunk)) {
-                PyErr_SetString(PyExc_TypeError, "Parent path shall be a tuple of strings.");
+
+            if(!PyTuple_Check(pathChunk) || PyTuple_Size(pathChunk)!=2) {
+                PyErr_SetString(PyExc_TypeError, "Element's path chunk shall be a tuple of size 2.");
                 return 0;
             }
-            elemArray[j].path[i] = PyUnicode_AsUTF8(pathChunk);
+
+            const char* name = 0;
+            u64         hash = 0LL;
+            if(!PyArg_ParseTuple(pathChunk, "sK", &name, &hash)) {
+                PyErr_SetString(PyExc_TypeError, "Unable to decode the element path chunk tuple.");
+                return 0;
+            }
+
+            elemArray[j].path[i].name = name;
+            elemArray[j].path[i].hash = hash;
         } // End of loop on the path chunks of a spec
     } // End of loop on the specs
 
     // Some locks are taken inside the C code
     Py_BEGIN_ALLOW_THREADS
-    pyPlInstance->addSpec(threadName, &parentPath, elemArray, elemQty);
+    pyPlInstance->addSpec(threadName, threadHash, &parentPath, elemArray, elemQty);
     Py_END_ALLOW_THREADS
 
     Py_RETURN_NONE;
