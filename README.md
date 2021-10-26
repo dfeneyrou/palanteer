@@ -1,6 +1,10 @@
 # Look into Palanteer and get an omniscient view of your program
 
+[![Build Status](https://github.com/dfeneyrou/palanteer/workflows/build/badge.svg)](https://github.com/dfeneyrou/palanteer/actions?workflow=build)
+
 Palanteer is a set of lean and efficient tools to improve the quality of software, for C++ and Python programs.
+
+<img src="docs/images/views.gif " alt="Palanteer viewer image" width="1000"/>
 
 Simple code instrumentation, mostly automatic in Python, delivers powerful features:
   - **Collection of meaningful atomic events** on timings, memory, locks wait and usage, context switches, data values..
@@ -16,8 +20,6 @@ Simple code instrumentation, mostly automatic in Python, delivers powerful featu
   - **Python**:
     - Automatic instrumentation of functions enter/leave, memory allocations, raised exceptions, garbage collection runs
     - Seamless support of multithreading, asyncio/gevent
-
-<img src="docs/images/views.gif " alt="Palanteer viewer image" width="1000"/>
 
 Palanteer is an efficient, lean and comprehensive solution for better and enjoyable software development!
 
