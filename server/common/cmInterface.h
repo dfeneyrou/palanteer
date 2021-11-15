@@ -40,24 +40,25 @@ class cmInterface {
 
     // Recording pipeline readiness
     virtual bool isRecordProcessingAvailable(void) const = 0;
+    virtual bool isMultiStreamEnabled(void) const = 0;
 
     // Notifications for recording and remote control
-    virtual bool notifyRecordStarted(const bsString& appName, const bsString& buildName,
-                                     s64 timeTickOrigin, double tickToNs, const cmTlvs& options) = 0;
+    virtual bool notifyRecordStarted(const cmStreamInfo& infos, s64 timeTickOrigin, double tickToNs) = 0;
     virtual void notifyRecordEnded(bool isRecordOk) = 0;
     virtual void notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx) = 0;
     virtual void notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg) = 0;
-    virtual void notifyNewString(const bsString& newString, u64 hash) = 0;
-    virtual bool notifyNewEvents(plPriv::EventExt* events, int eventQty) = 0;
-    virtual void notifyNewRemoteBuffer(bsVec<u8>& buffer) = 0;
+    virtual void notifyNewStream(const cmStreamInfo& infos) = 0;
+    virtual void notifyNewString(int streamId, const bsString& newString, u64 hash) = 0;
+    virtual bool notifyNewEvents(int streamId, plPriv::EventExt* events, int eventQty, s64 shortDateSyncTick) = 0;
+    virtual void notifyNewRemoteBuffer(int streamId, bsVec<u8>& buffer) = 0;
     virtual bool createDeltaRecord(void) = 0;
-    virtual void notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answer) = 0;
-    virtual void notifyNewFrozenThreadState(u64 frozenThreadBitmap) = 0;
+    virtual void notifyCommandAnswer(int streamId, plPriv::plRemoteStatus status, const bsString& answer) = 0;
+    virtual void notifyNewFrozenThreadState(int streamId, u64 frozenThreadBitmap) = 0;
 
     // Notifications for scripting
-    virtual void notifyNewCollectionTick(void) = 0;
+    virtual void notifyNewCollectionTick(int streamId) = 0;
     virtual void notifyNewThread(int threadId, u64 nameHash) = 0;
     virtual void notifyNewElem(u64 nameHash, int elemIdx, int prevElemIdx, int threadId, int flags) = 0;
-    virtual void notifyNewCli(u32 nameIdx, int paramSpecIdx, int descriptionIdx) = 0;
+    virtual void notifyNewCli(int streamId, u32 nameIdx, int paramSpecIdx, int descriptionIdx) = 0;
     virtual void notifyFilteredEvent(int elemIdx, int flags, u64 nameHash, s64 dateNs, u64 value) = 0;
 };

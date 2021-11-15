@@ -78,38 +78,52 @@ vwMain::drawRecord(void)
             int lastDelimiter = _record->recordPath.rfindChar(PL_DIR_SEP_CHAR);
             bsString basename = (lastDelimiter>=0)? _record->recordPath.subString(lastDelimiter+1) : _record->recordPath;
 
-#define DISPLAY_STAT(titleText, fmt, value)                             \
+#define DISPLAY_STAT(titleText, fmt, ...)                             \
             ImGui::TableNextColumn(); ImGui::Text(titleText);           \
-            ImGui::TableNextColumn(); ImGui::TextColored(vwConst::grey, fmt, value);
+            ImGui::TableNextColumn(); ImGui::TextColored(vwConst::grey, fmt, ##__VA_ARGS__);
 
             if(ImGui::BeginTable("##tableRecord1", 2)) {
                 ImGui::TableSetupColumn("Name",  ImGuiTableColumnFlags_WidthStretch);
                 ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                 DISPLAY_STAT("Application", "%s", _record->appName.toChar());
-                if(!_record->buildName.empty()) { DISPLAY_STAT("Build name", "%s", _record->buildName.toChar()); }
                 if(ri && ri->nickname[0]!=0) { DISPLAY_STAT("Nickname", "%s", ri->nickname); }
                 DISPLAY_STAT("File", "%s", basename.toChar());
                 if(ImGui::IsItemHovered()) ImGui::SetTooltip("%s", _record->recordPath.toChar());
                 DISPLAY_STAT("File size", "%s", getNiceByteSize(_record->recordByteQty));
+                DISPLAY_STAT("Compressed", "%s", _record->compressionMode? "Yes":"No");
                 DISPLAY_STAT("Duration", "%s", getNiceDuration(_record->durationNs));
                 DISPLAY_STAT("Unique strings", "%d", _record->getStrings().size());
                 DISPLAY_STAT("Plottable elements", "%d", _record->elems.size());
+                DISPLAY_STAT("Streams", "%d%s", _record->streams.size(), (_record->streams.size()==1 && _record->isMultiStream)?" (MultiStream)":"");
                 ImGui::Separator();
 
-                // Option list
-                ImGui::TableNextColumn();
-                bool isOptionNodeOpen = ImGui::TreeNodeEx("Options", ImGuiTreeNodeFlags_SpanFullWidth);
-                ImGui::TableNextColumn();
-                if(isOptionNodeOpen) {
-                    DISPLAY_STAT("Compressed", "%s", _record->compressionMode? "Yes":"No");
-                    DISPLAY_STAT("Remote control", "%s", _record->options.values[PL_TLV_HAS_NO_CONTROL]? "No":"Yes");
-                    DISPLAY_STAT("External strings", "%s", _record->options.values[PL_TLV_HAS_EXTERNAL_STRING]? "Yes":"No");
-                    DISPLAY_STAT("Compact model", "%s", _record->options.values[PL_TLV_HAS_COMPACT_MODEL]? "Yes":"No");
-                    DISPLAY_STAT("32 bits clock", "%s", _record->options.values[PL_TLV_HAS_SHORT_DATE]? "Yes":"No");
-                    DISPLAY_STAT("32 bits hash strings", "%s", _record->options.values[PL_TLV_HAS_SHORT_STRING_HASH]? "Yes":"No");
-                    DISPLAY_STAT("Hash salt", "%" PRId64, _record->options.values[PL_TLV_HAS_HASH_SALT]);
-                    ImGui::TreePop();
+                // Display the streams
+                for(int streamId=0; streamId<_record->streams.size(); ++streamId) {
+                    const cmStreamInfo& si = _record->streams[streamId];
+                    ImGui::TableNextColumn();
+                    if(_record->isMultiStream) {
+                        snprintf(tmpStr, sizeof(tmpStr), "Options for stream '%s'", si.appName.toChar());
+                    } else {
+                        snprintf(tmpStr, sizeof(tmpStr), "Options");
+                    }
+                    ImGui::PushID(streamId);
+                    bool isOptionNodeOpen = ImGui::TreeNodeEx(tmpStr, ImGuiTreeNodeFlags_SpanFullWidth);
+                    ImGui::TableNextColumn();
+                    if(isOptionNodeOpen) {
+                        if(!si.buildName.empty()) { DISPLAY_STAT("Build name", "%s", si.buildName.toChar()); }
+                        if(!si.langName.empty())  { DISPLAY_STAT("Language",   "%s", si.langName.toChar()); }
+                        DISPLAY_STAT("Remote control", "%s",   si.tlvs[PL_TLV_HAS_NO_CONTROL]? "No":"Yes");
+                        DISPLAY_STAT("External strings", "%s", si.tlvs[PL_TLV_HAS_EXTERNAL_STRING]? "Yes":"No");
+                        DISPLAY_STAT("Compact model", "%s",    si.tlvs[PL_TLV_HAS_COMPACT_MODEL]? "Yes":"No");
+                        DISPLAY_STAT("32 bits clock", "%s",    si.tlvs[PL_TLV_HAS_SHORT_DATE]? "Yes":"No");
+                        DISPLAY_STAT("32 bits hash strings", "%s", si.tlvs[PL_TLV_HAS_SHORT_STRING_HASH]? "Yes":"No");
+                        DISPLAY_STAT("Hash salt", "%" PRId64,      si.tlvs[PL_TLV_HAS_HASH_SALT]);
+                        DISPLAY_STAT("Auto instrumentation", "%s", si.tlvs[PL_TLV_HAS_AUTO_INSTRUMENT]? "Yes":"No");
+                        DISPLAY_STAT("Context switches", "%s", si.tlvs[PL_TLV_HAS_CSWITCH_INFO]? "Yes":"No");
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
                 }
 
                 // Event list
@@ -159,7 +173,7 @@ vwMain::drawRecord(void)
 
     } // Statistics collapsible header
 
-        ImGui::Dummy(ImVec2(1, 0.5*ImGui::GetTextLineHeight()));
+    ImGui::Dummy(ImVec2(1, 0.5*ImGui::GetTextLineHeight()));
 
     if(_recordWindow.doForceShowLive) {
         _recordWindow.doForceShowLive = false;
@@ -182,7 +196,9 @@ vwMain::drawRecord(void)
                 ImGui::Text("Really kill the running program?\n\n");
                 ImGui::Separator();
                 if(ImGui::Button("OK", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
-                    _live->remoteKillProgram();
+                    for(int streamId=0; streamId<_newStreamQty; ++streamId) {
+                        _live->remoteKillProgram(streamId);
+                    }
                     plMarker("menu", "Kill program");
                     ImGui::CloseCurrentPopup();
                 }
@@ -352,7 +368,7 @@ vwMain::drawCatalog(void)
 
     // Loop on all profiled application names
     bsDate now                = osGetDate();
-    int    allRecordTotalSize = 0;
+    u64    allRecordTotalSize = 0;
     int    nextHeaderAction   = 0;  // No action
     bool   isAnItemHovered    = false;
     for(AppRecordInfos& appInfo : _cmRecordInfos) {
@@ -370,7 +386,7 @@ vwMain::drawCatalog(void)
         bool doOpenDeleteAppAllwoNick = false;
         bool doOpenKeepLast           = false;
         int  countAppWithNickname = 0;
-        int  appRecordTotalSize   = 0;
+        u64  appRecordTotalSize   = 0;
         bool keepOnlyLastRecordState;
         int  keepOnlyLastRecordQty;
         bsString appExtStringsPath;
@@ -638,10 +654,11 @@ vwMain::drawCatalog(void)
 
         // Handle the external string file dialog
         if(_fileDialogExtStrings->draw(getConfig().getFontSize())) dirty();
-        if(_fileDialogExtStrings->hasResult()) {
-            getConfig().setExtStringsPath(appInfo.name, _fileDialogExtStrings->getResult());
-            getConfig().setLastFileExtStringsPath(_fileDialogExtStrings->getResult());
-            _fileDialogExtStrings->clearResult();
+        if(_fileDialogExtStrings->hasSelection()) {
+            const bsVec<bsString>& result = _fileDialogExtStrings->getSelection();
+            getConfig().setExtStringsPath(appInfo.name, result[0]);
+            getConfig().setLastFileExtStringsPath(result[0]);
+            _fileDialogExtStrings->clearSelection();
         }
 
 

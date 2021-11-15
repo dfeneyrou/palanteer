@@ -39,8 +39,8 @@
 #endif
 
 
-constexpr int SUPPORTED_MIN_PROTOCOL = 0;
-constexpr int SUPPORTED_MAX_PROTOCOL = 1;
+constexpr int SUPPORTED_MIN_PROTOCOL = 2;
+constexpr int SUPPORTED_MAX_PROTOCOL = 2;
 
 cmCnx::cmCnx(cmInterface* itf, int port) :
     _itf(itf), _port(port), _doStopThreads(0)
@@ -52,15 +52,16 @@ cmCnx::cmCnx(cmInterface* itf, int port) :
     plAssert(wsaInitStatus==0, "Unable to initialize winsock", wsaInitStatus);
 #endif
 
-    // Reception buffer
+    // Initialize the streams
+    for(int i=0; i<cmConst::MAX_STREAM_QTY; ++i) {
+        _streams[i].reset();
+        _streams[i].parsing.tempStorage.reserve(256);
+        _streams[i].txBuffer.reserve(MAX_REMOTE_COMMAND_BYTE_SIZE);
+    }
+
     plAssert(_recBufferSize>=256);
-    _parseTempStorage.reserve(256);
     _recBuffer = new u8[_recBufferSize];
     plAssert(_recBuffer);
-
-    // Transmission buffer
-    _txBuffer.reserve(MAX_REMOTE_COMMAND_BYTE_SIZE);
-    _txBufferState.store(0);
 
     // Launch the threads
     _threadClientTx = new std::thread([this]{ this->runTxToClient(); });
@@ -90,11 +91,11 @@ cmCnx::~cmCnx(void)
 
 
 void
-cmCnx::injectFile(const bsString& filename)
+cmCnx::injectFiles(const bsVec<bsString>& filenames)
 {
-    bsString* s = _msgInjectFile.t1GetFreeMsg();
+    bsVec<bsString>* s = _msgInjectFile.t1GetFreeMsg();
     if(!s) return;
-    *s = filename;
+    *s = filenames;
     _msgInjectFile.t1Send();
 }
 
@@ -104,17 +105,19 @@ cmCnx::injectFile(const bsString& filename)
 // ==============================================================================================
 
 bsVec<u8>*
-cmCnx::getTxBuffer (void)
+cmCnx::getTxBuffer(int streamId)
 {
-    int zero = 0;
-    return _txBufferState.compare_exchange_strong(zero, 1)? &_txBuffer : 0;
+    int zero = 0;  // Due to CAS API
+    StreamInfo& si = _streams[streamId];
+    return si.txBufferState.compare_exchange_strong(zero, 1)? &si.txBuffer : 0;
  }
 
 
 void
-cmCnx::sendTxBuffer(void)
+cmCnx::sendTxBuffer(int streamId)
 {
-    _txBufferState.store(2);
+    StreamInfo& si = _streams[streamId];
+    si.txBufferState.store(2);
     _threadWakeUpCv.notify_one();
 }
 
@@ -135,40 +138,54 @@ cmCnx::runTxToClient(void)
     // Loop until end of program
     while(!_doStopThreads.load()) {
 
-        // Wait for a buffer to be sent
+        // Wait for a buffer to be sent, among all streams
         std::unique_lock<std::mutex> lk(_threadWakeUpMx);
-        _threadWakeUpCv.wait(lk, [this] { return _doStopThreads.load() || _txBufferState.load()==2; });
+        _threadWakeUpCv.wait(lk, [this] {
+            if(_doStopThreads.load()) return true;
+            for(int streamId=0; streamId<cmConst::MAX_STREAM_QTY; ++streamId) {
+                if(_streams[streamId].txBufferState.load()==2) return true;
+            }
+            return false;
+        });
         if(_doStopThreads.load()) break; // End of program
 
-        // Is there a connection?
-        if(_clientSocket==bsSocketError) {
-            _txBuffer.clear();
-            _txBufferState.store(0); // Free for next command to send
-            _itf->notifyCommandAnswer(plPriv::plRemoteStatus::PL_ERROR, "No socket");
-            continue;
-        }
+        for(int streamId=0; streamId<cmConst::MAX_STREAM_QTY; ++streamId) {
+            StreamInfo& si = _streams[streamId];
+            if(si.txBufferState.load()!=2) continue;
 
-        // Is control enabled? (else no need to send because the app will not listen)
-        if(_tlvs.values[PL_TLV_HAS_NO_CONTROL]) {
-            _txBuffer.clear();
-            _txBufferState.store(0); // Free for next command to send
-            _itf->notifyCommandAnswer(plPriv::plRemoteStatus::PL_ERROR, "Control is disabled on application side");
-            continue;
-        }
-
-        // Sending. Loop on sending call until fully sent
-        int offset = 0;
-        while(offset<_txBuffer.size()) {
-            int qty = send(_clientSocket, (const char*)&_txBuffer[offset], _txBuffer.size()-offset, 0);
-            if(qty<=0) {
-                _itf->notifyCommandAnswer(plPriv::plRemoteStatus::PL_ERROR, "Bad socket sending");
-                break;
+            // Is there a connection?
+            if(si.socketDescr==bsSocketError) {
+                si.txBufferState.store(0); // Free for next command to send
+                _itf->notifyCommandAnswer(streamId, plPriv::plRemoteStatus::PL_ERROR, "No socket");
+                continue;
             }
-            offset += qty;
-        }
-        _txBufferState.store(0); // Free the request buffer for the next one
+
+            // Is control enabled? (else no need to send because the app will not listen)
+            if(si.infos.tlvs[PL_TLV_HAS_NO_CONTROL]) {
+                si.txBufferState.store(0); // Free for next command to send
+                _itf->notifyCommandAnswer(streamId, plPriv::plRemoteStatus::PL_ERROR, "Control is disabled on application side");
+                continue;
+            }
+
+            // Sending. Loop on sending call until fully sent
+            int offset = 0;
+            while(offset<si.txBuffer.size()) {
+#ifdef _WIN32
+                int qty = send(si.socketDescr, (const char*)&si.txBuffer[offset], si.txBuffer.size()-offset, 0);
+#else
+                int qty = send(si.socketDescr, (const char*)&si.txBuffer[offset], si.txBuffer.size()-offset, MSG_NOSIGNAL);  // MSG_NOSIGNAL to prevent sending SIGPIPE
+#endif
+                if(qty<=0) {
+                    _itf->notifyCommandAnswer(streamId, plPriv::plRemoteStatus::PL_ERROR, "Bad socket sending");
+                    break;
+                }
+                offset += qty;
+            }
+            si.txBufferState.store(0); // Free the request buffer for the next one
+        } // End of loop on streams
 
     } // End of connection loop
+
     plgText(CLIENTTX, "State", "End of data reception thread");
 }
 
@@ -177,66 +194,216 @@ cmCnx::runTxToClient(void)
 // Reception from client
 // ==============================================================================================
 
-#if _WIN32
-#define CLOSE_SOCKET(s) closesocket(s)
-#else
-#define CLOSE_SOCKET(s) close(s)
-#endif
+bool
+cmCnx::checkConnection(const bsVec<bsString>& importedFilenames, bsSocket_t masterSockFd)
+{
+    // Reset the connection automata
+    _isMultiStream = _itf->isMultiStreamEnabled();
+    _streamQty = 0;
+    for(int sid=0; sid<cmConst::MAX_STREAM_QTY; ++sid) _streams[sid].reset();
+
+    bool isInitValid = true;
+    bsString errorMsg;
+
+    // If the record processing pipeline is not available, just close the socket
+    if(!_itf->isRecordProcessingAvailable()) return false;
+
+    // Imported file case
+    // ==================
+    if(!importedFilenames.empty()) {
+        _isSocketInput = false;
+
+        // Loop on files
+        for(const bsString& filename : importedFilenames) {
+
+            // Open the filename
+            _itf->log(LOG_INFO, "Open file %s for import", filename.toChar());
+            FILE* fd = fopen(filename.toChar(), "rb");
+            if(!fd) {
+                isInitValid = false;
+                errorMsg = bsString("Unable to open the file: ")+filename;
+                break;
+            }
+
+            // Retrieve the stream initialization information and check them
+            int streamId = initializeTransport(fd, bsSocketError, errorMsg);
+            isInitValid  = (streamId>=0);
+
+            // Store in stream order (unless there is an error)
+            if(streamId>=0) {
+                StreamInfo& si = _streams[streamId];
+                plAssert(si.fileDescr==0); // By design of the transport initialization, else an error would be raised
+                si.fileDescr = fd;
+            }
+            else fclose(fd);
+
+            if(!isInitValid) break;
+        }
+
+    } // End of imported file case
+
+
+    // Socket case
+    // ==========
+    else {
+        _isSocketInput = true;
+
+        // Wait for a client program to connect
+        int connectionQty = 0;
+        while(true) {  // Loop is ended when no new connection found
+
+            // First connection has a longer timeout than the potential next ones, so that we do not busy loop
+            //   when waiting for a new record. The next connections shall be ~immediate, or delayed to the
+            //   data reception part
+            timeval tv;
+            tv.tv_sec  = 0;  // Select may update the timeout, so we need to set it back
+            tv.tv_usec = connectionQty? 10000 : 100000;
+            // Observe only the master socket. Nneed to be redone at each loop as 'listen' calls are destructive
+            fd_set fds;
+            FD_ZERO(&fds);
+            FD_SET(masterSockFd, &fds);
+
+            // Check for new connection
+            int selectRet = select(masterSockFd+1, &fds, NULL, NULL, &tv);
+            if(selectRet==-1) {
+                _itf->log(LOG_WARNING, "Client reception: failed to check for activity on the sockets");
+                isInitValid = false;
+                break;
+            }
+
+            // No activity
+            if(selectRet==0) {
+                // Case no connection at all: go back to the main task waiting loop
+                if(connectionQty==0) return false;
+                // If already one connection is there, then we can start the new recording.
+                // Other potential streams will be accepted during the data reception
+                break;
+            }
+
+            // Case a new connection occurred (=activity on master socket)
+            if(FD_ISSET(masterSockFd, &fds)) {
+
+                struct sockaddr_in clientAddress;
+                socklen_t sosize  = sizeof(clientAddress);
+                bsSocket_t sock = (bsSocket_t)accept(masterSockFd, (sockaddr*)&clientAddress, &sosize);
+                if(!bsIsSocketValid(sock)) break;
+
+                // Retrieve the stream initialization information and check it
+                int streamId = -1;
+                if(connectionQty==0 || _isMultiStream) {
+                    streamId = initializeTransport(0, sock, errorMsg);
+                    isInitValid  = (streamId>=0);
+                }
+                else _itf->log(LOG_WARNING, "Client reception in monostream mode: ignoring incoming socket");
+
+                // Store in stream order (unless there is an error)
+                if(streamId>=0) {
+                    StreamInfo& si = _streams[streamId];
+                    plAssert(si.socketDescr==bsSocketError); // By design of the transport initialization, else an error would be raised
+                    si.socketDescr = sock;
+                    ++connectionQty;
+                }
+                else bsOsCloseSocket(sock);
+
+                if(!isInitValid) break;
+            }
+
+        } // End of loop to get all socket connections
+
+    } // End of socket case
+
+
+    // Finalize the initial setup: find the start date
+    // ===============================================
+
+    if(isInitValid) {
+        // Find the clock characteristics. "Complex" only in the multistream case
+        _tickToNs       = _streams[0].tickToNs; // All clocks should be synchronized externally
+        _timeOriginTick = _streams[0].timeOriginTick;
+
+        if(_streams[0].infos.tlvs[PL_TLV_HAS_SHORT_DATE]==0) {
+            // For "long" date, the origin is simply the earliest origin of all streams
+            for(int sid=1; sid<_streamQty; ++sid) {
+                if(_streams[sid].timeOriginTick<_timeOriginTick) _timeOriginTick = _streams[sid].timeOriginTick;
+            }
+        }
+        else {
+            // Short date case
+            // Find the earliest global clock date, corrected by the high resolution timestamp
+            int earliestSid = 0;
+            for(int sid=1; sid<_streamQty; ++sid) {
+                const cmStreamInfo& t  = _streams[sid].infos;
+                const cmStreamInfo& te = _streams[earliestSid].infos;
+                // First, compare the global clock
+                // If equal, compare the high resolution timestamps taking the wrap into account
+                if(t.tlvs[PL_TLV_HAS_SHORT_DATE]<te.tlvs[PL_TLV_HAS_SHORT_DATE] ||
+                   (t.tlvs[PL_TLV_HAS_SHORT_DATE]==te.tlvs[PL_TLV_HAS_SHORT_DATE] &&
+                    (((u32)((u32)_streams[sid].timeOriginTick-(u32)_streams[earliestSid].timeOriginTick))&0x80000000))) {
+                    earliestSid = sid;
+                }
+            }
+
+            // Store the origin of the record (zero wrap)
+            _timeOriginTick     = _streams[earliestSid].timeOriginTick;
+            _timeOriginCoarseNs = _streams[earliestSid].infos.tlvs[PL_TLV_HAS_SHORT_DATE];
+
+            // Compute the initial wrap count for all streams
+            s64 wrapPeriodNs = (s64)(_tickToNs*(double)(1LL<<32));
+            for(int sid=0; sid<_streamQty; ++sid) {
+                StreamInfo& si     = _streams[sid];
+                u64 timeCoarseNs   = si.infos.tlvs[PL_TLV_HAS_SHORT_DATE];
+                s64 wrapQty        = (timeCoarseNs-_timeOriginCoarseNs)/wrapPeriodNs;
+                si.timeOriginTick |= (wrapQty<<32);
+                if(_timeOriginCoarseNs+(u64)(_tickToNs*si.timeOriginTick)<timeCoarseNs-wrapPeriodNs/2) {
+                    si.timeOriginTick += (1LL<<32);
+                }
+            }
+
+        }
+        plAssert(_timeOriginTick>=0);
+    }
+
+    else {
+        // Case of error: clean resources
+        _itf->notifyErrorForDisplay(_streams[0].fileDescr==0? ERROR_GENERIC : ERROR_IMPORT, errorMsg.toChar());
+        for(int sid=0; sid<cmConst::MAX_STREAM_QTY; ++sid) {
+            StreamInfo& si = _streams[sid];
+            if(si.fileDescr!=0)               { fclose(si.fileDescr); si.fileDescr = 0; }
+            if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = bsSocketError; }
+        }
+    }
+
+    return isInitValid;
+}
+
 
 void
-cmCnx::dataReceptionLoop(FILE* fd)
+cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
 {
-    // Initialize the transport layer (reception of metadata from the client)
-    bool initStatus = initializeTransport(fd);
-
-    // Parsing failed?
-    if(!initStatus) {
-        _itf->log(LOG_ERROR, "Client reception: Unable to initialize the transport layer");
-        plgText(CLIENTRX, "State", "Error, Unable to initialize the transport layer");
-        if(fd) {
-            _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("Unable to decode the file header.\nPlease check that it is a valid .pltraw file."));
-        }
-    }
-    // Check the protocol
-    else if(_tlvs.values[PL_TLV_PROTOCOL]<SUPPORTED_MIN_PROTOCOL) {
-        initStatus = false;
-        _itf->log(LOG_ERROR, "Client reception: the instrumentation library is too old and shall be updated");
-        plgText(CLIENTRX, "State", "Error, the instrumentation library is too old and shall be updated");
-        _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("The instrumentation library is too old and shall be updated"));
-    }
-    else if(_tlvs.values[PL_TLV_PROTOCOL]>SUPPORTED_MAX_PROTOCOL) {
-        initStatus = false;
-        _itf->log(LOG_ERROR, "Client reception: the instrumentation library is too recent. The server shall be updated");
-        plgText(CLIENTRX, "State", "Error, the instrumentation library is too recent. The server shall be updated");
-        _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("The instrumentation library is too recent. The server shall be updated"));
-    }
-    if(!initStatus) {
-        if(fd) {
-            fclose(fd);
-        } else {
-            CLOSE_SOCKET(_clientSocket);
-            _clientSocket = bsSocketError;
-        }
-        return;
-    }
-
-    // Client reception loop
-    if(!_itf->notifyRecordStarted(_appName, _buildName, _timeTickOrigin, _tickToNs, _tlvs)) {
-        plgText(CLIENTRX, "State", "Error, Unable to begin the record");
+    // Notify the start of the recording
+    if(!_itf->notifyRecordStarted(_streams[0].infos, _timeOriginTick, _tickToNs)) {
         // Error message is already handled inside main
-        if(fd) {
-            fclose(fd);
-        } else {
-            CLOSE_SOCKET(_clientSocket);
-            _clientSocket = bsSocketError;
+        for(int sid=0; sid<cmConst::MAX_STREAM_QTY; ++sid) {
+            StreamInfo& si = _streams[sid];
+            if(si.fileDescr!=0)               { fclose(si.fileDescr); si.fileDescr = 0; }
+            if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = bsSocketError; }
         }
         return;
     }
 
-    plgText(CLIENTRX, "State", "Start data reception");
-    int deltaRecordFactor = fd? 5 : 1; // No need to have "real time" display when we import
+    // Notify the other initial streams (the first one is already declared)
+    for(int streamId=1; streamId<_streamQty; ++streamId) {
+        _itf->notifyNewStream(_streams[streamId].infos);
+    }
+
+    int  deltaRecordFactor = _isSocketInput? 1 : 5; // No need to have "real time" display when we import from file
     bool isRecordOk         = true;
     bool areNewDataReceived = false;
+    int  streamId           = 0;
+    timeval tv;
+    _lastDeltaRecordTime = bsGetClockUs();
+
+    plgText(CLIENTRX, "State", "Start data reception");
     while(!_doStopThreads.load()) {
 
         // Manage the periodic live display update
@@ -250,34 +417,127 @@ cmCnx::dataReceptionLoop(FILE* fd)
 
         // Read the data
         int qty;
-        if(fd) {
-            qty = (int)fread(_recBuffer, 1, _recBufferSize, fd);
-            if(qty<=0) break;
-        }
-        else {
-            qty = recv(_clientSocket, (char*)_recBuffer, _recBufferSize, 0);
-            if((errno==EAGAIN || errno==EWOULDBLOCK) && qty<0) continue; // Timeout on reception (empty)
-            else if(qty<1)                                     break;    // Client is disconnected
+        if(!_isSocketInput) {
+            // Read the file streams one after the other @#LATER The next stream could be computed a the "most late" one, for a better live display
+            plAssert(_streams[streamId].fileDescr);
+            qty = (int)fread(_recBuffer, 1, _recBufferSize, _streams[streamId].fileDescr);
+            if(qty<=0) ++streamId;  // Go to next file
+            if(streamId>=_streamQty) break;  // Import file after file is complete
+
+            // Parse the received content
+            areNewDataReceived = parseTransportLayer(streamId, _recBuffer, qty);
+            if(!areNewDataReceived) {
+                _itf->log(LOG_ERROR, "Client reception: Error in parsing the received data");
+                plgText(CLIENTRX, "State", "Error in parsing the received data");
+                isRecordOk = false; // Corrupted record
+                break;
+            }
         }
 
-        if(!parseTransportLayer(_recBuffer, qty)) {                      // Parse the received content
-            _itf->log(LOG_ERROR, "Client reception: Error in parsing the received data");
-            plgText(CLIENTRX, "State", "Error in parsing the received data");
-            isRecordOk = false; // Corrupted record
-            break;
-        }
-        else areNewDataReceived = true;
+        else {
+            // Check the socket activity
+            tv.tv_sec  = 0;     // 'select' call may modify the timeout, so we need to set it back
+            tv.tv_usec = 10000;
+            fd_set fds;
+            FD_ZERO(&fds);
+            bsSocket_t maxFd = masterSockFd;
+            FD_SET(masterSockFd, &fds);  // To detect new connections
+            bool hasValidStream = false;
+            for(int streamId=0; streamId<_streamQty; ++streamId) {
+                StreamInfo& si = _streams[streamId];
+                if(si.socketDescr!=bsSocketError) {
+                    FD_SET(si.socketDescr, &fds);
+                    if(si.socketDescr>maxFd) maxFd = si.socketDescr;
+                    hasValidStream = true;
+                }
+            }
+            if(!hasValidStream) break; // No more valid connection
+            int selectRet = select(maxFd+1, &fds, NULL, NULL, &tv);  // The 10 ms timeout prevents busy looping
+            if(selectRet==-1) break; // Socket issue
+
+            if(selectRet>0) {
+
+                // Get the buffers from each active socket, one after the other (buffer fairness)
+                for(int streamId=0; streamId<_streamQty; ++streamId) {
+                    StreamInfo& si = _streams[streamId];
+                    if(!FD_ISSET(si.socketDescr, &fds)) continue;
+
+#ifdef _WIN32
+                    qty = recv(si.socketDescr, (char*)_recBuffer, _recBufferSize, 0);
+#else
+                    qty = recv(si.socketDescr, (char*)_recBuffer, _recBufferSize, MSG_DONTWAIT);
+#endif
+                    if((bsGetSocketError()==EAGAIN || bsGetSocketError()==EWOULDBLOCK) && qty<0) continue;  // Timeout on reception (empty)
+
+                    // Client is disconnected?
+                    if(qty<1) {
+                        bsOsCloseSocket(si.socketDescr);
+                        si.socketDescr = bsSocketError;
+                        continue;
+                    }
+
+                    // Parse the received content
+                    areNewDataReceived = parseTransportLayer(streamId, _recBuffer, qty);
+                    if(!areNewDataReceived) {
+                        _itf->log(LOG_ERROR, "Client reception: Error in parsing the received data");
+                        plgText(CLIENTRX, "State", "Error in parsing the received data");
+                        isRecordOk = false; // Corrupted record
+                        break;
+                    }
+                }  // Loop on streams
+
+                // New incoming multi-stream connection?
+                if(FD_ISSET(masterSockFd, &fds)) {
+
+                    struct sockaddr_in clientAddress;
+                    socklen_t sosize = sizeof(clientAddress);
+                    bsSocket_t sock  = (bsSocket_t)accept(masterSockFd, (sockaddr*)&clientAddress, &sosize);
+                    if(!bsIsSocketValid(sock)) break;
+
+                    bsString errorMsg;
+                    int streamId = -1;
+                    if(_isMultiStream) {
+                        streamId = initializeTransport(0, sock, errorMsg);
+                    }
+                    else _itf->log(LOG_WARNING, "Client reception in monostream mode: ignoring incoming socket");
+
+                    if(streamId>=0) {
+                        StreamInfo& si = _streams[streamId];
+                        plAssert(si.socketDescr==bsSocketError); // By design of the transport initialization, else an error would be raised
+                        si.socketDescr = sock;
+
+                        // Update the stream's start date in case of short date
+                        if(_streams[0].infos.tlvs[PL_TLV_HAS_SHORT_DATE]!=0) {
+                            s64 wrapPeriodNs   = (s64)(_tickToNs*(double)(1LL<<32));
+                            u64 timeCoarseNs   = si.infos.tlvs[PL_TLV_HAS_SHORT_DATE];
+                            s64 wrapQty        = (timeCoarseNs-_timeOriginCoarseNs)/wrapPeriodNs;
+                            si.timeOriginTick |= (wrapQty<<32);
+                            if(_timeOriginCoarseNs+(u64)(_tickToNs*si.timeOriginTick)<timeCoarseNs-wrapPeriodNs/2) {
+                                si.timeOriginTick += (1LL<<32);
+                            }
+                        }
+
+                        // Notify the server side
+                        _itf->notifyNewStream(si.infos);
+                    }
+                    else bsOsCloseSocket(sock);
+                }
+
+            }  // Global socket activity detected
+        }  // Socket case
+
+
     } // End of reception loop
 
     plgText(CLIENTRX, "State", "End of data reception");
     _itf->notifyRecordEnded(isRecordOk);
 
-    if(fd) {
-        fclose(fd);
+    for(int sid=0; sid<cmConst::MAX_STREAM_QTY; ++sid) {
+        StreamInfo& si = _streams[sid];
+        if(si.fileDescr!=0)               { fclose(si.fileDescr); si.fileDescr = 0; }
+        if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = bsSocketError; }
     }
-    else {
-        CLOSE_SOCKET(_clientSocket);
-        _clientSocket = bsSocketError;
+    if(_isSocketInput) {
         _itf->log(LOG_DETAIL, "Client reception: Closed client connection");
     }
     plgText(CLIENTRX, "State", "End of recording");
@@ -292,15 +552,15 @@ cmCnx::runRxFromClient(void)
 
     // Creation of the TCP connection
     plgBegin(CLIENTRX, "Create the listening socket");
-    bsSocket_t sockfd = (bsSocket_t)socket(AF_INET,SOCK_STREAM,0);
-    if(!bsIsSocketValid(sockfd)) {
+    bsSocket_t masterSockFd = (bsSocket_t)socket(AF_INET,SOCK_STREAM,0);
+    if(!bsIsSocketValid(masterSockFd)) {
         _itf->log(LOG_ERROR, "Client reception: unable to create a socket");
         plgText(CLIENTRX, "State", "Error, unable to create");
     }
 
     // set socket for reuse (otherwise might have to wait 4 minutes every time socket is closed)
     int option = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&option, sizeof(option));
+    setsockopt(masterSockFd, SOL_SOCKET, SO_REUSEADDR, (const char*)&option, sizeof(option));
 
     sockaddr_in serverAddress;
     memset(&serverAddress, 0, sizeof(serverAddress));
@@ -309,17 +569,17 @@ cmCnx::runRxFromClient(void)
     serverAddress.sin_port = htons(_port);
 
     timeval tv;
-    tv.tv_sec  = 0; // Re-used both for accept and recv timeout...
-    tv.tv_usec = 100000;
-    setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv)); // Timeout on reception. Probably do the same later with SO_SNDTIMEO
+    tv.tv_sec  = 0;
+    tv.tv_usec = 10000;
+    setsockopt(masterSockFd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv)); // Timeout on reception. Probably do the same later with SO_SNDTIMEO
 
     _itf->log(LOG_INFO, "Client reception: Binding socket on port %d", _port);
-    int bindSuccess = bind(sockfd, (sockaddr*)&serverAddress, sizeof(serverAddress));
+    int bindSuccess = bind(masterSockFd, (sockaddr*)&serverAddress, sizeof(serverAddress));
     if(bindSuccess==-1) {
         _itf->log(LOG_ERROR, "Client reception: unable to bind socket");
         plgText(CLIENTRX, "State", "Error, unable to bind");
     }
-    int listenSuccess = listen(sockfd, 1); // Only 1 client
+    int listenSuccess = listen(masterSockFd, cmConst::MAX_STREAM_QTY); // Accept all streams
     if(listenSuccess==-1) {
         _itf->log(LOG_ERROR, "Client reception: unable to listen to socket");
         plgText(CLIENTRX, "State", "Error, unable to listen");
@@ -327,19 +587,13 @@ cmCnx::runRxFromClient(void)
     plgText(CLIENTRX, "State", "Socket ok");
     plgEnd(CLIENTRX, "Create the listening socket");
 
-    fd_set fds;
-    struct sockaddr_in clientAddress;
-    socklen_t sosize  = sizeof(clientAddress);
-
+    // Notify the initialization that reception thread is ready
     {
-        // Notify the initialization that reception thread is ready
         std::lock_guard<std::mutex> lk(_threadInitMx);
         _rxIsStarted = true;
         _threadInitCv.notify_one();
     }
 
-    // Connection loop
-    bool isWaitingDisplayed = false;
     if(bindSuccess!=-1 && listenSuccess!=-1) {
         _itf->log(LOG_INFO, "Client reception: Start the socket listening loop");
     } else {
@@ -348,10 +602,12 @@ cmCnx::runRxFromClient(void)
         _itf->notifyErrorForDisplay(ERROR_GENERIC, tmpStr);
     }
 
+    // Connection loop
+    bool isWaitingDisplayed = false;
+    bsVec<bsString>   importedFilenames;
+
     plgText(CLIENTRX, "State", "Start the server loop");
     while(!_doStopThreads.load()) {
-
-        // Prevent busy-looping
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         if(!isWaitingDisplayed) {
@@ -359,85 +615,32 @@ cmCnx::runRxFromClient(void)
             plgText(CLIENTRX, "State", "Waiting for a client");
         }
 
-        // Is there a file injection?
-        bsString  injectedFilename;
-        bsString* msgInjectedFilename = _msgInjectFile.getReceivedMsg();
-        if(msgInjectedFilename) {
-            injectedFilename = *msgInjectedFilename;
+        // Import from file
+        bsVec<bsString>* msgInjectedFilenames = _msgInjectFile.getReceivedMsg();
+        importedFilenames.clear();
+        if(msgInjectedFilenames) {
+            importedFilenames = *msgInjectedFilenames;
             _msgInjectFile.releaseMsg();
-            // Cancel the request if a live recording is on-going
-            if(bsIsSocketValid(_clientSocket)) injectedFilename.clear();
         }
 
-        // If yes, process it
-        if(!injectedFilename.empty()) {
-            plgScope(CLIENTRX, "Inject file");
-
-            // Open the filename
-            _itf->log(LOG_INFO, "Start importing file %s", injectedFilename.toChar());
-            FILE* fd = fopen(injectedFilename.toChar(), "rb");
-            if(!fd) {
-                plgText(CLIENTRX, "State", "Error, Unable to open the injected file");
-                _itf->notifyErrorForDisplay(ERROR_IMPORT, bsString("Unable to open the file: ")+injectedFilename);
-                continue;
-            }
-
-            // Process the file
-            dataReceptionLoop(fd);
-
-            // The import is finished, back to the main loop
-            continue;
-        }
-
-        // Wait for a client program
-        FD_ZERO(&fds);
-        FD_SET(sockfd, &fds);
-        plgBegin(CLIENTRX, "Check socket activity");
-        int selectRet = select(sockfd+1, &fds, NULL, NULL, &tv);
-        plgEnd(CLIENTRX, "Check socket activity");
-        if(selectRet==0) {
-            continue;
-        }
-        if(selectRet==-1 || !FD_ISSET(sockfd, &fds)) {
-            _itf->log(LOG_WARNING, "Client reception: failed to set the socket timeout");
-            plgText(CLIENTRX, "State", "Error, failed to set the timeout");
-        }
-        _clientSocket = (bsSocket_t)accept(sockfd, (sockaddr*)&clientAddress, &sosize);
-
-        // If the record processing pipeline is not available, just close the socket
-        if(!_itf->isRecordProcessingAvailable()) {
-            CLOSE_SOCKET(_clientSocket);
-            _clientSocket = bsSocketError;
-            continue;
-        }
-
-        if(bsIsSocketValid(_clientSocket)) {
-            plgScope(CLIENTRX, "New client transport");
-            plgData(CLIENTRX, "Socket ID", _clientSocket);
+        // Check connection and loop on received data
+        if(checkConnection(importedFilenames, masterSockFd)) {
             isWaitingDisplayed = false;
-            _itf->log(LOG_DETAIL, "Client reception: New connection detected");
-
-            // Process the file
-            dataReceptionLoop(0);
+            dataReceptionLoop(masterSockFd);
         }
-        else {
-            _itf->log(LOG_ERROR, "Client reception: Unable to connect to client");
-            plgText(CLIENTRX, "State", "Error, failed to connect to client");
-        }
-    } // End of connection loop
+    }
     plgText(CLIENTRX, "State", "End of server loop");
 
-    // Clean the thread
-    CLOSE_SOCKET(sockfd);
+    bsOsCloseSocket(masterSockFd);
     plgText(CLIENTRX, "State", "End of data reception thread");
 }
 
 
-bool
-cmCnx::initializeTransport(FILE* fd)
+int
+cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
 {
     plgScope(CLIENTRX, "initializeTransport");
-    plAssert((!bsIsSocketValid(_clientSocket) && fd) || (bsIsSocketValid(_clientSocket) && !fd)); // Not both at the same time
+    plAssert(bsIsSocketValid(socketd)!=(fd!=0)); // Exclusive input
     // We wait for the following informations
     //  - 8B: Magic (8 bytes). Check the connection type
     //  - 4B: 0x12345678 sent as a u32, in order to detect the endianness (required for data reception)
@@ -446,26 +649,43 @@ cmCnx::initializeTransport(FILE* fd)
     //  - Shall include the TLVs "protocol number" (first), "clock info" (origin + event tick to nanosecond) and the "application name" (zero terminated)
     //    Other TLVs are optional
 
+    char tmpStr[256];
     bsVec<u8> header; header.reserve(256);
-    memset(&_tlvs, 0, sizeof(_tlvs));
-    _timeTickOrigin = 0;
-    _tickToNs       = 1.;
-    _appName.clear();
-    _buildName.clear();
-    _lastDeltaRecordTime = bsGetClockUs();
-    resetParser();
+    s64    timeOriginTick = 0;
+    double tickToNs = 0.;
+    cmStreamInfo si;
+    memset(si.tlvs, 0, sizeof(si.tlvs));
+
+#define STREAM_ERROR(cond_, msg_)                                       \
+    if(cond_) {                                                         \
+        snprintf(tmpStr, sizeof(tmpStr), "Error for stream #%d: " msg_, _streamQty); \
+        errorMsg = tmpStr;                                              \
+        return -1;                                                      \
+}
+
+#define CHECK_TLV_PAYLOAD_SIZE(expectedSize, name)                      \
+    if(tlvLength!=expectedSize) {                                       \
+        errorMsg = "Client send a corrupted " name " TLV";              \
+        return -1;                                                      \
+    }
+
+    STREAM_ERROR(_streamQty>=cmConst::MAX_STREAM_QTY,
+                 "Maximum stream quantity has been reached, refusing this new one.");
+
+    // Read all header bytes
+    // =====================
 
     // Read 16 first bytes
-    int expectedHeaderSize = 16;
+    constexpr int expectedHeaderSize = 16;
     if(fd) {
         header.resize(expectedHeaderSize);
         int qty = (int)fread(&header[0], 1, expectedHeaderSize, fd);
         header.resize(bsMax(qty, 0));
     } else {
-        int remainingTries = 5; // 5 seconds total timeout to get the header
+        int remainingTries = 50;
         while(remainingTries>0 && !_doStopThreads.load() && header.size()<expectedHeaderSize) {
-            int qty = recv(_clientSocket, (char*)_recBuffer, expectedHeaderSize-header.size(), 0);
-            if((errno==EAGAIN || errno==EWOULDBLOCK) && qty<0) {
+            int qty = recv(socketd, (char*)_recBuffer, expectedHeaderSize-header.size(), 0);
+            if((bsGetSocketError()==EAGAIN || bsGetSocketError()==EWOULDBLOCK) && qty<0) {
                 --remainingTries;
                 continue; // Timeout on reception (empty)
             }
@@ -476,33 +696,22 @@ cmCnx::initializeTransport(FILE* fd)
 
     // Analyse the first chapter of the header
     if(header.size()!=expectedHeaderSize) {
-        _itf->log(LOG_ERROR, "Client did not send the full connection establishment header.");
-        plgText(CLIENTRX, "State", "Error, first part of the header not received");
-        return false;
+        errorMsg = "Client did not send the full connection establishment header.";
+        return -1;
     }
     if(strncmp((char*)&header[0], "PL-MAGIC", 8)) {
-        _itf->log(LOG_ERROR, "Client sent bad connection identifier (probably not a Palanteer client)");
-        plgText(CLIENTRX, "State", "Error, magic not matching");
-        return false;
+        errorMsg = "Client sent bad connection magic (probably not a Palanteer client)";
+        return -1;
     }
     if(*((u32*)&header[8])!=0x12345678 && *((u32*)&header[8])!=0x78563412) {
-        _itf->log(LOG_ERROR, "Client sent unexpected endianness detection string value");
-        plgText(CLIENTRX, "State", "Error, endianness detection is not matching");
-        return false;
+        errorMsg = "Client sent unexpected endianness detection string value";
+        return -1;
     }
     _recordToggleBytes = (*((u32*)&header[8])==0x78563412);
     int totalTlvLength = (header[12]<<24) | (header[13]<<16) | (header[14]<<8) | header[15];
     if(totalTlvLength>_recBufferSize) {
-        _itf->log(LOG_ERROR, "Client sent corrupted header element length");
-        plgText(CLIENTRX, "State", "Error, unrealistic header TLV length");
-        return false;
-    }
-
-#define CHECK_TLV_PAYLOAD_SIZE(expectedSize, name)                      \
-    if(tlvLength!=expectedSize) {                                       \
-        _itf->log(LOG_ERROR, "Client send a corrupted " name " TLV");   \
-        plgText(CLIENTRX, "State",  "ERROR: corrupted " name " TLV");   \
-        return false;                                                   \
+        errorMsg = "Client sent corrupted header element length";
+        return -1;
     }
 
     // Read the TLVs
@@ -514,8 +723,8 @@ cmCnx::initializeTransport(FILE* fd)
     } else {
         int remainingTries = 3; // 3 second total timeout to get the header
         while(remainingTries>0 && !_doStopThreads.load() && header.size()<totalTlvLength) {
-            int qty = recv(_clientSocket, (char*)_recBuffer, totalTlvLength-header.size(), 0);
-            if((errno==EAGAIN || errno==EWOULDBLOCK) && qty<0) {
+            int qty = recv(socketd, (char*)_recBuffer, totalTlvLength-header.size(), 0);
+            if((bsGetSocketError()==EAGAIN || bsGetSocketError()==EWOULDBLOCK) && qty<0) {
                 --remainingTries;
                 continue; // Timeout on reception (empty)
             }
@@ -524,111 +733,146 @@ cmCnx::initializeTransport(FILE* fd)
         }
     }
 
-    // Analyse the received TLVs
+    // Parse the received TLVs
+    // =======================
+
     if(header.size()!=totalTlvLength) {
-        _itf->log(LOG_ERROR, "Client did not send the header element fully");
-        plgText(CLIENTRX, "State", "TLVs part of the header not fully received");
-        return false;
+        errorMsg = "Client did not fully send a header element";
+        return -1;
     }
     int offset = 0;
     while(offset<=totalTlvLength-4) {
         int tlvType   = (header[offset+0]<<8) | header[offset+1];
         int tlvLength = (header[offset+2]<<8) | header[offset+3];
         if(offset+4+tlvLength>totalTlvLength) {
-            _itf->log(LOG_ERROR, "Client send a corrupted header element");
-            plgText(CLIENTRX, "State", "ERROR: corrupted TLV");
-            return false;
+            errorMsg = "Client send a corrupted header element";
+            return -1;
         }
 
         switch(tlvType) {
 
         case PL_TLV_PROTOCOL:
             CHECK_TLV_PAYLOAD_SIZE(2, "Protocol");
-            _tlvs.values[tlvType] = (header[offset+4]<<8) | (header[offset+5]<<0);
-            plgData(CLIENTRX, "Protocol is", _tlvs.values[tlvType]);
+            si.tlvs[tlvType] = (header[offset+4]<<8) | (header[offset+5]<<0);
+            _itf->log(LOG_DETAIL, "   Protocol version is %d", (int)si.tlvs[tlvType]);
+            plgData(CLIENTRX, "Protocol version is", si.tlvs[tlvType]);
             break;
 
         case PL_TLV_CLOCK_INFO: // Clock info TLV: origin and tick to nanosecond coefficient
             CHECK_TLV_PAYLOAD_SIZE(16, "Clock Info");
-            _timeTickOrigin = (((u64)header[offset+ 4]<<56) | ((u64)header[offset+ 5]<<48) |
-                               ((u64)header[offset+ 6]<<40) | ((u64)header[offset+ 7]<<32) |
-                               ((u64)header[offset+ 8]<<24) | ((u64)header[offset+ 9]<<16) |
-                               ((u64)header[offset+10]<< 8) |  (u64)header[offset+11]);
+            timeOriginTick = (((u64)header[offset+ 4]<<56) | ((u64)header[offset+ 5]<<48) |
+                              ((u64)header[offset+ 6]<<40) | ((u64)header[offset+ 7]<<32) |
+                              ((u64)header[offset+ 8]<<24) | ((u64)header[offset+ 9]<<16) |
+                              ((u64)header[offset+10]<< 8) |  (u64)header[offset+11]);
             {
                 u64 tmp = (((u64)header[offset+12]<<56) | ((u64)header[offset+13]<<48) |
                            ((u64)header[offset+14]<<40) | ((u64)header[offset+15]<<32) |
                            ((u64)header[offset+16]<<24) | ((u64)header[offset+17]<<16) |
                            ((u64)header[offset+18]<< 8) |  (u64)header[offset+19]);
                 char* tmp1 = (char*)&tmp; // Avoids a warning on strict aliasing
-                _tickToNs  = *(double*)tmp1;
+                tickToNs  = *(double*)tmp1;
             }
-            _tlvs.values[tlvType] = (u64)(1000.*_tickToNs); // Pico second, as precision can be deep
-            plgData(CLIENTRX, "Time tick origin is", _timeTickOrigin);
-            plgData(CLIENTRX, "Time tick unit is",   _tickToNs);
+            si.tlvs[tlvType] = (u64)(1000.*tickToNs); // Pico second, as precision can be deep. For display only
+            _itf->log(LOG_DETAIL, "   Clock precision is %.1f ns", tickToNs);
+            plgData(CLIENTRX, "Time tick origin is", timeOriginTick);
+            plgData(CLIENTRX, "Time tick unit is",   tickToNs);
             break;
 
         case PL_TLV_APP_NAME:
             // Get the application name
-            _appName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
-            if(!_appName.empty() && _appName.back()==0) _appName.pop_back();
+            si.appName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
+            if(!si.appName.empty() && si.appName.back()==0) si.appName.pop_back();
             // Filter out the problematic characters
             {
                 int i=0;
-                for(u8 c : _appName) {
+                for(u8 c : si.appName) {
                     if(c<0x1F || c==0x7F || c=='"' || c=='*' || c=='/' || c=='\\' ||
                        c==':' || c=='<' || c=='>' || c=='^' || c=='?' || c=='|') continue;
-                    _appName[i++] = c;
+                    si.appName[i++] = c;
                 }
-                _appName.resize(i);
-                _appName.strip();
+                si.appName.resize(i);
+                si.appName.strip();
             }
             // Some logging
-            _itf->log(LOG_DETAIL, "Application name is '%s'", _appName.toChar());
-            plgData(CLIENTRX, "Application name", _appName.toChar());
+            _itf->log(LOG_DETAIL, "   Application name is '%s'", si.appName.toChar());
+            plgData(CLIENTRX, "Application name", si.appName.toChar());
             break;
 
         case PL_TLV_HAS_BUILD_NAME:
             // Get the build name
-            _buildName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
-            if(!_buildName.empty() && _buildName.back()==0) _buildName.pop_back();
-            _itf->log(LOG_DETAIL, "Build name is '%s'", _buildName.toChar());
-            plgData(CLIENTRX, "Build name", _buildName.toChar());
+            si.buildName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
+            if(!si.buildName.empty() && si.buildName.back()==0) si.buildName.pop_back();
+            _itf->log(LOG_DETAIL, "   Build name is '%s'", si.buildName.toChar());
+            plgData(CLIENTRX, "Build name", si.buildName.toChar());
+            break;
+
+        case PL_TLV_HAS_LANG_NAME:
+            // Get the language name
+            si.langName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
+            if(!si.langName.empty() && si.langName.back()==0) si.langName.pop_back();
+            _itf->log(LOG_DETAIL, "   Language name is '%s'", si.langName.toChar());
+            plgData(CLIENTRX, "Language name", si.langName.toChar());
             break;
 
         case PL_TLV_HAS_EXTERNAL_STRING:
             CHECK_TLV_PAYLOAD_SIZE(0, "External String Flag");
-            _tlvs.values[tlvType] = 1;
+            si.tlvs[tlvType] = 1;
+            _itf->log(LOG_DETAIL, "   External string is activated");
             plgText(CLIENTRX, "State", "External String Flag set");
             break;
 
         case PL_TLV_HAS_SHORT_STRING_HASH:
             CHECK_TLV_PAYLOAD_SIZE(0, "Short String Hash Flag");
-            _tlvs.values[tlvType] = 1;
+            si.tlvs[tlvType] = 1;
+            _itf->log(LOG_DETAIL, "   Short string hash is activated");
             plgText(CLIENTRX, "State", "Short String Hash Flag set");
             break;
 
         case PL_TLV_HAS_NO_CONTROL:
             CHECK_TLV_PAYLOAD_SIZE(0, "No Control Flag");
-            _tlvs.values[tlvType] = 1;
+            si.tlvs[tlvType] = 1;
+            _itf->log(LOG_DETAIL, "   Remote control is disabled");
             plgText(CLIENTRX, "State", "No Control Flag set");
             break;
 
         case PL_TLV_HAS_SHORT_DATE:
-            CHECK_TLV_PAYLOAD_SIZE(0, "Short Date Flag");
-            _tlvs.values[tlvType] = 1;
+            CHECK_TLV_PAYLOAD_SIZE(8, "Short Date Flag");
+            // This is the global clock date in ns with precision higher than 1/4 of the wrap period
+            si.tlvs[tlvType] = (((u64)header[offset+ 4]<<56) | ((u64)header[offset+ 5]<<48) |
+                                    ((u64)header[offset+ 6]<<40) | ((u64)header[offset+ 7]<<32) |
+                                    ((u64)header[offset+ 8]<<24) | ((u64)header[offset+ 9]<<16) |
+                                    ((u64)header[offset+10]<< 8) |  (u64)header[offset+11]);
+            if(si.tlvs[tlvType]==0) si.tlvs[tlvType] = 1; // 0 is reserved for "long date"
+            _itf->log(LOG_DETAIL, "   Short date is activated");
             plgText(CLIENTRX, "State", "Short Date Flag set");
             break;
 
         case PL_TLV_HAS_COMPACT_MODEL:
             CHECK_TLV_PAYLOAD_SIZE(0, "Compact Model Flag");
-            _tlvs.values[tlvType] = 1;
+            si.tlvs[tlvType] = 1;
+            _itf->log(LOG_DETAIL, "   Compact model is activated");
             plgText(CLIENTRX, "State", "Compact Model Flag set");
             break;
 
         case PL_TLV_HAS_HASH_SALT:
-            CHECK_TLV_PAYLOAD_SIZE(4, "Hash Salt TLV");
-            _tlvs.values[tlvType] = (header[offset+4]<<24) | (header[offset+5]<<16) | (header[offset+6]<<8) | (header[offset+7]<<0);
-            plgData(CLIENTRX, "Hash salt is", _tlvs.values[tlvType]);
+            CHECK_TLV_PAYLOAD_SIZE(4, "Hash Salt");
+            si.tlvs[tlvType] = (header[offset+4]<<24) | (header[offset+5]<<16) | (header[offset+6]<<8) | (header[offset+7]<<0);
+            _itf->log(LOG_DETAIL, "   Hash salt is set to %u", (u32)si.tlvs[tlvType]);
+            plgData(CLIENTRX, "Hash salt", si.tlvs[tlvType]);
+            break;
+
+        case PL_TLV_HAS_AUTO_INSTRUMENT:
+            CHECK_TLV_PAYLOAD_SIZE(0, "Auto Instrument Flag");
+            si.tlvs[tlvType] = 1;
+            _itf->log(LOG_DETAIL, "   Auto instrumentation is activated");
+            plgText(CLIENTRX, "State", "Auto instrumentation Flag set");
+            break;
+
+        case PL_TLV_HAS_CSWITCH_INFO:
+            CHECK_TLV_PAYLOAD_SIZE(0, "Context Switch Collection Flag");
+            si.tlvs[tlvType] = 1;
+            _itf->log(LOG_DETAIL, "   Context Switch Collection is activated");
+            plgText(CLIENTRX, "State", "Context Switch Collection Flag set");
             break;
 
         default: // Just ignore unknown TLVs. Protocol compatibility is checked later
@@ -640,17 +884,41 @@ cmCnx::initializeTransport(FILE* fd)
 
     } // End of loop on initialization payload
 
+    // Check mandatory information
+    STREAM_ERROR(si.appName.empty(), "missing mandatory application name TLV");
+    STREAM_ERROR(tickToNs==0., "missing the mandatory clock info TLV");
+    STREAM_ERROR(si.tlvs[PL_TLV_PROTOCOL]<SUPPORTED_MIN_PROTOCOL,
+                 "the instrumentation library is incompatible (too old) and shall be updated");
+    STREAM_ERROR(si.tlvs[PL_TLV_PROTOCOL]>SUPPORTED_MAX_PROTOCOL,
+                 "the instrumentation library is incompatible (too recent). The server shall be updated");
+
+    // Check the compatibility versus other streams (these constraints may be removed in the future)
+    if(_streamQty>0) {
+        STREAM_ERROR(si.tlvs[PL_TLV_HAS_SHORT_STRING_HASH]!=_streams[0].infos.tlvs[PL_TLV_HAS_SHORT_STRING_HASH],
+                     "the short string hash flag is inconsistent with other streams");
+        STREAM_ERROR((si.tlvs[PL_TLV_HAS_SHORT_DATE]==0)!=(_streams[0].infos.tlvs[PL_TLV_HAS_SHORT_DATE]==0),
+                     "the short date flag is inconsistent with other streams");
+        STREAM_ERROR(si.tlvs[PL_TLV_HAS_HASH_SALT]!=_streams[0].infos.tlvs[PL_TLV_HAS_HASH_SALT],
+                     "the hash salt is inconsistent with other streams");
+    }
+
+    // Store the collected infos and return the ID of the accepted new stream
+    StreamInfo& storedStream    = _streams[_streamQty++];
+    storedStream.timeOriginTick = timeOriginTick;
+    storedStream.tickToNs       = tickToNs;
+    storedStream.infos          = si;
     plgText(CLIENTRX, "State", "Transport initialized, header is ok");
-    return (!_appName.empty()); // Only mandatory TLV
+    _itf->log(LOG_DETAIL, " Stream %d accepted", _streamQty-1);
+   return _streamQty-1;
 }
 
 
 bool
-cmCnx::processNewEvents(u8* buf, int eventQty)
+cmCnx::processNewEvents(int streamId, u8* buf, int eventQty)
 {
     // Direct notification
-    if(!_tlvs.values[PL_TLV_HAS_COMPACT_MODEL]) {
-        return _itf->notifyNewEvents((plPriv::EventExt*)buf, eventQty);
+    if(!_streams[streamId].infos.tlvs[PL_TLV_HAS_COMPACT_MODEL]) {
+        return _itf->notifyNewEvents(streamId, (plPriv::EventExt*)buf, eventQty, _streams[streamId].syncDateTick);
     }
 
     // Compact model: conversion required
@@ -680,34 +948,37 @@ cmCnx::processNewEvents(u8* buf, int eventQty)
 
     // Notify with the converted buffer
     // Having the processing always with the "large" event structure simplifies a lot the code
-    return _itf->notifyNewEvents((plPriv::EventExt*)&_conversionBuffer[0], eventQty);
+    return _itf->notifyNewEvents(streamId, (plPriv::EventExt*)&_conversionBuffer[0], eventQty, _streams[streamId].syncDateTick);
 }
 
 
 bool
-cmCnx::parseTransportLayer(u8* buf, int qty)
+cmCnx::parseTransportLayer(int streamId, u8* buf, int qty)
 {
     // Readability concerns
-    bsVec<u8>& s = _parseTempStorage;
-    int eventExtSize = _tlvs.values[PL_TLV_HAS_COMPACT_MODEL]? sizeof(plPriv::EventExtCompact) : sizeof(plPriv::EventExtFull);
+    ParsingCtx& pc   = _streams[streamId].parsing;
+    bsVec<u8>&  s    = pc.tempStorage;
+    int eventExtSize = _streams[streamId].infos.tlvs[PL_TLV_HAS_COMPACT_MODEL]? sizeof(plPriv::EventExtCompact) : sizeof(plPriv::EventExtFull);
 
     // Loop on the buffer content
     while(qty>0) {
 
         // Header
-        if(qty>0 && _parseHeaderDataLeft>0) {
-            plAssert(_parseStringLeft==0 && _parseEventLeft==0 && _parseRemoteLeft==0,
-                     _parseStringLeft, _parseEventLeft, _parseRemoteLeft);
+        if(qty>0 && pc.headerLeft>0) {
+            plAssert(pc.stringLeft==0 && pc.eventLeft==0 && pc.eventHeaderLeft==0 && pc.remoteLeft==0,
+                     pc.stringLeft, pc.eventLeft, pc.eventHeaderLeft, pc.remoteLeft);
+
             // Read
-            int usedQty = (_parseHeaderDataLeft<qty)? _parseHeaderDataLeft : qty;
+            int usedQty = (pc.headerLeft<qty)? pc.headerLeft : qty;
             std::copy(buf, buf+usedQty, std::back_inserter(s));
             buf += usedQty;
             qty -= usedQty;
-            _parseHeaderDataLeft -= usedQty;
+            pc.headerLeft -= usedQty;
+
             // Parse if header is complete
-            if(_parseHeaderDataLeft==0) {
+            if(pc.headerLeft==0) {
                 // Magic
-                plAssert(s.size()==_parseHeaderSize);
+                plAssert(s.size()==CLIENT_HEADER_SIZE);
                 if(s[0]!='P' || s[1]!='L') {
                     _itf->log(LOG_ERROR, "Received buffer has a corrupted header");
                     return false;
@@ -715,18 +986,15 @@ cmCnx::parseTransportLayer(u8* buf, int qty)
                 // Check the type
                 plPriv::DataType dataType = (plPriv::DataType) ((s[2]<<8) | s[3]);
                 if(dataType==plPriv::PL_DATA_TYPE_STRING) {
-                    _parseStringLeft = (s[4]<<24) | (s[5]<<16) | (s[6]<<8) | s[7];
+                    pc.stringLeft = (s[4]<<24) | (s[5]<<16) | (s[6]<<8) | s[7];
                 }
-                else if(dataType==plPriv::PL_DATA_TYPE_EVENT) {
-                    _parseEventLeft  = (s[4]<<24) | (s[5]<<16) | (s[6]<<8) | s[7];
-                    _isCollectionTick = true; // Notification of a collection "tick" for scripting module
-
-                }
-                else if(dataType==plPriv::PL_DATA_TYPE_EVENT_AUX) {
-                    _parseEventLeft  = (s[4]<<24) | (s[5]<<16) | (s[6]<<8) | s[7];
+                else if(dataType==plPriv::PL_DATA_TYPE_EVENT || dataType==plPriv::PL_DATA_TYPE_EVENT_AUX) {
+                    pc.eventLeft        = (s[4]<<24) | (s[5]<<16) | (s[6]<<8) | s[7];
+                    pc.eventHeaderLeft  = 1;
+                    pc.isCollectionTick = (dataType==plPriv::PL_DATA_TYPE_EVENT); // Notification of a collection "tick" for scripting module
                 }
                 else if(dataType==plPriv::PL_DATA_TYPE_CONTROL) {
-                    _parseRemoteLeft = (s[4]<<24) | (s[5]<<16) | (s[6]<<8) | s[7];
+                    pc.remoteLeft = (s[4]<<24) | (s[5]<<16) | (s[6]<<8) | s[7];
                 }
                 else {
                     _itf->log(LOG_WARNING, "Client sent unknown TLV %d - ignored", (int)dataType);
@@ -736,10 +1004,10 @@ cmCnx::parseTransportLayer(u8* buf, int qty)
         } // End of header parsing
 
         // Strings
-        while(qty>0 && _parseStringLeft>0) {
-            plAssert(_parseHeaderDataLeft==0);
-            int usedQty = 0;
+        while(qty>0 && pc.stringLeft>0) {
+            plAssert(pc.headerLeft==0);
             // Fill the hash
+            int usedQty = 0;
             while(usedQty<qty && s.size()<8) s.push_back(buf[usedQty++]);
             buf += usedQty;
             qty -= usedQty;
@@ -754,38 +1022,55 @@ cmCnx::parseTransportLayer(u8* buf, int qty)
                 qty -= usedQty;
                 plAssert(!s.empty());
                 if(s.back()==0) {
-                    _parseStringLeft -= 1;
+                    pc.stringLeft -= 1;
                     u64 h = (((u64)s[0])<<56) | (((u64)s[1])<<48) | (((u64)s[2])<<40) | (((u64)s[3])<<32) |
                         (((u64)s[4])<<24) | (((u64)s[5])<<16) | (((u64)s[6])<<8) | (((u64)s[7])<<0);
-                    _itf->notifyNewString(bsString((char*)s.begin()+8, (char*)s.end()), h); // Store the string and the hash (first 8 bytes)
+                    _itf->notifyNewString(streamId, bsString((char*)s.begin()+8, (char*)s.end()), h); // Store the string and the hash (first 8 bytes)
                     s.clear();
                 }
             }
         } // End of string parsing
 
+        // Event header
+        while(qty>0 && pc.eventHeaderLeft>0) {
+            plAssert(pc.headerLeft==0);
+            int usedQty = 0;
+            while(usedQty<qty && s.size()<8) s.push_back(buf[usedQty++]);
+            buf += usedQty;
+            qty -= usedQty;
+            // If the 8 bytes header is complete, parse the synchronization date (used only for short dates)
+            if(s.size()>=8) {
+                pc.eventHeaderLeft = 0;
+                _streams[streamId].syncDateTick = (((u64)s[0])<<56) | (((u64)s[1])<<48) | (((u64)s[2])<<40) | (((u64)s[3])<<32) |
+                    (((u64)s[4])<<24) | (((u64)s[5])<<16) | (((u64)s[6])<<8) | (((u64)s[7])<<0);
+                _streams[streamId].syncDateTick += _streams[streamId].timeOriginTick&(~0xFFFFFFFFLL); // Add the origin wrap bias
+                s.clear();
+            }
+        } // End of event header parsing
+
         // Events
-        while(qty>0 && _parseEventLeft>0) {
-            plAssert(_parseHeaderDataLeft==0);
+        while(qty>0 && pc.eventHeaderLeft==0 && pc.eventLeft>0) {
+            plAssert(pc.headerLeft==0);
             if(!s.empty()) {
                 int usedQty = (qty>eventExtSize-s.size())? eventExtSize-s.size() : qty;
                 std::copy(buf, buf+usedQty, std::back_inserter(s));
                 buf += usedQty;
                 qty -= usedQty;
                 if(s.size()==eventExtSize) {
-                    _parseEventLeft -= 1;
-                    if(!processNewEvents(&s[0], 1)) return false; // Event corruption
+                    pc.eventLeft -= 1;
+                    if(!processNewEvents(streamId, &s[0], 1)) return false; // Event corruption
                     s.clear();
                 }
             }
             int eventQty = qty/eventExtSize;
-            if(eventQty>_parseEventLeft) eventQty = _parseEventLeft;
+            if(eventQty>pc.eventLeft) eventQty = pc.eventLeft;
             if(eventQty) {
-                if(!processNewEvents(buf, eventQty)) return false; // Event corruption
+                if(!processNewEvents(streamId, buf, eventQty)) return false; // Event corruption
                 buf += eventQty*eventExtSize;
                 qty -= eventQty*eventExtSize;
-                _parseEventLeft -= eventQty;
+                pc.eventLeft -= eventQty;
             }
-            if(qty>0 && _parseEventLeft>0) {
+            if(qty>0 && pc.eventLeft>0) {
                 plAssert(qty<eventExtSize);
                 std::copy(buf, buf+qty, std::back_inserter(s));
                 buf += qty;
@@ -793,29 +1078,29 @@ cmCnx::parseTransportLayer(u8* buf, int qty)
             }
         } // End of event parsing
 
-        if(_isCollectionTick && _parseEventLeft==0) {
+        if(pc.isCollectionTick && pc.eventLeft==0) {
             // Notify a collection tick, once the buffer is fully parsed
-            _isCollectionTick = false;
-            _itf->notifyNewCollectionTick();
+            pc.isCollectionTick = false;
+            _itf->notifyNewCollectionTick(streamId);
         }
 
         // Remote control
-        while(qty>0 && _parseRemoteLeft>0) {
-            plAssert(_parseHeaderDataLeft==0);
-            int usedQty = (qty>_parseRemoteLeft)? _parseRemoteLeft : qty;
+        while(qty>0 && pc.remoteLeft>0) {
+            plAssert(pc.headerLeft==0);
+            int usedQty = (qty>pc.remoteLeft)? pc.remoteLeft : qty;
             std::copy(buf, buf+usedQty, std::back_inserter(s));
             buf += usedQty;
             qty -= usedQty;
-            _parseRemoteLeft -= usedQty;
-            if(_parseRemoteLeft==0) {
-                _itf->notifyNewRemoteBuffer(s);
+            pc.remoteLeft -= usedQty;
+            if(pc.remoteLeft==0) {
+                _itf->notifyNewRemoteBuffer(streamId, s);
                 s.clear();
             }
         } // End of remote control parsing
 
-        if(_parseHeaderDataLeft==0 && _parseStringLeft==0 && _parseEventLeft==0 && _parseRemoteLeft==0) {
+        if(pc.headerLeft==0 && pc.stringLeft==0 && pc.eventLeft==0 && pc.eventHeaderLeft==0 && pc.remoteLeft==0) {
             plAssert(s.empty());
-            resetParser();
+            pc.reset();
         }
     } // End of loop on buffer content
 

@@ -37,7 +37,7 @@ def test_usepl1():
     events = data_collect_events(timeout_sec=1.0)
     CHECK(events, "Some events are received")
     CHECK(
-        not [1 for e in events if e.path[-1] == "CRASH Stacktrace"],
+        not [1 for e in events if e.path[-1] == "CRASH"],
         "No crash event has been received",
     )
     status, answer = program_cli("async_assert condvalue=0")
@@ -131,7 +131,7 @@ def test_usepl1_noassert():
     events = data_collect_events(timeout_sec=2.0)
     CHECK(events, "Some events are received")
     CHECK(
-        not [1 for e in events if e.path[-1] == "CRASH Stacktrace"]
+        not [1 for e in events if e.path[-1] == "CRASH"]
         and process_is_running(),
         "No crash event has been received because of disabled assertions",
     )
@@ -359,7 +359,7 @@ def test_external_string():
     CHECK(events, "Fruit related events are received")
     CHECK(events[0].path[-1].count("@") == 4, "The strings of the path are obfuscated")
     CHECK(
-        not [1 for e in events if e.path[-1] == "CRASH Stacktrace"],
+        not [1 for e in events if e.path[-1] == "CRASH"],
         "No crash event has been received",
     )
     # Check CLI is still working
@@ -393,7 +393,7 @@ def test_external_string():
         "The strings of the path are no more obfuscated",
     )
     CHECK(
-        not [1 for e in events if e.path[-1] == "CRASH Stacktrace"],
+        not [1 for e in events if e.path[-1] == "CRASH"],
         "No crash event has been received",
     )
     # Check assertions are still working
@@ -486,7 +486,7 @@ def test_compactmodel():
     events = data_collect_events(timeout_sec=1.0)
     CHECK(events, "Some events are received")
     CHECK(
-        not [1 for e in events if e.path[-1] == "CRASH Stacktrace"],
+        not [1 for e in events if e.path[-1] == "CRASH"],
         "No crash event has been received",
     )
     status, answer = program_cli("async_assert condvalue=0")

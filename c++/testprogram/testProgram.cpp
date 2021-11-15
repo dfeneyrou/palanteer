@@ -307,13 +307,13 @@ cliHandlerQuit(plCliIo& cio)
 // ==============================
 
 void
-evaluatePerformance(plMode mode, const char* buildName, int durationMultipler)
+evaluatePerformance(plMode mode, const char* buildName, int durationMultipler, int serverConnectionTimeoutMsec)
 {
     constexpr int iterationQty = 250000; // 4 events per loop
     (void) mode; (void)buildName;
 
     // Start the logging
-    plInitAndStart("C++ perf example", mode, buildName);
+    plInitAndStart("C++ perf example", mode, buildName, serverConnectionTimeoutMsec);
 
     // Give a name to this thread (after the library initialization)
     plDeclareThread("Main");
@@ -355,7 +355,8 @@ evaluatePerformance(plMode mode, const char* buildName, int durationMultipler)
 // ==============================
 
 void
-collectInterestingData(plMode mode, const char* buildName, int durationMultiplier, int threadGroupQty, int crashKind)
+collectInterestingData(plMode mode, const char* buildName, int durationMultiplier, int threadGroupQty, int crashKind,
+                       int serverConnectionTimeoutMsec)
 {
     (void) mode; (void)buildName;
 
@@ -366,7 +367,7 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
 
     // Start the logging
     uint64_t startMs = GET_TIME(milliseconds);
-    plInitAndStart("C++ example", mode, buildName);
+    plInitAndStart("C++ example", mode, buildName, serverConnectionTimeoutMsec);
 
     // Give a name to this thread (after the library initialization)
     plDeclareThread("Main");
@@ -508,17 +509,18 @@ displayUsage(const char* programPath)
     printf("\n");
     printf("  Options to selection the collection mode (exclusive):\n");
     printf("    <Default>: Use remote Palanteer connection\n");
-    printf("    '-f'     : Save the record in a file 'example_record.plt'\n");
+    printf("    '-f'     : Save the record in a file 'example_record.pltraw'\n");
     printf("    '-n'     : No data collection (event recording not enabled at run time)\n");
     printf("\n");
     printf("  Options to configure the program behavior:\n");
+    printf("    '-w <millsec>' : Server connection waiting timeout in millisecond (default=-1, no wait)\n");
     printf("    '-t <1-9>      : Defines the quantity of groups of threads (2 threads per group)\n");
-    printf("    '-l'           : Run time length multiplier (default is 1)\n");
+    printf("    '-l <integer>' : Run time length multiplier (default is 1)\n");
     printf("    '-b <name>'    : Provide a build name for the current program (default is none)\n");
     printf("    '--port <port>': Use the provided socket port (default is 59059)\n");
     printf("\n");
     printf("To start, you can try this (and look at the testProgram.cpp code too):\n");
-    printf("  %s perf    -f   (no need for palanteer, events are stored in the file example_record.plt) \n", programPath);
+    printf("  %s perf    -f   (no need for palanteer, events are stored in the file example_record.pltraw) \n", programPath);
     printf("  %s collect -c   (no need for palanteer, events are displayed on console) \n", programPath);
     printf("  %s collect      (requires the prior launch of 'palanteer' viewer) \n", programPath);
 }
@@ -548,6 +550,7 @@ main(int argc, char** argv)
     const char* buildName   = 0;
     int  threadGroupQty     = 1;
     int  durationMultiplier = 1;
+    int  serverConnectionTimeoutMsec = -1;
     int  argCount           = 2;
 
     while(!doDisplayUsage && argCount<argc) {
@@ -566,9 +569,21 @@ main(int argc, char** argv)
         else if((strcasecmp(w, "-t")==0 || strcasecmp(w, "--t")==0) && argCount+1<argc) {
             threadGroupQty = atoi(argv[++argCount]);
             printf("Thread group qty: %d\n", threadGroupQty);
+            if(threadGroupQty<1 || threadGroupQty>9) {
+                printf("Error: the thread group quantity shall be in [1;9]\n");
+                doDisplayUsage = true;
+            }
+        }
+        else if((strcasecmp(w, "-w")==0 || strcasecmp(w, "--w")==0) && argCount+1<argc) {
+            serverConnectionTimeoutMsec = atoi(argv[++argCount]);
+            printf("Server connection timeout: %d ms\n", serverConnectionTimeoutMsec);
         }
         else if((strcasecmp(w, "-l")==0 || strcasecmp(w, "--l")==0) && argCount+1<argc) {
             durationMultiplier = atoi(argv[++argCount]);
+            if(durationMultiplier<=0) {
+                printf("Error: the duration multiplier shall be a strictly positive integer\n");
+                doDisplayUsage = true;
+            }
             printf("Duration multiplier: %d\n", durationMultiplier);
         }
         else {
@@ -598,14 +613,14 @@ main(int argc, char** argv)
 
     if(doEstimateCost) {
         // Estimate the cost of the logging
-        evaluatePerformance(mode, buildName, durationMultiplier);
+        evaluatePerformance(mode, buildName, durationMultiplier, serverConnectionTimeoutMsec);
     }
     else {
         // Collect events for a multi-threaded test program
         // The purposes are:
         //  - to show an example of instrumentation
         //  - to test all instrumentation APIs
-        collectInterestingData(mode, buildName, durationMultiplier, threadGroupQty, crashKind);
+        collectInterestingData(mode, buildName, durationMultiplier, threadGroupQty, crashKind, serverConnectionTimeoutMsec);
     }
 
     return 0;

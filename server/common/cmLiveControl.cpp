@@ -35,7 +35,7 @@ cmLiveControl::~cmLiveControl(void)
 
 
 void
-cmLiveControl::storeNewRemoteBuffer(bsVec<u8>& buffer)
+cmLiveControl::storeNewRemoteBuffer(int streamId, bsVec<u8>& buffer)
 {
     // 'buffer' contains the command payload (inside the transport layer)
     // Get command type
@@ -50,14 +50,14 @@ cmLiveControl::storeNewRemoteBuffer(bsVec<u8>& buffer)
     case plPriv::PL_CMD_SET_FREEZE_MODE:
         plAssert(buffer.size()>=4);
         status = (plPriv::plRemoteStatus)((buffer[2]<<8) | buffer[3]);
-        _itf->notifyCommandAnswer(status, "");
+        _itf->notifyCommandAnswer(streamId, status, "");
         break;
     case plPriv::PL_NTF_FROZEN_THREAD:
         {
             plAssert(buffer.size()>=10);
             u64 bitmap = ((u64)buffer[2]<<56) | ((u64)buffer[3]<<48) | ((u64)buffer[4]<<40) | ((u64)buffer[5]<<32) |
                 ((u64)buffer[6]<<24) | ((u64)buffer[7]<<16) | ((u64)buffer[8]<<8) | ((u64)buffer[9]<<0);
-            _itf->notifyNewFrozenThreadState(bitmap);
+            _itf->notifyNewFrozenThreadState(streamId, bitmap);
         }
         break;
     case plPriv::PL_NTF_DECLARE_CLI:
@@ -66,7 +66,7 @@ cmLiveControl::storeNewRemoteBuffer(bsVec<u8>& buffer)
             for(int i=0; i<cliQty; ++i) {
                 // The 3 strings are the CLI name, param specification and description
                 int o = 4+i*6;
-                _itf->notifyNewCli((buffer[o+0]<<8) | buffer[o+1], (buffer[o+2]<<8) | buffer[o+3], (buffer[o+4]<<8) | buffer[o+5]);
+                _itf->notifyNewCli(streamId, (buffer[o+0]<<8) | buffer[o+1], (buffer[o+2]<<8) | buffer[o+3], (buffer[o+4]<<8) | buffer[o+5]);
            }
             break;
         }
@@ -81,7 +81,7 @@ cmLiveControl::storeNewRemoteBuffer(bsVec<u8>& buffer)
                 offset += 2;
                 int offsetEnd = offset;
                 while(offsetEnd<buffer.size() && buffer[offsetEnd]!=0) ++offsetEnd;
-                _itf->notifyCommandAnswer(cliStatus, (char*)&buffer[offset]); // @FIXME Cannot be called N times due to the underlying automata
+                _itf->notifyCommandAnswer(streamId, cliStatus, (char*)&buffer[offset]); // @FIXME Cannot be called N times due to the underlying automata
                 offset = offsetEnd+1; // Skip the zero termination
             }
         }
@@ -92,9 +92,9 @@ cmLiveControl::storeNewRemoteBuffer(bsVec<u8>& buffer)
 
 
 bsVec<u8>*
-cmLiveControl::_prepareCommand(enum plPriv::RemoteCommandType ct, int payloadSize)
+cmLiveControl::_prepareCommand(int streamId, enum plPriv::RemoteCommandType ct, int payloadSize)
 {
-    bsVec<u8>* txBuffer = _clientCnx->getTxBuffer();
+    bsVec<u8>* txBuffer = _clientCnx->getTxBuffer(streamId);
     if(txBuffer) {
         int commandSize = 2+payloadSize;
         txBuffer->resize(8/*header*/+commandSize);
@@ -114,36 +114,36 @@ cmLiveControl::_prepareCommand(enum plPriv::RemoteCommandType ct, int payloadSiz
 
 
 bool
-cmLiveControl::remoteSetMaxLatencyMs(int latencyMs)
+cmLiveControl::remoteSetMaxLatencyMs(int streamId, int latencyMs)
 {
-    bsVec<u8>* txBuffer = _prepareCommand(plPriv::PL_CMD_SET_MAX_LATENCY, 2);
+    bsVec<u8>* txBuffer = _prepareCommand(streamId, plPriv::PL_CMD_SET_MAX_LATENCY, 2);
     if(!txBuffer) return false;
     // Fill payload and send
     (*txBuffer)[10] = (latencyMs>>8)&0xFF;
     (*txBuffer)[11] = (latencyMs>>0)&0xFF;
-    _clientCnx->sendTxBuffer();
+    _clientCnx->sendTxBuffer(streamId);
     return true;
 }
 
 
 bool
-cmLiveControl::remoteSetFreezeMode(bool state)
+cmLiveControl::remoteSetFreezeMode(int streamId, bool state)
 {
     // Get the buffer
-    bsVec<u8>* txBuffer = _prepareCommand(plPriv::PL_CMD_SET_FREEZE_MODE, 1);
+    bsVec<u8>* txBuffer = _prepareCommand(streamId, plPriv::PL_CMD_SET_FREEZE_MODE, 1);
     if(!txBuffer) return false;
     // Fill payload and send
     (*txBuffer)[10] = state? 1:0;
-    _clientCnx->sendTxBuffer();
+    _clientCnx->sendTxBuffer(streamId);
     return true;
 }
 
 
 bool
-cmLiveControl::remoteStepContinue(u64 bitmap)
+cmLiveControl::remoteStepContinue(int streamId, u64 bitmap)
 {
     // Get the buffer
-    bsVec<u8>* txBuffer = _prepareCommand(plPriv::PL_CMD_STEP_CONTINUE, 8);
+    bsVec<u8>* txBuffer = _prepareCommand(streamId, plPriv::PL_CMD_STEP_CONTINUE, 8);
     if(!txBuffer) return false;
     // Fill payload and send
     (*txBuffer)[10] = (bitmap>>56)&0xFF;
@@ -154,32 +154,32 @@ cmLiveControl::remoteStepContinue(u64 bitmap)
     (*txBuffer)[15] = (bitmap>>16)&0xFF;
     (*txBuffer)[16] = (bitmap>> 8)&0xFF;
     (*txBuffer)[17] = (bitmap>> 0)&0xFF;
-    _clientCnx->sendTxBuffer();
+    _clientCnx->sendTxBuffer(streamId);
     return true;
 }
 
 
 bool
-cmLiveControl::remoteKillProgram(void)
+cmLiveControl::remoteKillProgram(int streamId)
 {
     // Get the buffer
-    bsVec<u8>* txBuffer = _prepareCommand(plPriv::PL_CMD_KILL_PROGRAM, 0);
+    bsVec<u8>* txBuffer = _prepareCommand(streamId, plPriv::PL_CMD_KILL_PROGRAM, 0);
     if(!txBuffer) return false;
     // Send
-    _clientCnx->sendTxBuffer();
+    _clientCnx->sendTxBuffer(streamId);
     return true;
 }
 
 
 bool
-cmLiveControl::remoteCli(const bsVec<bsString>& commands)
+cmLiveControl::remoteCli(int streamId, const bsVec<bsString>& commands)
 {
     // Compute the payload length
     int payloadLength = 2;
     for(const bsString& c : commands) payloadLength += (int)strlen(c.toChar())+1;
 
     // Get the buffer
-    bsVec<u8>* txBuffer = _prepareCommand(plPriv::PL_CMD_CALL_CLI, payloadLength);
+    bsVec<u8>* txBuffer = _prepareCommand(streamId, plPriv::PL_CMD_CALL_CLI, payloadLength);
     if(!txBuffer) return false;
 
     // Fill payload
@@ -194,6 +194,6 @@ cmLiveControl::remoteCli(const bsVec<bsString>& commands)
     plAssert(offset==10+payloadLength);
 
     // Send
-    _clientCnx->sendTxBuffer();
+    _clientCnx->sendTxBuffer(streamId);
     return true;
 }

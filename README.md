@@ -21,6 +21,8 @@ Simple code instrumentation, mostly automatic in Python, delivers powerful featu
     - Automatic instrumentation of functions enter/leave, memory allocations, raised exceptions, garbage collection runs
     - Seamless support of multithreading, asyncio/gevent
 
+Recording simultaneously up to 8 streams (i.e., from different processes) is supported.
+
 Palanteer is an efficient, lean and comprehensive solution for better and enjoyable software development!
 
 ## C++ instrumentation example

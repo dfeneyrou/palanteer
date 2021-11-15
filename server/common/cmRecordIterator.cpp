@@ -1094,7 +1094,7 @@ cmRecordIteratorMarker::init(const cmRecord* record, int threadId, u32 nameIdx, 
 
     // Get the hashpath, either relative to a thread or global
     u64 hashPath;
-    if     (threadId<0)          hashPath = bsHashStep(cmConst::MARKER_NAMEIDX);
+    if     (threadId<0)          hashPath = bsHashStepChain(0 /*harcoded streamId*/, cmConst::MARKER_NAMEIDX); // @#TEMP The marker window shall be upgraded to mux the input from all streamId. When this time arrives, this "0" shall be replaced by a dynamic streamId
     else if(nameIdx!=PL_INVALID) hashPath = bsHashStepChain(record->threads[threadId].threadHash, nameIdx, cmConst::MARKER_NAMEIDX);
     else                         hashPath = bsHashStepChain(record->threads[threadId].threadHash, cmConst::MARKER_NAMEIDX);
 
@@ -1133,7 +1133,8 @@ cmRecordIteratorMarker::cmRecordIteratorMarker(const cmRecord* record, int idx) 
     _pmIdx = idx;
 
     // Get the marker plot elem
-    int* elemIdxPtr = record->elemPathToId.find(bsHashStepChain(cmConst::MARKER_NAMEIDX), cmConst::MARKER_NAMEIDX);
+    int* elemIdxPtr = record->elemPathToId.find(bsHashStepChain(0 /*harcoded streamId*/, cmConst::MARKER_NAMEIDX),
+                                                cmConst::MARKER_NAMEIDX);
     if(elemIdxPtr) _elemIdx = *elemIdxPtr;
 }
 
@@ -1157,7 +1158,7 @@ cmRecordIteratorMarker::getEvent(int idx, cmRecord::Evt& eOut)
 {
     plgScope(ITMARKER, "cmRecordIteratorMarker::getEvent");
 
-    const cmRecord::Elem&   elem          = _record->elems[_elemIdx];
+    const cmRecord::Elem&    elem          = _record->elems[_elemIdx];
     const bsVec<chunkLoc_t>& elemChunkLocs = elem.chunkLocs;
     const bsVec<u32>& elemLastLiveLocChunk = elem.lastLiveLocChunk;
 

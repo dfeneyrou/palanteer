@@ -77,6 +77,7 @@ if withStackTrace:
 
 if sys.platform == "win32":
     extra_compilation_flags.append("/DUNICODE")
+    extra_compilation_flags.append("/wd4996")  # Disable the "This function or variable may be unsafe", pushing for not well supported extensions
 
 # Normalize all source path (required for Windows)
 src_list = [np(s) for s in src_list]

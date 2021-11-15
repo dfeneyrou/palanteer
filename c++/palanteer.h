@@ -282,6 +282,17 @@
 #endif
 
 // [Platform specific]
+// This function is used only in case of PL_SHORT_DATE=1 with multi-stream and returns a non wrapping global system time
+// It is used once at connection time to provide to the server the ordering of origin dates per stream
+// This global system time
+//  - shall be coded on a u64 and be in nanosecond unit. The origin does not matter as long as all dates are positive.
+//  - shall be consistent across all streams ("global")
+//  - precision shall be at least 1/4 of the date wrapping period
+#ifndef PL_GET_SYSTEM_CLOCK_NS
+#define PL_GET_SYSTEM_CLOCK_NS() std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()
+#endif
+
+// [Platform specific]
 // System thread ID getter
 // Implemented for both Windows and Linux
 #ifndef PL_GET_SYS_THREAD_ID
@@ -414,18 +425,21 @@ enum plMode { PL_MODE_CONNECTED, PL_MODE_STORE_IN_FILE, PL_MODE_INACTIVE};
 // If USE_PL==0 or not defined, the full Palanteer service is disabled (events, remote control, palanteer assertions)
 #if USE_PL==1
 
+// This configuration is considered only when plInitAndStart is called, and if mode is PL_MODE_STORE_IN_FILE
 void plSetFilename(const char* filename);
 
+// This configuration is considered only when plInitAndStart is called, and if mode is PL_MODE_CONNECTED
 void plSetServer(const char* serverAddr, int serverPort);
 
 // The service shall be initialized once, before any usage of event logging.
 //  The 'appName' is the application name seen by the server
-//  Even if the mode is PL_MODE_INACTIVE, it is expected to call it for signals handlers installation
-//   and initialization of symbol decoding for the stacktrace (crash case)
-// The build name is optional, it is your identifier of the program version, or anything else.
-//  The last parameter allows to wait for the server, only for the PL_MODE_CONNECTED case
+//  Even if the mode is PL_MODE_INACTIVE, it is expected to call this function for the installation of signals handlers
+//   and the initialization of symbol decoding for the stacktrace (crash case)
+//  The build name is optional, it is your identifier of the program version, or anything else.
+//  The serverConnectionTimeoutMsec is the timeout in millisecond for the server connection, before giving up (only for the PL_MODE_CONNECTED case)
+//   A negative value means waiting forever. Default value is no wait.
 void plInitAndStart(const char* appName, plMode mode=PL_MODE_CONNECTED,
-                    const char* buildName=0, bool doWaitForServerConnection=false);
+                    const char* buildName=0, int serverConnectionTimeoutMsec=0);
 
 // This function stops and uninitializes the event logging service (typically before exiting the program).
 void plStopAndUninit(void);
@@ -813,8 +827,8 @@ namespace plPriv {
 #define PL_PRI_HASH PRIX64
     typedef uint64_t hashStr_t;
 #else
-#define PL_FNV_HASH_OFFSET_ (2166136261+PL_HASH_SALT)
-#define PL_FNV_HASH_PRIME_  16777619
+#define PL_FNV_HASH_OFFSET_ (2166136261UL+PL_HASH_SALT)
+#define PL_FNV_HASH_PRIME_  16777619UL
 #define PL_PRI_HASH PRIX32
     typedef uint32_t hashStr_t;
 #endif
@@ -1311,10 +1325,12 @@ public:
 #define PL_FLAG_TYPE_MEMORY_LAST    13
 #define PL_FLAG_TYPE_CSWITCH        14
 #define PL_FLAG_TYPE_SOFTIRQ        15
+#define PL_FLAG_TYPE_LOCK_FIRST     16
 #define PL_FLAG_TYPE_LOCK_WAIT      16
 #define PL_FLAG_TYPE_LOCK_ACQUIRED  17
 #define PL_FLAG_TYPE_LOCK_RELEASED  18
 #define PL_FLAG_TYPE_LOCK_NOTIFIED  19
+#define PL_FLAG_TYPE_LOCK_LAST      19
 #define PL_FLAG_TYPE_MARKER         20
 #define PL_FLAG_TYPE_WITH_TIMESTAMP_LAST 20
 #define PL_FLAG_TYPE_MASK           0x1F
@@ -1334,7 +1350,7 @@ public:
 #define PALANTEER_VERSION_NUM 401  // Monotonic number. 100 per version component. Official releases are multiple of 100
 
 // Client-Server protocol version
-#define PALANTEER_CLIENT_PROTOCOL_VERSION 1
+#define PALANTEER_CLIENT_PROTOCOL_VERSION 2
 
 // Maximum thread quantity is 254 (server limitation for efficient storage)
 #define PL_MAX_THREAD_QTY 254
@@ -1347,13 +1363,16 @@ public:
 #define PL_TLV_CLOCK_INFO            1 /* Mandatory */
 #define PL_TLV_APP_NAME              2 /* Mandatory */
 #define PL_TLV_HAS_BUILD_NAME        3
-#define PL_TLV_HAS_EXTERNAL_STRING   4
-#define PL_TLV_HAS_SHORT_STRING_HASH 5
-#define PL_TLV_HAS_NO_CONTROL        6
-#define PL_TLV_HAS_SHORT_DATE        7
-#define PL_TLV_HAS_COMPACT_MODEL     8
-#define PL_TLV_HAS_HASH_SALT         9
-#define PL_TLV_QTY                  10
+#define PL_TLV_HAS_LANG_NAME         4
+#define PL_TLV_HAS_EXTERNAL_STRING   5
+#define PL_TLV_HAS_SHORT_STRING_HASH 6
+#define PL_TLV_HAS_NO_CONTROL        7
+#define PL_TLV_HAS_SHORT_DATE        8
+#define PL_TLV_HAS_COMPACT_MODEL     9
+#define PL_TLV_HAS_HASH_SALT        10
+#define PL_TLV_HAS_AUTO_INSTRUMENT  11
+#define PL_TLV_HAS_CSWITCH_INFO     12
+#define PL_TLV_QTY                  13
 
 #endif
 
@@ -2446,6 +2465,7 @@ namespace plPriv {
         int     serverPort      = 59059;
         plStats stats = { 0, 0, 0, 0, 0, 0, 0, 0 };
         bool    doNotUninit = false; // Emergency exit shall not clean ressources
+        bool    hasAutoInstrument = false;  // Can be overriden by language glue layer
         // Threads and connection
 #if PL_NOCONTROL==0 || PL_NOEVENT==0
         std::thread*     threadServerTx = 0;
@@ -2463,12 +2483,19 @@ namespace plPriv {
         bool                    txIsStarted = false;
         std::mutex              threadInitMx;
         std::condition_variable threadInitCv;
+        std::condition_variable threadInitCvTx;
         std::mutex              txThreadSyncMx;
         std::condition_variable txThreadSyncCv;
         int                     txThreadId = -1; // To avoid locks when this TX thread asserts or crashes
         // Data collection
         double        tickToNs = 1.;
-        uint64_t      lastSentEventBufferTick = 0;
+        clockType_t   lastSentEventBufferTick = 0;
+#if PL_SHORT_DATE==1
+        clockType_t   lastWrapCheckDateTick = 0;
+        uint32_t      lastDateWrapQty       = 0;
+        clockType_t   bankPreDateTick   [2] = {0, 0};
+        uint32_t      bankPreDateWrapQty[2] = {0, 0};
+#endif
         EventInt*     allocCollectBuffer = 0;
         FlatHashTable<uint32_t> lkupStringToIndex;
         uint32_t      stringUniqueId = 0;
@@ -2733,14 +2760,18 @@ namespace plPriv {
     palComReceive(uint8_t* buffer, int maxBuffersize) {
         plAssert(implCtx.serverSocket!=PL_PRIV_SOCKET_ERROR);
         int byteQty = recv(implCtx.serverSocket, (char*)buffer, maxBuffersize, 0);
+#ifdef _WIN32
+        if((WSAGetLastError()==EAGAIN || WSAGetLastError()==EWOULDBLOCK) && byteQty<0) return -1; // Timeout on reception (empty)
+#else
         if((errno==EAGAIN || errno==EWOULDBLOCK) && byteQty<0) return -1; // Timeout on reception (empty)
+#endif
         else if(byteQty<1) return 0; // Client is disconnected
         return byteQty;
     }
 #endif // PL_NOCONTROL==0
 
     static void
-    palComInit(bool doWaitForServerConnection)
+    palComInit(int serverConnectionTimeoutMsec)
     {
         // Initialize the socket connection
         if(implCtx.mode==PL_MODE_CONNECTED) {
@@ -2756,9 +2787,9 @@ namespace plPriv {
             implCtx.serverSocket = (socket_t)socket(AF_INET , SOCK_STREAM , 0);
             plAssert(PL_PRIV_IS_SOCKET_VALID(implCtx.serverSocket), "Unable to create the socket");
 
-            // 1s timeout on reception
+            // Set the timeout on reception
 #ifdef __unix__
-            const struct timeval socketTimeout = { .tv_sec=0, .tv_usec=100000 };
+            const struct timeval socketTimeout = { .tv_sec=0, .tv_usec=10000 };
 #endif
 #ifdef _WIN32
             DWORD socketTimeout = 10*1000;
@@ -2776,7 +2807,7 @@ namespace plPriv {
             // Wait for connection
             bool hasWarned = false;
             while(connect(implCtx.serverSocket, (struct sockaddr*)&m_server, sizeof(m_server))==PL_PRIV_SOCKET_ERROR) {
-                if(!doWaitForServerConnection) { // If no wait for server, then switch to inactive mode
+                if(serverConnectionTimeoutMsec==0) { // If the timeout expired, switch to inactive mode
 #if _WIN32
                     closesocket(implCtx.serverSocket);
 #else
@@ -2790,6 +2821,10 @@ namespace plPriv {
                 if(!hasWarned) {
                     hasWarned = true;
                     PL_IMPL_PRINT_STDERR("Waiting for server\n", false, false);
+                }
+                // Next round. Negative timeout means unlimited
+                if(serverConnectionTimeoutMsec>0) {
+                    serverConnectionTimeoutMsec = (serverConnectionTimeoutMsec>=100)? serverConnectionTimeoutMsec-100 : 0;
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
@@ -2815,7 +2850,11 @@ namespace plPriv {
                 char tmp[512];
                 for(int i=0; i<10; ++i) { // 1 iteration should be enough in practice.
                     int readByteQty = recv(implCtx.serverSocket, (char*)tmp, sizeof(tmp), 0); // The timeout is still applied
+#ifdef _WIN32
+                    if(!(WSAGetLastError()==EAGAIN || WSAGetLastError()==EWOULDBLOCK) || readByteQty==0) break;  // End of connection from server side?
+#else
                     if(!(errno==EAGAIN || errno==EWOULDBLOCK) || readByteQty==0) break;  // End of connection from server side?
+#endif
                 }
             }
 
@@ -2843,6 +2882,263 @@ namespace plPriv {
     }
 
 #endif // if PL_IMPL_CUSTOM_COM_LAYER==0
+
+
+
+    // =======================================================================================================
+    // [PRIVATE IMPLEMENTATION] Reception management
+    // =======================================================================================================
+
+#if PL_NOCONTROL==0
+
+    void
+    registerCli(plCliHandler_t handler, const char* name, const char* specParams, const char* description,
+                hashStr_t nameHash, hashStr_t specParamsHash, hashStr_t descriptionHash)
+    {
+        implCtx.cliManager.registerCli(handler, name, specParams, description,
+                                       nameHash, specParamsHash, descriptionHash);
+    }
+
+    static uint8_t*
+    helperFillResponseBufferHeader(RemoteCommandType commandType, int commandByteSize, uint8_t* br)
+    {
+        br[0] = 'P';
+        br[1] = 'L';
+        br[2] = ((int)PL_DATA_TYPE_CONTROL>>8)&0xFF;
+        br[3] = ((int)PL_DATA_TYPE_CONTROL>>0)&0xFF;
+        commandByteSize += 2;               // Size of the command type
+        br[4] = (commandByteSize>>24)&0xFF; // Command byte quantity (after the 8 bytes remote data type header)
+        br[5] = (commandByteSize>>16)&0xFF;
+        br[6] = (commandByteSize>> 8)&0xFF;
+        br[7] = (commandByteSize>> 0)&0xFF;
+        br[8] = ((int)commandType>>8)&0xFF;
+        br[9] = ((int)commandType>>0)&0xFF;
+        return br;
+    }
+
+    static void
+    helperFinishResponseBuffer(int txBufferSize)
+    {
+        // Mark it for sending (in the tx thread)
+        std::lock_guard<std::mutex> lk(implCtx.txThreadSyncMx);
+        implCtx.rspBufferSize.store(txBufferSize);
+        // Will be sent at the next tx thread loop, that we force now
+        implCtx.txThreadSyncCv.notify_one();
+    }
+
+    void
+    receiveFromServer(void)
+    {
+        auto& ic = implCtx;
+        plgDeclareThread(PL_VERBOSE, "Palanteer/Reception");
+
+        while(!ic.threadServerFlagStop.load()) {
+
+            int recByteQty = palComReceive(ic.reqBuffer, PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY);
+            if     (recByteQty <0) continue; // Timeout on reception (empty)
+            else if(recByteQty==0) break;    // Client is disconnected
+
+            // Parse the received content, expected block structure is:
+            //   [block]            <2B: synchro magic>: 'P' 'L'
+            //   [block]            <2B: bloc type>
+            //   [remote data type] <4B: command byte qty>
+            //   [remote data type] <2B: remote command type>
+            //   (following payloads depends on the command type)
+            // Sanity
+            uint8_t* b = (uint8_t*)ic.reqBuffer;
+            plAssert(recByteQty>=10);
+            plAssert(b[0]=='P' && b[1]=='L', "Magic not present: connection is desynchronized");
+            DataType dt = (DataType)((b[2]<<8) | b[3]);
+            plAssert(dt==PL_DATA_TYPE_CONTROL, "Wrong block data type received through socket despite synchronization: connection is buggy.");
+            int commandByteQty = (b[4]<<24) | (b[5]<<16) | (b[6]<<8) | b[7];
+            plAssert(8+commandByteQty<=PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY, "Too big remote command received. Limit is:",
+                     PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY, 8+commandByteQty);
+
+            // Wait the end of the request reception
+            while(recByteQty<8+commandByteQty && !ic.threadServerFlagStop.load()) {
+                int nextByteQty = palComReceive(ic.reqBuffer+recByteQty, PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY-recByteQty);
+                if     (nextByteQty <0) continue; // Timeout on reception (empty)
+                else if(nextByteQty==0) break;    // Client is disconnected
+                recByteQty += nextByteQty;
+            }
+            if(recByteQty<8+commandByteQty || ic.threadServerFlagStop.load()) continue; // Exit or connection break case
+            if(ic.rspBufferSize.load()>0) continue; // The response buffer shall be free, if the sender behaves as expected
+
+            // Process the command
+            RemoteCommandType ct = (RemoteCommandType)((b[8]<<8) | b[9]);
+            int payloadByteQty = commandByteQty-2; // 2 = command type
+
+            if(ct==PL_CMD_SET_FREEZE_MODE) {
+                { // Scope so that the bootstrap of the thread is not included
+                    plgScope(PL_VERBOSE, "Request: set freeze mode");
+                    plAssert(payloadByteQty==1);
+
+                    // Update the state
+                    bool isFreezeEnabled = (b[10]!=0);
+                    plgData(PL_VERBOSE, "State", isFreezeEnabled);
+                    {
+                        std::unique_lock<std::mutex> lk(ic.frozenThreadMx);
+                        ic.frozenThreadEnabled.store(isFreezeEnabled? 1:0);
+                    }
+
+                    // Free the threads if disabled
+                    if(!isFreezeEnabled) {
+                        uint64_t bitmap = ic.frozenThreadBitmap.load();
+                        int tId = 0;
+                        while(bitmap) {
+                            if(bitmap&1) ic.frozenThreadCv[tId].notify_one();
+                            bitmap >>= 1; ++tId;
+                        }
+                    }
+
+                    // Build and send the response
+                    uint8_t* br = helperFillResponseBufferHeader(PL_CMD_SET_FREEZE_MODE, 2, ic.rspBuffer);
+                    br[10] = (((int)PL_OK)>>8)&0xFF;
+                    br[11] = (((int)PL_OK)>>0)&0xFF;
+                    helperFinishResponseBuffer(12);
+                }
+
+                // Notify the initialization thread that server and reception thread is ready
+                // This let also the chance to safely activate the freeze mode before starting the program
+                if(!ic.rxIsStarted) {
+                    std::lock_guard<std::mutex> lk(ic.threadInitMx);
+                    ic.rxIsStarted = true;
+                    ic.threadInitCvTx.notify_one();
+                }
+            }
+
+            else if(ct==PL_CMD_STEP_CONTINUE) {
+                plgScope(PL_VERBOSE, "Request: resume thread execution");
+                plAssert(payloadByteQty==8);
+                // Unmask the selected threads
+                uint64_t bitmap = ((uint64_t)b[10]<<56) | ((uint64_t)b[11]<<48) | ((uint64_t)b[12]<<40) | ((uint64_t)b[13]<<32) |
+                    ((uint64_t)b[14]<<24) | ((uint64_t)b[15]<<16) | ((uint64_t)b[16]<<8) | ((uint64_t)b[17]<<0);
+                plgData(PL_VERBOSE, "Thread bitmap##hexa", bitmap);
+                {
+                    std::unique_lock<std::mutex> lk(ic.frozenThreadMx);
+                    ic.frozenThreadBitmap.fetch_and(~bitmap);
+                }
+                // Wake up the selected threads
+                int tId = 0;
+                while(bitmap) {
+                    if(bitmap&1) ic.frozenThreadCv[tId].notify_one();
+                    bitmap >>= 1; ++tId;
+                }
+                // Build and send the response
+                uint8_t* br = helperFillResponseBufferHeader(PL_CMD_STEP_CONTINUE, 2, ic.rspBuffer);
+                br[10] = (((int)PL_OK)>>8)&0xFF;
+                br[11] = (((int)PL_OK)>>0)&0xFF;
+                helperFinishResponseBuffer(12);
+            }
+
+            else if(ct==PL_CMD_SET_MAX_LATENCY) {
+                plgScope(PL_VERBOSE, "Request: set max latency");
+                plAssert(payloadByteQty==2);
+                // Update the internal state
+                int maxLatencyMs = (int)(b[10]<<8) | (int)b[11];
+                plgData(PL_VERBOSE, "Max latency##ms", maxLatencyMs);
+                ic.maxSendingLatencyNs = 1e6*maxLatencyMs;
+
+                // Build and send the response
+                uint8_t* br = helperFillResponseBufferHeader(PL_CMD_SET_MAX_LATENCY, 2, ic.rspBuffer);
+                br[10] = (((int)PL_OK)>>8)&0xFF;
+                br[11] = (((int)PL_OK)>>0)&0xFF;
+                helperFinishResponseBuffer(12);
+            }
+
+            else if(ct==PL_CMD_KILL_PROGRAM) {
+                plgScope(PL_VERBOSE, "Request: kill program");
+                // We use quick_exit (introduced in C++11) instead of exit (or abort) because:
+                //  - 'quick_exit' is design for multi-threaded application which are hard or costly in plumbing to stop in a clean manner
+                //  - 'quick_exit' does not "clean" the process before leaving but allows manual cleaning through 'at_quick_exit' registration
+                //  - 'exit' has good odds to block or crash if the program is not specifically designed for it
+                //  - 'abort' is "violent", the signal does not allow any cleaning and may lead to a core dump or a popup window (on windows)
+                std::quick_exit(0);
+                // No need to bother for any response, as connection will be down very soon...
+            }
+
+            else if(ct==PL_CMD_CALL_CLI) {
+                plgScope(PL_VERBOSE, "Request: CLI");
+                // Sanity
+                plAssert(payloadByteQty>2);
+                b[8+commandByteQty-1] = 0; // Force the zero terminated string at the end of the reception buffer, just in case
+
+                // Get the CLI request qty and prepare the response buffer
+                int cliRequestQty = (b[10]<<8) | b[11];
+                int reqOffset     = 12; // Current position in request buffer
+                int rspOffset     = 12; // Command response header, partially filled at the end
+                uint8_t* br       = helperFillResponseBufferHeader(PL_CMD_CALL_CLI, 0, ic.rspBuffer); // 0 bytes size is a dummy value, it will be overwritten later
+                // br[ 4-> 7] = 4 bytes for the command response byte qty (filled later)
+                // br[10->11] = 2 bytes for the CLI response qty (filled later)
+                plgData(PL_VERBOSE, "CLI request quantity", cliRequestQty);
+
+                // Loop on requests and fill the response buffer
+                constexpr int bufferFullMessageLength = 28; //strlen("CLI response buffer is full")+1; // strlen is not constexpr in MSVC2019
+                int cliRequestNbr = 0;
+                while(cliRequestNbr<cliRequestQty) {
+                    // Call
+                    plRemoteStatus cliStatus;
+                    plgScope(PL_VERBOSE, "Call");
+                    const char* cliResponse = ic.cliManager.execute((char*)&b[reqOffset], cliStatus);
+                    int responseLength = (int)strlen(cliResponse)+1;
+                    plgVar(PL_VERBOSE, cliRequestNbr, cliStatus, responseLength);
+
+                    // Check if we can store the response in the buffer
+                    if(rspOffset+2+responseLength>PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY -
+                       ((cliRequestNbr==cliRequestQty-1)? 0 : 2+bufferFullMessageLength)) { // minimum size to store a truncated response, if not last command
+                        // Not enough space in response buffer
+                        plAssert(rspOffset+2+bufferFullMessageLength<=PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY); // It should by design
+                        plgMarker(PL_VERBOSE, "error", "Not enough space in the response buffer");
+                        br[rspOffset+0] = (((int)PL_ERROR)>>8)&0xFF;
+                        br[rspOffset+1] = (((int)PL_ERROR)>>0)&0xFF;
+                        snprintf((char*)&br[rspOffset+2], bufferFullMessageLength+1, "CLI response buffer is full");
+                        rspOffset += 2+bufferFullMessageLength;
+                        while(b[reqOffset]!=0) ++reqOffset;
+                        ++reqOffset; // Skip the zero termination of the string request
+                        ++cliRequestNbr;
+                        break;
+                    }
+
+                    // Store the answer
+                    br[rspOffset+0] = (((int)cliStatus)>>8)&0xFF;
+                    br[rspOffset+1] = (((int)cliStatus)>>0)&0xFF;
+                    memcpy(br+rspOffset+2, cliResponse, responseLength); // Copy the response string with the zero termination
+                    rspOffset += 2+responseLength;
+
+                    // Next request
+                    while(b[reqOffset]!=0) ++reqOffset;
+                    ++reqOffset; // Skip the zero termination of the string request
+                    ++cliRequestNbr;
+
+                    // if(cliStatus!=PL_OK) break;  // Another possible behavior is stop at first failure (not by default)
+                } // End of loop on the CLI requests
+                // Either not all requests are processed, either we read all the request bytes
+                plAssert(cliRequestNbr<cliRequestQty || reqOffset==8+commandByteQty,
+                         cliRequestNbr, cliRequestQty, reqOffset, 8+commandByteQty);
+
+                // Finalize the response and send it
+                br[4] = ((rspOffset-8)>>24)&0xFF; // Command byte quantity (after the 8 bytes remote data type header)
+                br[5] = ((rspOffset-8)>>16)&0xFF;
+                br[6] = ((rspOffset-8)>> 8)&0xFF;
+                br[7] = ((rspOffset-8)>> 0)&0xFF;
+                br[10] = (cliRequestNbr>>8)&0xFF; // CLI answer quantity (less than or equal to the request quantity)
+                br[11] = (cliRequestNbr>>0)&0xFF;
+                helperFinishResponseBuffer(rspOffset);
+            } // if(ct==PL_CMD_CALL_CLI)
+
+        } // End of reception loop
+
+        // In case of server connection failure, the program shall be started anyway
+        if(!ic.rxIsStarted) {
+            std::lock_guard<std::mutex> lk(ic.threadInitMx);
+            ic.rxIsStarted = true;
+            ic.threadInitCvTx.notify_one();
+        }
+
+        plgMarker(PL_VERBOSE, "threading", "End of Palanteer reception loop");
+    }
+
+#endif // if PL_NOCONTROL==0
 
 
 
@@ -2907,23 +3203,6 @@ namespace plPriv {
     }
 
 #if PL_NOCONTROL==0
-
-    static uint8_t*
-    helperFillResponseBufferHeader(RemoteCommandType commandType, int commandByteSize, uint8_t* br)
-    {
-        br[0] = 'P';
-        br[1] = 'L';
-        br[2] = ((int)PL_DATA_TYPE_CONTROL>>8)&0xFF;
-        br[3] = ((int)PL_DATA_TYPE_CONTROL>>0)&0xFF;
-        commandByteSize += 2;               // Size of the command type
-        br[4] = (commandByteSize>>24)&0xFF; // Command byte quantity (after the 8 bytes remote data type header)
-        br[5] = (commandByteSize>>16)&0xFF;
-        br[6] = (commandByteSize>> 8)&0xFF;
-        br[7] = (commandByteSize>> 0)&0xFF;
-        br[8] = ((int)commandType>>8)&0xFF;
-        br[9] = ((int)commandType>>0)&0xFF;
-        return br;
-    }
 
     static void
     collectResponse(void)
@@ -3051,11 +3330,52 @@ namespace plPriv {
         eventBuffer[5] = (eventQty>>16)&0xFF;
         eventBuffer[6] = (eventQty>> 8)&0xFF;
         eventBuffer[7] = (eventQty>> 0)&0xFF;
-        palComSend(eventBuffer, 8+eventQty*sizeof(EventExt));
+
+        if(!isAux) {
+#if PL_SHORT_DATE==1
+            // Get the right pre-date for this bank
+            int bankNbr = (globalCtx.prevBankAndIndex&EVTBUFFER_MASK_BANK)? 1:0;
+            uint32_t preDateWrapQty = implCtx.bankPreDateWrapQty[bankNbr];
+            clockType_t preDateTick = implCtx.bankPreDateTick   [bankNbr];
+            // Wrap qty & timestamp
+            eventBuffer[ 8] = (preDateWrapQty>>24)&0xFF;
+            eventBuffer[ 9] = (preDateWrapQty>>16)&0xFF;
+            eventBuffer[10] = (preDateWrapQty>> 8)&0xFF;
+            eventBuffer[11] = (preDateWrapQty>> 0)&0xFF;
+            eventBuffer[12] = (preDateTick   >>24)&0xFF;
+            eventBuffer[13] = (preDateTick   >>16)&0xFF;
+            eventBuffer[14] = (preDateTick   >> 8)&0xFF;
+            eventBuffer[15] = (preDateTick   >> 0)&0xFF;
+#else
+            // Timestamp
+            clockType_t dateTick = PL_GET_CLOCK_TICK_FUNC();
+            eventBuffer[ 8] = (dateTick>>56)&0xFF;
+            eventBuffer[ 9] = (dateTick>>48)&0xFF;
+            eventBuffer[10] = (dateTick>>40)&0xFF;
+            eventBuffer[11] = (dateTick>>32)&0xFF;
+            eventBuffer[12] = (dateTick>>24)&0xFF;
+            eventBuffer[13] = (dateTick>>16)&0xFF;
+            eventBuffer[14] = (dateTick>> 8)&0xFF;
+            eventBuffer[15] = (dateTick>> 0)&0xFF;
+#endif
+        } else {
+            // No date infos for "aux"
+            memset(eventBuffer+8, 0, 8);
+        }
+
+        palComSend(eventBuffer, 16+eventQty*sizeof(EventExt));
         implCtx.stats.sentEventQty += eventQty;
         if(eventQty) plgData(PL_VERBOSE, "sent events",  eventQty);
     }
 
+#if PL_SHORT_DATE==1
+    static void
+    updateDateWrap(clockType_t dateTick)
+    {
+        if(dateTick<implCtx.lastWrapCheckDateTick) ++implCtx.lastDateWrapQty;
+        implCtx.lastWrapCheckDateTick = dateTick;
+    }
+#endif
 
     static bool
     collectEvents(bool doForce)
@@ -3064,13 +3384,18 @@ namespace plPriv {
         plgBegin(PL_VERBOSE, "collectEvents");
         if(globalCtx.dynStringPool.getUsed()) plgData(PL_VERBOSE, "dyn strings in use", globalCtx.dynStringPool.getUsed());
 
+        auto& ic = implCtx;
+        clockType_t dateTick =  PL_GET_CLOCK_TICK_FUNC();
+
+#if PL_SHORT_DATE==1
+        updateDateWrap(dateTick);
+#endif
+
         // Rate limit the sending calls (only if the induced latency is tolerated and
         //  1/8 filling of the current buffer is not reached and less than 1/8 of the dynamic
         //  string pool is used)
-        auto& ic = implCtx;
-        uint64_t dateTick =  PL_GET_CLOCK_TICK_FUNC();
         if(!doForce &&
-           ic.tickToNs*(dateTick-ic.lastSentEventBufferTick)<ic.maxSendingLatencyNs &&
+           ic.tickToNs*(clockType_t)(dateTick-ic.lastSentEventBufferTick)<ic.maxSendingLatencyNs &&
            (int)(globalCtx.bankAndIndex.load()&EVTBUFFER_MASK_INDEX)<globalCtx.collectBufferMaxEventQty/8 &&
            globalCtx.dynStringPool.getUsed()<globalCtx.dynStringPool.getSize()/8) {
             plgEnd(PL_VERBOSE, "collectEvents");
@@ -3104,7 +3429,7 @@ namespace plPriv {
             // We convert in-place the EventInt into EventExt, which is cache friendly.
             // There is no overlap thanks to the src/dst buffer start shift and smaller size of EventExt
             const EventInt& src = ((EventInt*)srcBuffer)[evtIdx];
-            EventExt&       dst = ((EventExt*)(dstBuffer+8))[evtIdx]; // 8B header offset, the header will be filled before sending
+            EventExt&       dst = ((EventExt*)(dstBuffer+16))[evtIdx]; // 16B header offset, the header will be filled before sending
 
             // Check the magic
             if((src.magic&EVTBUFFER_MASK_MAGIC)!=magic) {
@@ -3172,11 +3497,20 @@ namespace plPriv {
         if(stringQty) sendStrings(stringQty);
         sendEvents (eventQty, dstBuffer);  // Event buffer is sent even without events. No event is an information by itself ("a collection loop was done")
         if(eventQty || stringQty) plgEnd(PL_VERBOSE, "sending scopes");
+        plgEnd(PL_VERBOSE, "collectEvents");
 
         // Swap the banks: Toggle the bank bit + put the next magic + reset the index
         std::atomic<uint32_t>& bi = globalCtx.bankAndIndex;
-        uint32_t initValue = ((bi.load()^EVTBUFFER_MASK_BANK)&EVTBUFFER_MASK_BANK) | (((ic.magic++)&0x7F)<<24);
-        globalCtx.prevBankAndIndex = bi.exchange(initValue);
+        uint32_t  newBankAndIndex = ((bi.load()^EVTBUFFER_MASK_BANK)&EVTBUFFER_MASK_BANK) | (((ic.magic++)&0x7F)<<24);
+#if PL_SHORT_DATE==1
+        {
+            // Store the date before the bank starts being filled
+            int bankNbr = (newBankAndIndex&EVTBUFFER_MASK_BANK)? 1 : 0;
+            implCtx.bankPreDateWrapQty[bankNbr] = implCtx.lastDateWrapQty;
+            implCtx.bankPreDateTick   [bankNbr] = implCtx.lastWrapCheckDateTick;
+        }
+#endif
+        globalCtx.prevBankAndIndex = bi.exchange(newBankAndIndex);
 
         // Some saturation are detected?
         int isSaturated = globalCtx.isBufferSaturated.exchange(0);
@@ -3184,7 +3518,6 @@ namespace plPriv {
         isSaturated = globalCtx.isDynStringPoolEmpty.exchange(0);
         if(isSaturated) plMarker("SATURATION", "DYNAMIC STRING POOL IS EMPTY. PLEASE INCREASE ITS SIZE FOR VALID MEASUREMENTS");
 
-        plgEnd(PL_VERBOSE, "collectEvents");
         return (eventQty ||
                 globalCtx.dynStringPool.getUsed()>=globalCtx.dynStringPool.getSize()/8); // Recollection is needed if some dynamic strings are used
     }
@@ -3217,7 +3550,7 @@ namespace plPriv {
             uint32_t stringQty = 0;
 
             plgBegin(PL_VERBOSE, "parse lines");
-            EventExt* dstBuffer   = (EventExt*)(ic.cswitchPollBuffer+8); // In-place, with 8B for the header
+            EventExt* dstBuffer   = (EventExt*)(ic.cswitchPollBuffer+16); // In-place, with 16B for the header
             int       dstEventQty = 0;
             char*       line = ic.cswitchPollBuffer;
             const char* end  = ic.cswitchPollBuffer + readSize;
@@ -3447,15 +3780,39 @@ namespace plPriv {
     static void
     transmitToServer(void)
     {
+        auto& ic = implCtx;
+#if PL_NOCONTROL==0
+        if(ic.mode!=PL_MODE_STORE_IN_FILE) {
+            // Create the reception thread only if remote control is enabled and not storage on file
+            plAssert(PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY >=64, "A minimum buffer size is required", PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY);
+            plAssert(PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY>=64, "A minimum buffer size is required", PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY);
+            ic.rxIsStarted = false;
+            ic.threadServerRx = new std::thread(plPriv::receiveFromServer);
+
+            // Wait that the process is unfrozen by the server
+            std::unique_lock<std::mutex> lk(ic.threadInitMx);
+            while(!ic.threadInitCvTx.wait_for(lk, std::chrono::milliseconds(50), [&ic] { return ic.rxIsStarted; })) {
+#if PL_SHORT_DATE==1
+                updateDateWrap(PL_GET_CLOCK_TICK_FUNC());
+#endif
+                collectResponse();
+            }
+        }
+#endif
+
         // Start the collection
+#if PL_SHORT_DATE==1
+        updateDateWrap(PL_GET_CLOCK_TICK_FUNC());
+        implCtx.bankPreDateTick   [1] = implCtx.lastWrapCheckDateTick;  // Before any dated event
+        implCtx.bankPreDateWrapQty[1] = implCtx.lastDateWrapQty;
+#endif
         globalCtx.enabled        = true;
         globalCtx.collectEnabled = true;
         plgDeclareThread(PL_VERBOSE, "Palanteer/Transmission");
         plgMarker(PL_VERBOSE, "threading", "Start of Palanteer transmission loop");
 
-        auto& ic = implCtx;
         ic.lastSentEventBufferTick = PL_GET_CLOCK_TICK_FUNC();
-        ic.txThreadId = PL_GET_SYS_THREAD_ID();  // So that we can identify this thread if it crashes
+        ic.txThreadId              = PL_GET_SYS_THREAD_ID();  // So that we can identify this thread if it crashes
         {
             // Notify the initialization thread that transmission thread is ready
             std::lock_guard<std::mutex> lk(ic.threadInitMx);
@@ -3515,7 +3872,7 @@ namespace plPriv {
         collectEvents(true); // Flush the last collect thread round infos
 
 #if defined(__unix__) && PL_IMPL_CONTEXT_SWITCH==1
-#define PL_WRITE_TRACE_(path, valueStr, isCritical)                      \
+#define PL_WRITE_TRACE_(path, valueStr, isCritical)                     \
         if(ic.cswitchPollEnabled) {                                     \
             snprintf(tmpStr, sizeof(tmpStr), "/sys/kernel/debug/tracing/%s", path); \
             tracerFd = open(tmpStr, O_WRONLY);                          \
@@ -3551,244 +3908,6 @@ namespace plPriv {
     // End of trick to collect events even with saturated buffers
 #undef PL_STORE_COLLECT_CASE_
 #define PL_STORE_COLLECT_CASE_ 0
-
-
-
-    // =======================================================================================================
-    // [PRIVATE IMPLEMENTATION] Reception management
-    // =======================================================================================================
-
-#if PL_NOCONTROL==0
-
-    void
-    registerCli(plCliHandler_t handler, const char* name, const char* specParams, const char* description,
-                hashStr_t nameHash, hashStr_t specParamsHash, hashStr_t descriptionHash)
-    {
-        implCtx.cliManager.registerCli(handler, name, specParams, description,
-                                       nameHash, specParamsHash, descriptionHash);
-    }
-
-    static void
-    helperFinishResponseBuffer(int txBufferSize)
-    {
-        // Mark it for sending (in the tx thread)
-        std::lock_guard<std::mutex> lk(implCtx.txThreadSyncMx);
-        implCtx.rspBufferSize.store(txBufferSize);
-        // Will be sent at the next tx thread loop, that we force now
-        implCtx.txThreadSyncCv.notify_one();
-    }
-
-    void
-    receiveFromServer(void)
-    {
-        plgDeclareThread(PL_VERBOSE, "Palanteer/Reception");
-        auto& ic = implCtx;
-
-        plgMarker(PL_VERBOSE, "threading", "Start of Palanteer reception loop");
-        while(!ic.threadServerFlagStop.load()) {
-
-            int recByteQty = palComReceive(ic.reqBuffer, PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY);
-            if     (recByteQty <0) continue; // Timeout on reception (empty)
-            else if(recByteQty==0) break;    // Client is disconnected
-
-            // Parse the received content, expected block structure is:
-            //   [block]            <2B: synchro magic>: 'P' 'L'
-            //   [block]            <2B: bloc type>
-            //   [remote data type] <4B: command byte qty>
-            //   [remote data type] <2B: remote command type>
-            //   (following payloads depends on the command type)
-            // Sanity
-            uint8_t* b = (uint8_t*)ic.reqBuffer;
-            plAssert(recByteQty>=10);
-            plAssert(b[0]=='P' && b[1]=='L', "Magic not present: connection is desynchronized");
-            DataType dt = (DataType)((b[2]<<8) | b[3]);
-            plAssert(dt==PL_DATA_TYPE_CONTROL, "Wrong block data type received through socket despite synchronization: connection is buggy.");
-            int commandByteQty = (b[4]<<24) | (b[5]<<16) | (b[6]<<8) | b[7];
-            plAssert(8+commandByteQty<=PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY, "Too big remote command received. Limit is:",
-                     PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY, 8+commandByteQty);
-
-            // Wait the end of the request reception
-            while(recByteQty<8+commandByteQty && !ic.threadServerFlagStop.load()) {
-                int nextByteQty = palComReceive(ic.reqBuffer+recByteQty, PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY-recByteQty);
-                if     (nextByteQty <0) continue; // Timeout on reception (empty)
-                else if(nextByteQty==0) break;    // Client is disconnected
-                recByteQty += nextByteQty;
-            }
-            if(recByteQty<8+commandByteQty || ic.threadServerFlagStop.load()) continue; // Exit or connection break case
-            if(ic.rspBufferSize.load()>0) continue; // The response buffer shall be free, if the sender behaves as expected
-
-            // Process the command
-            RemoteCommandType ct = (RemoteCommandType)((b[8]<<8) | b[9]);
-            int payloadByteQty = commandByteQty-2; // 2 = command type
-
-            if(ct==PL_CMD_SET_FREEZE_MODE) {
-                plgScope(PL_VERBOSE, "Request: set freeze mode");
-                plAssert(payloadByteQty==1);
-                // Update the state
-                bool isFreezeEnabled = (b[10]!=0);
-                plgData(PL_VERBOSE, "State", isFreezeEnabled);
-                {
-                    std::unique_lock<std::mutex> lk(ic.frozenThreadMx);
-                    ic.frozenThreadEnabled.store(isFreezeEnabled? 1:0);
-                }
-
-                // Free the threads if disabled
-                if(!isFreezeEnabled) {
-                    uint64_t bitmap = ic.frozenThreadBitmap.load();
-                    int tId = 0;
-                    while(bitmap) {
-                        if(bitmap&1) ic.frozenThreadCv[tId].notify_one();
-                        bitmap >>= 1; ++tId;
-                    }
-                }
-
-                // Build and send the response
-                uint8_t* br = helperFillResponseBufferHeader(PL_CMD_SET_FREEZE_MODE, 2, ic.rspBuffer);
-                br[10] = (((int)PL_OK)>>8)&0xFF;
-                br[11] = (((int)PL_OK)>>0)&0xFF;
-                helperFinishResponseBuffer(12);
-
-                // Notify the initialization thread that server and reception thread is ready
-                // This let also the chance to safely activate the freeze mode before starting the program
-                if(!ic.rxIsStarted) {
-                    std::lock_guard<std::mutex> lk(ic.threadInitMx);
-                    ic.rxIsStarted = true;
-                    ic.threadInitCv.notify_one();
-                }
-            }
-
-            else if(ct==PL_CMD_STEP_CONTINUE) {
-                plgScope(PL_VERBOSE, "Request: resume thread execution");
-                plAssert(payloadByteQty==8);
-                // Unmask the selected threads
-                uint64_t bitmap = ((uint64_t)b[10]<<56) | ((uint64_t)b[11]<<48) | ((uint64_t)b[12]<<40) | ((uint64_t)b[13]<<32) |
-                    ((uint64_t)b[14]<<24) | ((uint64_t)b[15]<<16) | ((uint64_t)b[16]<<8) | ((uint64_t)b[17]<<0);
-                plgData(PL_VERBOSE, "Thread bitmap##hexa", bitmap);
-                {
-                    std::unique_lock<std::mutex> lk(ic.frozenThreadMx);
-                    ic.frozenThreadBitmap.fetch_and(~bitmap);
-                }
-                // Wake up the selected threads
-                int tId = 0;
-                while(bitmap) {
-                    if(bitmap&1) ic.frozenThreadCv[tId].notify_one();
-                    bitmap >>= 1; ++tId;
-                }
-                // Build and send the response
-                uint8_t* br = helperFillResponseBufferHeader(PL_CMD_STEP_CONTINUE, 2, ic.rspBuffer);
-                br[10] = (((int)PL_OK)>>8)&0xFF;
-                br[11] = (((int)PL_OK)>>0)&0xFF;
-                helperFinishResponseBuffer(12);
-            }
-
-            else if(ct==PL_CMD_SET_MAX_LATENCY) {
-                plgScope(PL_VERBOSE, "Request: set max latency");
-                plAssert(payloadByteQty==2);
-                // Update the internal state
-                int maxLatencyMs = (int)(b[10]<<8) | (int)b[11];
-                plgData(PL_VERBOSE, "Max latency##ms", maxLatencyMs);
-                ic.maxSendingLatencyNs = 1e6*maxLatencyMs;
-
-                // Build and send the response
-                uint8_t* br = helperFillResponseBufferHeader(PL_CMD_SET_MAX_LATENCY, 2, ic.rspBuffer);
-                br[10] = (((int)PL_OK)>>8)&0xFF;
-                br[11] = (((int)PL_OK)>>0)&0xFF;
-                helperFinishResponseBuffer(12);
-            }
-
-            else if(ct==PL_CMD_KILL_PROGRAM) {
-                plgScope(PL_VERBOSE, "Request: kill program");
-                // We use quick_exit (introduced in C++11) instead of exit (or abort) because:
-                //  - 'quick_exit' is design for multi-threaded application which are hard or costly in plumbing to stop in a clean manner
-                //  - 'quick_exit' does not "clean" the process before leaving but allows manual cleaning through 'at_quick_exit' registration
-                //  - 'exit' has good odds to block or crash if the program is not specifically designed for it
-                //  - 'abort' is "violent", the signal does not allow any cleaning and may lead to a core dump or a popup window (on windows)
-                std::quick_exit(0);
-                // No need to bother for any response, as connection will be down very soon...
-            }
-
-            else if(ct==PL_CMD_CALL_CLI) {
-                plgScope(PL_VERBOSE, "Request: CLI");
-                // Sanity
-                plAssert(payloadByteQty>2);
-                b[8+commandByteQty-1] = 0; // Force the zero terminated string at the end of the reception buffer, just in case
-
-                // Get the CLI request qty and prepare the response buffer
-                int cliRequestQty = (b[10]<<8) | b[11];
-                int reqOffset     = 12; // Current position in request buffer
-                int rspOffset     = 12; // Command response header, partially filled at the end
-                uint8_t* br       = helperFillResponseBufferHeader(PL_CMD_CALL_CLI, 0, ic.rspBuffer); // 0 bytes size is a dummy value, it will be overwritten later
-                // br[ 4-> 7] = 4 bytes for the command response byte qty (filled later)
-                // br[10->11] = 2 bytes for the CLI response qty (filled later)
-                plgData(PL_VERBOSE, "CLI request quantity", cliRequestQty);
-
-                // Loop on requests and fill the response buffer
-                constexpr int bufferFullMessageLength = 28; //strlen("CLI response buffer is full")+1; // strlen is not constexpr in MSVC2019
-                int cliRequestNbr = 0;
-                while(cliRequestNbr<cliRequestQty) {
-                    // Call
-                    plRemoteStatus cliStatus;
-                    plgScope(PL_VERBOSE, "Call");
-                    const char* cliResponse = ic.cliManager.execute((char*)&b[reqOffset], cliStatus);
-                    int responseLength = (int)strlen(cliResponse)+1;
-                    plgVar(PL_VERBOSE, cliRequestNbr, cliStatus, responseLength);
-
-                    // Check if we can store the response in the buffer
-                    if(rspOffset+2+responseLength>PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY -
-                       ((cliRequestNbr==cliRequestQty-1)? 0 : 2+bufferFullMessageLength)) { // minimum size to store a truncated response, if not last command
-                        // Not enough space in response buffer
-                        plAssert(rspOffset+2+bufferFullMessageLength<=PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY); // It should by design
-                        plgMarker(PL_VERBOSE, "error", "Not enough space in the response buffer");
-                        br[rspOffset+0] = (((int)PL_ERROR)>>8)&0xFF;
-                        br[rspOffset+1] = (((int)PL_ERROR)>>0)&0xFF;
-                        snprintf((char*)&br[rspOffset+2], bufferFullMessageLength+1, "CLI response buffer is full");
-                        rspOffset += 2+bufferFullMessageLength;
-                        while(b[reqOffset]!=0) ++reqOffset;
-                        ++reqOffset; // Skip the zero termination of the string request
-                        ++cliRequestNbr;
-                        break;
-                    }
-
-                    // Store the answer
-                    br[rspOffset+0] = (((int)cliStatus)>>8)&0xFF;
-                    br[rspOffset+1] = (((int)cliStatus)>>0)&0xFF;
-                    memcpy(br+rspOffset+2, cliResponse, responseLength); // Copy the response string with the zero termination
-                    rspOffset += 2+responseLength;
-
-                    // Next request
-                    while(b[reqOffset]!=0) ++reqOffset;
-                    ++reqOffset; // Skip the zero termination of the string request
-                    ++cliRequestNbr;
-
-                    // if(cliStatus!=PL_OK) break;  // Another possible behavior is stop at first failure (not by default)
-                } // End of loop on the CLI requests
-                // Either not all requests are processed, either we read all the request bytes
-                plAssert(cliRequestNbr<cliRequestQty || reqOffset==8+commandByteQty,
-                         cliRequestNbr, cliRequestQty, reqOffset, 8+commandByteQty);
-
-                // Finalize the response and send it
-                br[4] = ((rspOffset-8)>>24)&0xFF; // Command byte quantity (after the 8 bytes remote data type header)
-                br[5] = ((rspOffset-8)>>16)&0xFF;
-                br[6] = ((rspOffset-8)>> 8)&0xFF;
-                br[7] = ((rspOffset-8)>> 0)&0xFF;
-                br[10] = (cliRequestNbr>>8)&0xFF; // CLI answer quantity (less than or equal to the request quantity)
-                br[11] = (cliRequestNbr>>0)&0xFF;
-                helperFinishResponseBuffer(rspOffset);
-            } // if(ct==PL_CMD_CALL_CLI)
-
-        } // End of reception loop
-
-        // In case of server connection failure, the program shall be started anyway
-        if(!ic.rxIsStarted) {
-            std::lock_guard<std::mutex> lk(ic.threadInitMx);
-            ic.rxIsStarted = true;
-            ic.threadInitCv.notify_one();
-        }
-
-        plgMarker(PL_VERBOSE, "threading", "End of Palanteer reception loop");
-    }
-
-#endif // if PL_NOCONTROL==0
 
 #endif // if PL_NOCONTROL==0 || PL_NOEVENT==0
 
@@ -4004,7 +4123,7 @@ plSetServer(const char* serverAddr, int serverPort)
 
 
 void
-plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doWaitForServerConnection)
+plInitAndStart(const char* appName, plMode mode, const char* buildName, int serverConnectionTimeoutMsec)
 {
     auto& ic = plPriv::implCtx;
     ic.mode = mode;
@@ -4062,7 +4181,7 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
 
     // Remove some warning for some configurations
     PL_UNUSED(appName);
-    PL_UNUSED(doWaitForServerConnection);
+    PL_UNUSED(serverConnectionTimeoutMsec);
 
 #if PL_NOEVENT==0 && PL_VIRTUAL_THREADS==1
     memset(ic.vThreadCtx, 0, sizeof(ic.vThreadCtx));  // Initialize the virtual thread contexts
@@ -4115,109 +4234,9 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
     ic.stats.collectBufferSizeByteQty = PL_IMPL_COLLECTION_BUFFER_BYTE_QTY;
     ic.stats.collectDynStringQty      = PL_IMPL_DYN_STRING_QTY;
 
-    plPriv::palComInit(doWaitForServerConnection);
+    plPriv::palComInit(serverConnectionTimeoutMsec);
     if(ic.mode==PL_MODE_INACTIVE) return;
 
-    // Build the data exchange header
-    int appNameLength = (int)strlen(appName)+1;
-    int buildNameLength = (buildName && buildName[0]!=0)? (int)strlen(buildName)+1 : 0;
-    int tlvTotalSize  = 6/*Protocol TLV*/ + 20/*Time unit and origin*/ + 4+appNameLength/* Application name TLV */;
-    if(buildNameLength) tlvTotalSize += 4+buildNameLength; // Optional build name TLV
-#if PL_EXTERNAL_STRINGS==1
-    tlvTotalSize += 4; /* External string flag */
-#endif
-#if PL_SHORT_STRING_HASH==1
-    tlvTotalSize += 4; /* Short string hash flag */
-#endif
-#if PL_NOCONTROL==1
-    tlvTotalSize += 4; /* No control flag */
-#endif
-#if PL_SHORT_DATE==1
-    tlvTotalSize += 4; /* Short Date flag */
-#endif
-#if PL_COMPACT_MODEL==1
-    tlvTotalSize += 4; /* Compact model flag */
-#endif
-#if PL_HASH_SALT!=0
-    tlvTotalSize += 8; /* Hash salt number */
-#endif
-    int      headerSize = 16+tlvTotalSize;
-    uint8_t* header = (uint8_t*)alloca(headerSize*sizeof(uint8_t));
-    memset(header, 0, headerSize*sizeof(uint8_t)); // For the padding
-    // Write the magic string to discriminate the connection type
-    for(int i=0; i<8; ++i) header[i] = ("PL-MAGIC"[i]);
-    // Write the endianess detection (provision, as little endian is supposed at the moment)
-    *(uint32_t*)&header[8]  = 0x12345678;
-    // Write the size of TLV block
-    header[12] = (tlvTotalSize>>24)&0xFF;
-    header[13] = (tlvTotalSize>>16)&0xFF;
-    header[14] = (tlvTotalSize>> 8)&0xFF;
-    header[15] = (tlvTotalSize    )&0xFF;
-    // Write TLVs in big endian, T=2 bytes L=2 bytes
-    int offset = 16;
-    // TLV Protocol
-    header[offset+0] = PL_TLV_PROTOCOL>>8; header[offset+1] = PL_TLV_PROTOCOL&0xFF;
-    header[offset+2] = 0; header[offset+3] = 2; // 2 bytes payload
-    header[offset+4] = PALANTEER_CLIENT_PROTOCOL_VERSION>>8; header[offset+5] = PALANTEER_CLIENT_PROTOCOL_VERSION&0xFF;
-    offset += 6;
-    // TLV Clock info
-    header[offset+0] = PL_TLV_CLOCK_INFO>>8; header[offset+1] = PL_TLV_CLOCK_INFO&0xFF;
-    header[offset+2] = 0; header[offset+3] = 16; // 16 bytes payload
-    uint64_t tmp = PL_GET_CLOCK_TICK_FUNC();
-    header[offset+ 4] = (tmp>>56)&0xFF; header[offset+ 5] = (tmp>>48)&0xFF;
-    header[offset+ 6] = (tmp>>40)&0xFF; header[offset+ 7] = (tmp>>32)&0xFF;
-    header[offset+ 8] = (tmp>>24)&0xFF; header[offset+ 9] = (tmp>>16)&0xFF;
-    header[offset+10] = (tmp>> 8)&0xFF; header[offset+11] = (tmp    )&0xFF;
-    char* tmp1 = (char*)&ic.tickToNs; tmp = *(uint64_t*)tmp1;               // Avoids warning about strict aliasing
-    header[offset+12] = (tmp>>56)&0xFF; header[offset+13] = (tmp>>48)&0xFF; // Standard IEEE 754 format, big endian
-    header[offset+14] = (tmp>>40)&0xFF; header[offset+15] = (tmp>>32)&0xFF;
-    header[offset+16] = (tmp>>24)&0xFF; header[offset+17] = (tmp>>16)&0xFF;
-    header[offset+18] = (tmp>> 8)&0xFF; header[offset+19] = (tmp    )&0xFF;
-    offset += 20;
-    // TLV App name
-    header[offset+0] = PL_TLV_APP_NAME>>8; header[offset+1] = PL_TLV_APP_NAME&0xFF;
-    header[offset+2] = (appNameLength>>8)&0xFF; header[offset+3] = appNameLength&0xFF;
-    memcpy(&header[offset+4], appName, appNameLength);
-    offset += 4+appNameLength;
-    // TLV build name
-    if(buildNameLength>0) {
-        header[offset+0] = PL_TLV_HAS_BUILD_NAME>>8; header[offset+1] = PL_TLV_HAS_BUILD_NAME&0xFF;
-        header[offset+2] = (buildNameLength>>8)&0xFF; header[offset+3] = buildNameLength&0xFF;
-        memcpy(&header[offset+4], buildName, buildNameLength);
-        offset += 4+buildNameLength;
-    }
-
-#define ADD_TLV_FLAG(flag)                                              \
-    header[offset+0] = (flag)>>8; header[offset+1] = (flag)&0xFF;       \
-    header[offset+2] = 0; header[offset+3] = 0; /* 0 bytes payload */   \
-    offset += 4
-#if PL_EXTERNAL_STRINGS==1
-    ADD_TLV_FLAG(PL_TLV_HAS_EXTERNAL_STRING);
-#endif
-#if PL_SHORT_STRING_HASH==1
-    ADD_TLV_FLAG(PL_TLV_HAS_SHORT_STRING_HASH);
-#endif
-#if PL_NOCONTROL==1
-    ADD_TLV_FLAG(PL_TLV_HAS_NO_CONTROL);
-#endif
-#if PL_SHORT_DATE==1
-    ADD_TLV_FLAG(PL_TLV_HAS_SHORT_DATE);
-#endif
-#if PL_COMPACT_MODEL==1
-    ADD_TLV_FLAG(PL_TLV_HAS_COMPACT_MODEL);
-#endif
-#if PL_HASH_SALT!=0
-    header[offset+0] = PL_TLV_HAS_HASH_SALT>>8; header[offset+1] = PL_TLV_HAS_HASH_SALT&0xFF;
-    header[offset+2] = 0; header[offset+3] = 4; // 4 bytes payload
-    header[offset+4] = (PL_HASH_SALT>>24)&0xFF; header[offset+5] = (PL_HASH_SALT>>16)&0xFF;
-    header[offset+5] = (PL_HASH_SALT>> 8)&0xFF; header[offset+7] = (PL_HASH_SALT    )&0xFF;
-    offset += 8;
-#endif
-    plAssert(offset==headerSize);
-
-    // Write/send the built header
-    bool headerSendingStatus = plPriv::palComSend(&header[0], headerSize);
-    plAssert(headerSendingStatus, "Unable to send the session header");
 
 #if defined(__unix__) && PL_NOEVENT==0 && PL_IMPL_CONTEXT_SWITCH==1
     {
@@ -4304,26 +4323,151 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, bool doW
 #endif // if defined(_WIN32) && PL_NOEVENT==0 && PL_IMPL_CONTEXT_SWITCH==1
 
 
+    // Build the data exchange header
+    int appNameLength   = (int)strlen(appName)+1;
+    int buildNameLength = (buildName && buildName[0]!=0)? (int)strlen(buildName)+1 : 0;
+#ifndef PL_PRIV_IMPL_LANGUAGE
+#define PL_PRIV_IMPL_LANGUAGE "C++"
+#endif
+    int langNameLength  = strlen(PL_PRIV_IMPL_LANGUAGE)? (int)strlen(PL_PRIV_IMPL_LANGUAGE)+1 : 0;
+    int tlvTotalSize    = 6/*Protocol TLV*/ + 20/*Time unit and origin*/ + 4+appNameLength/* Application name TLV */;
+    if(buildNameLength) tlvTotalSize += 4+buildNameLength; // Optional build name TLV
+    if(langNameLength)  tlvTotalSize += 4+langNameLength;  // Optional language name TLV
+#if PL_EXTERNAL_STRINGS==1
+    tlvTotalSize += 4;
+#endif
+#if PL_SHORT_STRING_HASH==1
+    tlvTotalSize += 4;
+#endif
+#if PL_NOCONTROL==1
+    tlvTotalSize += 4;
+#endif
+#if PL_SHORT_DATE==1
+    tlvTotalSize += 12;
+#endif
+#if PL_COMPACT_MODEL==1
+    tlvTotalSize += 4;
+#endif
+#if PL_IMPL_AUTO_INSTRUMENT==1
+    ic.hasAutoInstrument = true;
+#endif
+    if(ic.hasAutoInstrument) {
+        tlvTotalSize += 4;
+    }
+    if(ic.cswitchPollEnabled) {
+        tlvTotalSize += 4;
+    }
+#if PL_HASH_SALT!=0
+    tlvTotalSize += 8;
+#endif
+    int      headerSize = 16+tlvTotalSize;
+    uint8_t* header = (uint8_t*)alloca(headerSize*sizeof(uint8_t));
+    memset(header, 0, headerSize*sizeof(uint8_t)); // For the padding
+    // Write the magic string to discriminate the connection type
+    for(int i=0; i<8; ++i) header[i] = ("PL-MAGIC"[i]);
+    // Write the endianess detection (provision, as little endian is supposed at the moment)
+    *(uint32_t*)&header[8]  = 0x12345678;
+    // Write the size of TLV block
+    header[12] = (tlvTotalSize>>24)&0xFF;
+    header[13] = (tlvTotalSize>>16)&0xFF;
+    header[14] = (tlvTotalSize>> 8)&0xFF;
+    header[15] = (tlvTotalSize    )&0xFF;
+    // Write TLVs in big endian, T=2 bytes L=2 bytes
+    int offset = 16;
+    // TLV Protocol
+    header[offset+0] = PL_TLV_PROTOCOL>>8; header[offset+1] = PL_TLV_PROTOCOL&0xFF;
+    header[offset+2] = 0; header[offset+3] = 2; // 2 bytes payload
+    header[offset+4] = PALANTEER_CLIENT_PROTOCOL_VERSION>>8; header[offset+5] = PALANTEER_CLIENT_PROTOCOL_VERSION&0xFF;
+    offset += 6;
+    // TLV Clock info
+    header[offset+0] = PL_TLV_CLOCK_INFO>>8; header[offset+1] = PL_TLV_CLOCK_INFO&0xFF;
+    header[offset+2] = 0; header[offset+3] = 16; // 16 bytes payload
+    uint64_t clockOriginTick = PL_GET_CLOCK_TICK_FUNC();
+    header[offset+ 4] = (clockOriginTick>>56)&0xFF; header[offset+ 5] = (clockOriginTick>>48)&0xFF;
+    header[offset+ 6] = (clockOriginTick>>40)&0xFF; header[offset+ 7] = (clockOriginTick>>32)&0xFF;
+    header[offset+ 8] = (clockOriginTick>>24)&0xFF; header[offset+ 9] = (clockOriginTick>>16)&0xFF;
+    header[offset+10] = (clockOriginTick>> 8)&0xFF; header[offset+11] = (clockOriginTick    )&0xFF;
+    char* tmp1 = (char*)&ic.tickToNs; uint64_t tmp = *(uint64_t*)tmp1;      // Avoids warning about strict aliasing
+    header[offset+12] = (tmp>>56)&0xFF; header[offset+13] = (tmp>>48)&0xFF; // Standard IEEE 754 format, big endian
+    header[offset+14] = (tmp>>40)&0xFF; header[offset+15] = (tmp>>32)&0xFF;
+    header[offset+16] = (tmp>>24)&0xFF; header[offset+17] = (tmp>>16)&0xFF;
+    header[offset+18] = (tmp>> 8)&0xFF; header[offset+19] = (tmp    )&0xFF;
+    offset += 20;
+    // TLV App name
+    header[offset+0] = PL_TLV_APP_NAME>>8; header[offset+1] = PL_TLV_APP_NAME&0xFF;
+    header[offset+2] = (appNameLength>>8)&0xFF; header[offset+3] = appNameLength&0xFF;
+    memcpy(&header[offset+4], appName, appNameLength);
+    offset += 4+appNameLength;
+    // TLV build name
+    if(buildNameLength>0) {
+        header[offset+0] = PL_TLV_HAS_BUILD_NAME>>8; header[offset+1] = PL_TLV_HAS_BUILD_NAME&0xFF;
+        header[offset+2] = (buildNameLength>>8)&0xFF; header[offset+3] = buildNameLength&0xFF;
+        memcpy(&header[offset+4], buildName, buildNameLength);
+        offset += 4+buildNameLength;
+    }
+    // TLV language name
+    if(langNameLength>0) {
+        header[offset+0] = PL_TLV_HAS_LANG_NAME>>8; header[offset+1] = PL_TLV_HAS_LANG_NAME&0xFF;
+        header[offset+2] = (langNameLength>>8)&0xFF; header[offset+3] = langNameLength&0xFF;
+        memcpy(&header[offset+4], PL_PRIV_IMPL_LANGUAGE, langNameLength);
+        offset += 4+langNameLength;
+    }
+
+#define ADD_TLV_FLAG(flag)                                              \
+    header[offset+0] = (flag)>>8; header[offset+1] = (flag)&0xFF;       \
+    header[offset+2] = 0; header[offset+3] = 0; /* 0 bytes payload */   \
+    offset += 4
+#if PL_EXTERNAL_STRINGS==1
+    ADD_TLV_FLAG(PL_TLV_HAS_EXTERNAL_STRING);
+#endif
+#if PL_SHORT_STRING_HASH==1
+    ADD_TLV_FLAG(PL_TLV_HAS_SHORT_STRING_HASH);
+#endif
+#if PL_NOCONTROL==1
+    ADD_TLV_FLAG(PL_TLV_HAS_NO_CONTROL);
+#endif
+#if PL_COMPACT_MODEL==1
+    ADD_TLV_FLAG(PL_TLV_HAS_COMPACT_MODEL);
+#endif
+    if(ic.hasAutoInstrument) {
+        ADD_TLV_FLAG(PL_TLV_HAS_AUTO_INSTRUMENT);
+    }
+    if(ic.cswitchPollEnabled) {
+        ADD_TLV_FLAG(PL_TLV_HAS_CSWITCH_INFO);
+    }
+#if PL_SHORT_DATE==1
+    header[offset+ 0] = PL_TLV_HAS_SHORT_DATE>>8; header[offset+1] = PL_TLV_HAS_SHORT_DATE&0xFF;
+    header[offset+ 2] = 0; header[offset+3] = 8; // 8 bytes payload
+    tmp = PL_GET_SYSTEM_CLOCK_NS();  // The global system date
+    header[offset+ 4] = (tmp>>56)&0xFF; header[offset+ 5] = (tmp>>48)&0xFF;
+    header[offset+ 6] = (tmp>>40)&0xFF; header[offset+ 7] = (tmp>>32)&0xFF;
+    header[offset+ 8] = (tmp>>24)&0xFF; header[offset+ 9] = (tmp>>16)&0xFF;
+    header[offset+10] = (tmp>> 8)&0xFF; header[offset+11] = (tmp    )&0xFF;
+    ic.lastWrapCheckDateTick = (uint32_t)clockOriginTick;  // The associated event timestamp in tick
+    ic.lastDateWrapQty       = 0;
+    offset += 12;
+#endif
+#if PL_HASH_SALT!=0
+    header[offset+0] = PL_TLV_HAS_HASH_SALT>>8; header[offset+1] = PL_TLV_HAS_HASH_SALT&0xFF;
+    header[offset+2] = 0; header[offset+3] = 4; // 4 bytes payload
+    header[offset+4] = (PL_HASH_SALT>>24)&0xFF; header[offset+5] = (PL_HASH_SALT>>16)&0xFF;
+    header[offset+5] = (PL_HASH_SALT>> 8)&0xFF; header[offset+7] = (PL_HASH_SALT    )&0xFF;
+    offset += 8;
+#endif
+    plAssert(offset==headerSize);
+
+    // Write/send the built header
+    bool headerSendingStatus = plPriv::palComSend(&header[0], headerSize);
+    plAssert(headerSendingStatus, "Unable to send the session header");
+
     {
-        // Create the transmission thread and wait for its readiness (so that event collection is enabled)
+        // Create the transmission thread and wait for its readiness
         plAssert(PL_IMPL_STRING_BUFFER_BYTE_QTY>=128, "A minimum buffer size is required", PL_IMPL_STRING_BUFFER_BYTE_QTY);
         ic.txIsStarted = false;
         ic.threadServerTx = new std::thread(plPriv::transmitToServer);
         std::unique_lock<std::mutex> lk(ic.threadInitMx);
         ic.threadInitCv.wait(lk, [&] { return ic.txIsStarted; });
     }
-
-#if PL_NOCONTROL==0
-    if(mode!=PL_MODE_STORE_IN_FILE) {
-        // Create the reception thread and wait for its readiness. Only if a server is required i.e. if remote control is enabled and not storage on file
-        plAssert(PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY >=64, "A minimum buffer size is required", PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY);
-        plAssert(PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY>=64, "A minimum buffer size is required", PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY);
-        ic.rxIsStarted = false;
-        ic.threadServerRx = new std::thread(plPriv::receiveFromServer);
-        std::unique_lock<std::mutex> lk(ic.threadInitMx);
-        ic.threadInitCv.wait(lk, [&] { return ic.rxIsStarted; });
-    }
-#endif // if PL_NOCONTROL==0
 
 #endif // if PL_NOCONTROL==0 || PL_NOEVENT==0
 }

@@ -31,6 +31,7 @@ public:
     // Storage constants
     static constexpr int    MAX_THREAD_QTY  = 254;
     static constexpr int    MAX_LEVEL_QTY   = 254;
+    static constexpr int    MAX_STREAM_QTY  = 8;
 
     // Built-in name IDs used to identify an Elem (no overlap with the user nameIdx)
     // Memory management specific

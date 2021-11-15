@@ -286,7 +286,7 @@ The typical errors are:
 
 The Python language offers some ways to mitigate this risk (see [plBegin and plEnd](instrumentation_api_python.md.html#plbeginandplend) for template code):
  - using the `with` statement, which is a RAII construct
- - using a function decorator, in case automatic function instrumentation is disabled
+ - using the function decorator [`@plFunction`](instrumentation_api_python.md.html#plbeginandplend), in case automatic function instrumentation is disabled
 
 ### Event collection mechanism
 

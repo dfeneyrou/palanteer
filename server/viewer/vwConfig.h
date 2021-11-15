@@ -68,6 +68,11 @@ class vwConfig {
     bool setWindowSettingsVisibility(bool state);
     bool getWindowSettingsVisibility(void) const { return _winVisiSettings; }
 
+    // Streams
+    bool isMultiStream(void) const { return _multiStreamIsMulti; }
+    const bsString& getMultiStreamAppName(void) const { return _multiStreamAppName; }
+    bool setStreamConfig(bool isMultiStream, const bsString& multiStreamAppName);
+
     // Live
     bool setFreezePointEnabled(bool state);
     bool getFreezePointEnabled(void) const { return _freezePointEnabled; }
@@ -224,6 +229,8 @@ class vwConfig {
     int _winVisiSearch   = false;
     int _winVisiConsole  = true;
     int _winVisiSettings = true;
+    int      _multiStreamIsMulti = false;
+    bsString _multiStreamAppName;
     int _freezePointEnabled  = false;
     int _pauseStoringEnabled = false;
     bsString _recordStoragePath;

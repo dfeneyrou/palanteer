@@ -395,7 +395,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
                                         isHighlighted? vwConst::uYellow : colorThread);
 
                 // Hovered
-                if(isWindowHovered && mouseX>winX+cl.startTimePix && mouseX<x2 && mouseY>=yBar && mouseY<=yBar+threadBarHeight) {
+                if(isWindowHovered && mouseX>winX+cl.startTimePix && mouseX<x2+thickness && mouseY>=yBar && mouseY<=yBar+threadBarHeight) {
                     // Highlight the corresponding wait scope
                     main->setScopeHighlight(cl.e.threadId, cl.e.vS64, cl.e.vS64+cl.durationNs, PL_FLAG_TYPE_LOCK_WAIT|PL_FLAG_SCOPE_BEGIN, -1, cl.e.nameIdx);
                     // Clicked?

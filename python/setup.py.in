@@ -40,6 +40,9 @@ if isDevMode:
     else:
         extra_compilation_flags.append("-O0")  # Debug symbols are already generated
 
+if sys.platform == "win32":
+    extra_compilation_flags.append("/wd4996")  # Disable the "This function or variable may be unsafe", pushing for not well supported extensions
+
 classifiers_list = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",

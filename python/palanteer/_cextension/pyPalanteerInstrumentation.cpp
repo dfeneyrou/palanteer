@@ -41,6 +41,7 @@
 #define PL_IMPL_MAX_CLI_QTY              1024
 #define PL_IMPL_DYN_STRING_QTY           4096
 #define PL_IMPL_MAX_EXPECTED_STRING_QTY 16384
+#define PL_PRIV_IMPL_LANGUAGE "Python"
 #include "palanteer.h"
 
 
@@ -1162,6 +1163,7 @@ _profiling_start(PyObject* Py_UNUSED(self), PyObject* args)
     i=0;     while(gFilterOutFunctionAndBelowDb[i]) gFilterOutFunctionName.insert(gFilterOutFunctionAndBelowDb[i++], 1);
     i=0;     while(gFilterOutFunctionDb[i])         gFilterOutFunctionName.insert(gFilterOutFunctionDb[i++],         2);
 
+    if(gWithFunctions) plPriv::implCtx.hasAutoInstrument = true;
     if(recordFilename) plSetFilename(recordFilename);
     plSetServer(server_address, server_port);
     plInitAndStart(appName, recordFilename? PL_MODE_STORE_IN_FILE: PL_MODE_CONNECTED, buildName, doWaitForServerConnection);

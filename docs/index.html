@@ -27,6 +27,7 @@
   - Easy stimulation and deep observation
   - Enables trivial testing, measuring or monitoring
 
+Recording simultaneously up to 8 streams (i.e., from different processes) is supported.
 
 <table width=100%></table>
 +++++
@@ -493,6 +494,63 @@ Two kinds of data are automatically collected:
   - Context switches correspond to the dynamic association between a system thread and a CPU "logical core"
     - This information is critical for investigation of performance when CPU is saturated
   - Context switches information is accessible only with privileged rights (i.e. as root or administrator)
+
+### Multistream
+
+Up to **8** simultaneous streams can be recorded at the same time. <br/>
+All received events are merged and recorded as if they were coming from the same system.
+
+This feature is enabled on the viewer side, by selecting the "`multistream mode`" in the menu bar. It slightly modifies the behavior of the recorder:
+  * Socket connections are accepted at any time during the recording, until no more connection are active.
+    * Note that a terminated connection does not give back the space for another connection.
+  * Multiple files can be selected in case of import from file
+  * The name of the record is the one provided manually in the `multistream mode` menu. <br/>
+    It overrides all received application names, which are an attribute of the streams composing this record.
+  * All threads are prefixed by the application name of their stream
+    * If a thread is in a group, the group is prefixed.
+
+!!! tip Important
+    Multistream setups have some constraints, listed below.
+
+**Clocks**
+
+Because heavily dependent on the observed system, clocks of streams shall be synchronized on the program sides. <br/>
+Processes from the same running OS are automatically synchronized. <br/>
+However, streams from different machine shall be synchronized externally, as `Palanteer` has no way to get the information to automate this phase. This usually implies overriding the clock fonction `PL_GET_CLOCK_TICK_FUNC()`.
+
+!!! warning
+    Any bias or clock drift will directly impact the consistency of the events between streams. <br/>
+    The absolute date origin is extracted from the first connection: any subsequent connection with a strong negative bias would result in zero thresholded dates. <br/>
+    This constraint does not exist with imported files, as the absolute date origin is the oldest one of the set of files.
+
+**Performance**
+
+The recording performance can be slightly reduced due to the additional indirections to merge events from different streams. <br/>
+As the server is usually the bottleneck during recording, the aggregated global stream shall not exceed the monostream maximum processing capacity (see the [performance section](index.html#performance))
+
+**Context switches**
+
+On server side, context switches are supported in multistream mode. <br/>
+However, for streams coming from the same OS, multiple simultaneous instances of collections of such events does not work well. <br/>
+For instance:
+  - on Windows, using such OS API is globally exclusive
+  - on Linux, the configuration is global to the OS and the reconfiguration from a subsequent stream may corrupt data for all streams.
+
+**Configuration consistency**
+
+Multistream requires some consistency among streams (these constraints may be removed later):
+  - same size of clock (32 or 64 bits)
+  - same size of hash (32 or 64 bits)
+  - same hash salt
+
+A stream not compliant with previous registered ones will be ignored.
+
+**Locks**
+
+All locks are considered internal to a stream, inter-process locks are not supported. <br/>
+This means that a lock shall be unique among all streams. <br/>
+Any lock from a stream having the same name as an existing one of a previous stream will be suffixed with `#<uniqueStreamId>`.
+
 
 ### Remote control
 
@@ -1035,7 +1093,7 @@ As for the C++ experiment, this one includes the event transmission, the event p
 
 The results for Linux (Debian 10) are:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
-> > ./testprogram.py perf
+> ./testprogram.py perf
 Collection duration : 723.55 ms for 1000000 events
 Collection unit cost: 724 ns
 Processing duration : 746.86 ms (w/ transmission and server processing)

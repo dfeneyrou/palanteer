@@ -35,17 +35,17 @@ public:
     ~cmLiveControl(void);
 
     // Notifications
-    void storeNewRemoteBuffer(bsVec<u8>& buffer);
+    void storeNewRemoteBuffer(int streamId, bsVec<u8>& buffer);
 
     // Commands
-    bool remoteSetMaxLatencyMs(int latencyMs);
-    bool remoteSetFreezeMode(bool state);
-    bool remoteStepContinue(u64 bitmap=(u64)-1L);
-    bool remoteKillProgram(void);
-    bool remoteCli(const bsVec<bsString>& commands);
+    bool remoteSetMaxLatencyMs(int streamId, int latencyMs);
+    bool remoteSetFreezeMode(int streamId, bool state);
+    bool remoteStepContinue(int streamId, u64 bitmap=(u64)-1L);
+    bool remoteKillProgram(int streamId);
+    bool remoteCli(int streamId, const bsVec<bsString>& commands);
 
 private:
-    bsVec<u8>* _prepareCommand(enum plPriv::RemoteCommandType ct, int payloadSize);
+    bsVec<u8>* _prepareCommand(int streamId, enum plPriv::RemoteCommandType ct, int payloadSize);
 
     cmInterface* _itf = 0;
     cmCnx* _clientCnx = 0;

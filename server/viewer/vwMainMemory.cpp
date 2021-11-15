@@ -89,7 +89,7 @@ struct MemoryDrawHelper {
 };
 
 
-// "IValue" is "view Independant value", which means a tuple (threadId, byte position)
+// "IValue" is "view Independent Calue", which means a tuple (threadId, byte position)
 // Its need is due to the varying pixel (of headers) scale versus the byte range
 void
 MemoryDrawHelper::getIvalueFromValue(vwMain::MemoryTimeline& mw, double value, int& threadId, double& threadValue)
@@ -1028,7 +1028,7 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
     ctx.computeLayout(mw);
 
     if(mw.doAdaptViewValueRange && mw.allocBlockThreadId>=0) {
-        // Get the "independant" coordinate
+        // Get the "independent" coordinate
         double tmp = mw.cachedThreadData[mw.allocBlockThreadId].maxAllocSizeValue;
         const double yCorrectedRatio = bsMin(1., tmp/(mw.startTimeVPtr+mw.maxVPtr)); // Correction for higher vPtr due to packing holes
         double newThreadValue = yCorrectedRatio*(tmp-mw.startTimeVPtr)-mw.maxVPtr;

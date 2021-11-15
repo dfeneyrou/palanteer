@@ -98,15 +98,15 @@ pyMainItf::log(cmLogKind kind, const char* format, ...)
 
 // From cmCnx thread
 void
-pyMainItf::notifyNewRemoteBuffer(bsVec<u8>& buffer)
+pyMainItf::notifyNewRemoteBuffer(int streamId, bsVec<u8>& buffer)
 {
-    _live->storeNewRemoteBuffer(buffer);
+    _live->storeNewRemoteBuffer(streamId, buffer);
 }
 
 
 // From cmCnx thread via live control
 void
-pyMainItf::notifyNewFrozenThreadState(u64 frozenThreadBitmap)
+pyMainItf::notifyNewFrozenThreadState(int streamId, u64 frozenThreadBitmap)
 {
     notifyScript(); // Update the script side first, to ensure all is synchronised with freeze points
     _ntf->notifyNewFrozenThreadState(frozenThreadBitmap);
@@ -115,7 +115,7 @@ pyMainItf::notifyNewFrozenThreadState(u64 frozenThreadBitmap)
 
 // From cmCnx thread via live control
 void
-pyMainItf::notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answer)
+pyMainItf::notifyCommandAnswer(int streamId, plPriv::plRemoteStatus status, const bsString& answer)
 {
     _ntf->notifyCommandAnswer(status, answer.toChar());
 }
@@ -123,7 +123,7 @@ pyMainItf::notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& an
 
 // From cmCnx thread via live control
 void
-pyMainItf::notifyNewCli(u32 nameIdx, int paramSpecIdx, int descriptionIdx)
+pyMainItf::notifyNewCli(int streamId, u32 nameIdx, int paramSpecIdx, int descriptionIdx)
 {
     _batchedClis.push_back({_recording->getString(nameIdx).toChar(), _recording->getString(paramSpecIdx).toChar(),
             _recording->getString(descriptionIdx).toChar()});
@@ -131,22 +131,21 @@ pyMainItf::notifyNewCli(u32 nameIdx, int paramSpecIdx, int descriptionIdx)
 
 
 bool
-pyMainItf::notifyRecordStarted(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
-                               const cmTlvs& options)
+pyMainItf::notifyRecordStarted(const cmStreamInfo& infos, s64 timeTickOrigin, double tickToNs)
 {
     bsString errorMsg;
-    _recording->beginRecord(appName, buildName, timeTickOrigin, tickToNs, options,
-                            RECORD_CACHE_MB, _recordFilename, false, errorMsg);
+    _recording->beginRecord(infos.appName, infos, timeTickOrigin, tickToNs,
+                            false, RECORD_CACHE_MB, _recordFilename, false, errorMsg);
     if(!errorMsg.empty()) {
         notifyErrorForDisplay(ERROR_GENERIC, errorMsg);
         return false;
     }
 
     // Compute the spec hashes, now that we know the string hash size
-    _isStringHashShort  = options.values[PL_TLV_HAS_SHORT_STRING_HASH];
-    _areStringsExternal = options.values[PL_TLV_HAS_EXTERNAL_STRING];
+    _isStringHashShort  = infos.tlvs[PL_TLV_HAS_SHORT_STRING_HASH];
+    _areStringsExternal = infos.tlvs[PL_TLV_HAS_EXTERNAL_STRING];
 
-    _ntf->notifyRecordStarted(appName.toChar(), buildName.toChar(), _areStringsExternal, _isStringHashShort, !options.values[PL_TLV_HAS_NO_CONTROL]);
+    _ntf->notifyRecordStarted(infos.appName.toChar(), infos.buildName.toChar(), _areStringsExternal, _isStringHashShort, !infos.tlvs[PL_TLV_HAS_NO_CONTROL]);
 
     std::lock_guard<std::mutex> lk(_mx);
     // Clean the event specifications, so they can manage the new record
@@ -169,17 +168,17 @@ pyMainItf::notifyRecordStarted(const bsString& appName, const bsString& buildNam
 
 
 bool
-pyMainItf::notifyNewEvents(plPriv::EventExt* events, int eventQty)
+pyMainItf::notifyNewEvents(int streamId, plPriv::EventExt* events, int eventQty, s64 shortDateSyncTick)
 {
-    return _recording->storeNewEvents(events, eventQty);
+    return _recording->storeNewEvents(streamId, events, eventQty, shortDateSyncTick);
 }
 
 
 void
-pyMainItf::notifyNewString(const bsString& newString, u64 hash)
+pyMainItf::notifyNewString(int streamId, const bsString& newString, u64 hash)
 {
     // Record the new string
-    const bsString& storedString = _recording->storeNewString(newString, hash);
+    const bsString& storedString = _recording->storeNewString(streamId, newString, hash);
 
     // Batch it for external notification
     _batchedStrings.push_back({ hash, storedString.toChar() });
@@ -187,10 +186,17 @@ pyMainItf::notifyNewString(const bsString& newString, u64 hash)
 
 
 void
-pyMainItf::notifyNewCollectionTick(void)
+pyMainItf::notifyNewCollectionTick(int streamId)
 {
     _didCollectionTickOccurred = true;
     notifyScript();
+}
+
+
+void
+pyMainItf::notifyNewStream(const cmStreamInfo& infos)
+{
+    _recording->notifyNewStream(infos);
 }
 
 

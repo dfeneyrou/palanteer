@@ -35,7 +35,8 @@
 
 
 cmRecording::cmRecording(cmInterface* itf, const bsString& storagePath, bool doForwardEvents) :
-    _itf(itf), _doForwardEvents(doForwardEvents), _storagePath(storagePath), _doStopThread(0)
+    _itf(itf), _doForwardEvents(doForwardEvents), _storagePath(storagePath), _doStopThread(0),
+    _recMemAllocLkup(4096), _recElemPathToId(32768), _recMStreamStringHashLkup(32768)
 {
     static_assert((cmChunkSize%cmMRScopeSize)==0, "Chunk size must be a multiple of the MR scope size");
     static_assert((cmElemChunkSize%cmMRElemSize)==0, "Elem chunk size must be a multiple of MR elem size");
@@ -54,6 +55,7 @@ cmRecording::cmRecording(cmInterface* itf, const bsString& storagePath, bool doF
 
     // Some reserve
     _recMarkerCategoryNameIdxs.reserve(256);
+    _recStreams.reserve(cmConst::MAX_STREAM_QTY);
     _recLocks.reserve(256);
     _recElems.reserve(512);
     _recThreads.reserve(cmConst::MAX_THREAD_QTY);
@@ -62,6 +64,9 @@ cmRecording::cmRecording(cmInterface* itf, const bsString& storagePath, bool doF
     _workingNewMRScopes.reserve(cmChunkSize);
     _workingNewMRElems.reserve(cmChunkSize);
     _workingNewMRElemValues.reserve(cmChunkSize);
+
+    // Misc
+    _recShortDateState.doResync = false;  // CPU & context switch short dates are not resynchronized because verbose and with big latency...
 }
 
 
@@ -75,20 +80,19 @@ cmRecording::~cmRecording(void)
 // ==============================================================================================
 
 cmRecord*
-cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
-                         const cmTlvs& options, int cacheMBytes, const bsString& recordFilename, bool doCreateLiveRecord, bsString& errorMsg)
+cmRecording::beginRecord(const bsString& appName, const cmStreamInfo& infos, s64 timeTickOrigin, double tickToNs,
+                         bool isMultiStream, int cacheMBytes, const bsString& recordFilename,
+                         bool doCreateLiveRecord, bsString& errorMsg)
 {
     plScope("beginRecord");
     errorMsg.clear();
     _recordAppName.clear();
-    _recordBuildName.clear();
     _recordPath.clear();
 
     // Is record storage enabled? (it may not be, in live scripting case)
     if(!recordFilename.empty()) {
-        _recordAppName   = appName;
-        _recordBuildName = buildName;
-        _recordPath      = recordFilename;
+        _recordAppName = appName;
+        _recordPath    = recordFilename;
 
         // Open the record file
         _recFd = osFileOpen(_recordPath, "wb"); // Write only
@@ -101,18 +105,18 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64
 
     // Store the fields
     _recTimeTickOrigin = timeTickOrigin;
-    _highestDateTick   = timeTickOrigin;
     _recTickToNs       = tickToNs;
-    _isDateShort       = options.values[PL_TLV_HAS_SHORT_DATE];
-    memcpy(&_options, &options, sizeof(options));
-    _hashEmptyString   = (options.values[PL_TLV_HAS_SHORT_STRING_HASH]? BS_FNV_HASH32_OFFSET : BS_FNV_HASH_OFFSET) +
-        options.values[PL_TLV_HAS_HASH_SALT];  // Value is 0 if no salt is added
+    _isMultiStream     = isMultiStream;
+
+    // Short date, short string hash and hash salt are global to the record, not per stream
+    _isDateShort       = infos.tlvs[PL_TLV_HAS_SHORT_DATE];
+    _hashEmptyString   = (infos.tlvs[PL_TLV_HAS_SHORT_STRING_HASH]? BS_FNV_HASH32_OFFSET : BS_FNV_HASH_OFFSET) +
+        infos.tlvs[PL_TLV_HAS_HASH_SALT];  // Value is 0 if no salt is added
 
     // Reset the structured storage
     _recDurationNs          = 0;
     _recLastEventFileOffset = 0;
-    _recLastCSwitchDateNs   = 0;
-    _recShortDateHiPartCpu  = 0;
+    _recShortDateState.reset();
     _recCoreQty        = 0;
     _recUsedCoreCount  = 0;
     _recElemChunkQty   = 0;
@@ -123,11 +127,13 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64
     _recCtxSwitchEventQty = 0;
     _recLastIdxErrorQty = 0;
     _recErrorQty        = 0;
-    memset(_recCoreIsUsed, 0,   sizeof(_recCoreIsUsed));
+    memset(_recCoreIsUsed,   0, sizeof(_recCoreIsUsed));
     memset(_recCoreIsPaused, 0, sizeof(_recCoreIsPaused));
     _recMemAllocLkup.clear();
     _recElemPathToId.clear();
     _recMarkerCategoryNameIdxs.clear();
+    _recStreams.clear();
+    _recStreams.push_back(infos);
     _recLocks.clear();
     _recElems.clear();
     _recLockPauses.clear();
@@ -138,6 +144,16 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64
     LOC_STORAGE_RESET(_recGlobal.marker);
     _recStrings.clear();
     _recErrorLkup.clear();
+
+    _recMStreamStringHashLkup.clear();
+    for(int i=0; i<cmConst::MAX_STREAM_QTY; ++i) {
+        _recMStreamStringIdLkup[i].clear();
+        _recMStreamStringIdLkup[i].reserve(4096);
+    }
+    memset(_recMStreamThreadIdLkup, 0xFF, sizeof(_recMStreamThreadIdLkup));
+    memset(_recMStreamCoreIdLkup  , 0xFF, sizeof(_recMStreamCoreIdLkup));
+    _recMStreamCoreQty = 0;
+    memset(_recMStreamLastCSwitchDateNs, 0, sizeof(_recMStreamLastCSwitchDateNs));
 
     _recLastSizeStrings = 0;
     _recNameUpdatedThreadIds.clear();
@@ -160,11 +176,11 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64
 
         liveRecord = new cmRecord(fdReadEventChunks, cacheMBytes); // Ownership of fds transferred.
         liveRecord->appName    = _recordAppName;
-        liveRecord->buildName  = _recordBuildName;
         liveRecord->recordPath = _recordPath;
         liveRecord->recordDate = osGetCreationDate(_recordPath);
-        liveRecord->compressionMode    = _isCompressionEnabled? 1 : 0;
-        memcpy(&liveRecord->options.values[0], &_options.values[0], sizeof(_options.values));
+        liveRecord->compressionMode = _isCompressionEnabled? 1 : 0;
+        liveRecord->isMultiStream   = _isMultiStream? 1 : 0;
+        liveRecord->streams.push_back(infos);
         liveRecord->loadExternalStrings();
     }
 
@@ -173,15 +189,33 @@ cmRecording::beginRecord(const bsString& appName, const bsString& buildName, s64
 
 
 const bsString&
-cmRecording::storeNewString(const bsString& newString, u64 hash)
+cmRecording::storeNewString(int streamId, const bsString& newString, u64 hash)
 {
     plScope("storeNewString");
+
+    // Multistream
+    if(_isMultiStream) {
+        // Update the stringId redirection depending if the hash is already known
+        int* pStringIdx = _recMStreamStringHashLkup.find(hash, hash);
+        if(pStringIdx) {
+            // Store the previous known index for this string (received in order)
+            _recMStreamStringIdLkup[streamId].push_back(*pStringIdx);
+            // No need to store the new string as we reuse the previously stored one
+            return _recStrings[*pStringIdx].value;
+        } else {
+            _recMStreamStringHashLkup.insert(hash, hash, _recStrings.size());
+            // Store the top index for this string (received in order)
+            _recMStreamStringIdLkup[streamId].push_back(_recStrings.size());
+        }
+    }
+
     // Store in memory
     u32 length = newString.size();
     _recStrings.push_back( { newString, "", hash, 0LL, 0, 1, -1, -1, (length==1), false } );
     plData("New string pushed ID", _recStrings.size()-1); // We cannot push the string content as "static", because its pointer is not persistent
     return _recStrings.back().value;
 }
+
 
 #define INSERT_IN_ELEM(elem_, elemIdx_, lIdx_, time_, value_, threadBitmap_) \
     elem_.chunkLIdx  .push_back(lIdx_);                                 \
@@ -207,11 +241,7 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     u32 lIdx = _recGlobal.markerChunkLocs.size()*cmChunkSize+_recGlobal.markerChunkData.size()-1;
 
     // Update the list of global marker categories
-    bool isCategoryAlreadyPresent = false;
-    for(u32 categoryNameIdx : _recMarkerCategoryNameIdxs) {
-        if(categoryNameIdx==evtx.nameIdx) { isCategoryAlreadyPresent = true; break; }
-    }
-    if(!isCategoryAlreadyPresent) {
+    if(_recStrings[evtx.nameIdx].categoryId<0) {
         _recMarkerCategoryNameIdxs.push_back(evtx.nameIdx);
         cmRecord::String& s = _recStrings[evtx.nameIdx];
         s.categoryId = _recMarkerCategoryNameIdxs.size()-1; // Mark the string as a category name
@@ -234,7 +264,7 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     INSERT_IN_ELEM(elem, elemIdx, lIdx, evtx.vS64, 1., 1LL<<evtx.threadId);
 
     // Elem 2: Global storage, for dedicated marker window
-    itemHashPath = bsHashStep(cmConst::MARKER_NAMEIDX);
+    itemHashPath = bsHashStepChain(tc.streamId, cmConst::MARKER_NAMEIDX);
     elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
         _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::MARKER_NAMEIDX, (u32)-1, -1, -1,
@@ -267,9 +297,34 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
 
 
 void
+cmRecording::createLock(int streamId, u32 nameIdx)
+{
+    // Mark the string as a lock name
+    _recStrings[nameIdx].lockId = _recLocks.size();
+
+    // Create the lock
+    _recLocks.push_back( {nameIdx} );
+    _recLockPauses.push_back({});
+
+    // Multistream initialization (to ensure unicity of the lock name globally)
+    if(_isMultiStream) {
+        memset(&_recLocks.back().mStreamNameLkup[0], 0xFF, sizeof(LockBuild::mStreamNameLkup));
+        _recLocks.back().mStreamNameLkup[streamId] = nameIdx; // Original lock name points on itself
+    }
+}
+
+
+
+void
 cmRecording::processLockNotifyEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int level, bool doForwardEvents)
 {
     plgScope(REC, "processLockNotifyEvent");
+
+    // Create the lock
+    if(_recStrings[evtx.nameIdx].lockId<0) {
+        createLock(tc.streamId, evtx.nameIdx);
+    }
+
     // Store complete chunks
     if(_recGlobal.lockNtfChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.lockNtfChunkData, _recGlobal.lockNtfChunkLocs);
     _recGlobal.lockNtfChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, { evtx.filenameIdx },
@@ -311,6 +366,7 @@ void
 cmRecording::processLockWaitEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int level)
 {
     plgScope(REC, "processLockWaitEvent");
+
     // Store complete chunks
     if(tc.lockWaitChunkData.size()==cmChunkSize) writeGenericChunk(tc.lockWaitChunkData, tc.lockWaitChunkLocs);
     tc.lockWaitChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
@@ -331,9 +387,7 @@ cmRecording::processLockWaitEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int l
             // Create the lock
             cmRecord::String& s = _recStrings[evtx.nameIdx];
             if(s.lockId<0) {
-                s.lockId = _recLocks.size(); // Mark the string as a lock name
-                _recLocks.push_back({evtx.nameIdx});
-                _recLockPauses.push_back({});
+                createLock(tc.streamId, evtx.nameIdx);
             }
             _recLocks[s.lockId].waitingThreadIds.push_back(evtx.threadId);
             // Live update
@@ -367,9 +421,10 @@ cmRecording::processLockWaitEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int l
 
 
 bool
-cmRecording::processLockUseEvent(plPriv::EventExt& evtx, bool& doInsertLockWaitEnd)
+cmRecording::processLockUseEvent(int streamId, plPriv::EventExt& evtx, bool& doInsertLockWaitEnd)
 {
     plgScope(REC, "processLockUseEvent");
+
     // Get the elem from the path hash
     u64  itemHashPath = bsHashStepChain(_recStrings[evtx.nameIdx].hash, cmConst::LOCK_USE_NAMEIDX);
     int* elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOCK_USE_NAMEIDX);
@@ -380,9 +435,7 @@ cmRecording::processLockUseEvent(plPriv::EventExt& evtx, bool& doInsertLockWaitE
         if(_doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, PL_FLAG_TYPE_LOCK_ACQUIRED);
         // Create the lock
         if(_recStrings[evtx.nameIdx].lockId<0) {
-            _recStrings[evtx.nameIdx].lockId = _recLocks.size(); // Mark the string as a lock name
-            _recLocks.push_back({evtx.nameIdx});
-            _recLockPauses.push_back({});
+            createLock(streamId, evtx.nameIdx);
         }
     }
     int elemIdx     = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
@@ -478,7 +531,7 @@ cmRecording::processCtxSwitchEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     if(tc.ctxSwitchChunkData.size()==cmChunkSize) writeGenericChunk(tc.ctxSwitchChunkData, tc.ctxSwitchChunkLocs);
     tc.ctxSwitchChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
                                                     evtx.threadId, 0, evtx.flags, 0, 0, 0,
-                                                    (u64)evtx.vS64 } ); // No CPU=0xFFFF
+                                                    (u64)evtx.vS64 } );
     ++_recCtxSwitchEventQty;
     ++tc.ctxSwitchEventQty;
     // Get the elem from the path hash   @#SIMPLIFY The assumption about mandatory thread declaration below is no more true. We can use the threadHash as for all other cases. Iterator shall be updated too
@@ -547,7 +600,7 @@ cmRecording::processSoftIrqEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
 
 
 bool
-cmRecording::processCoreUsageEvent(plPriv::EventExt& evtx)
+cmRecording::processCoreUsageEvent(int streamId, plPriv::EventExt& evtx)
 {
     // Get the coreId
     int coreId = (evtx.newCoreId==0xFF)? evtx.prevCoreId : evtx.newCoreId;
@@ -566,12 +619,12 @@ cmRecording::processCoreUsageEvent(plPriv::EventExt& evtx)
     // Update the date and ensure that the clock is always increasing for context switches.
     // Indeed, clock resynchronization may add some jitter and make some dates backward at these points.
     // This would damage the speck computation for multi-resolution
-    updateDate(evtx, _recShortDateHiPartCpu);
-    if(evtx.vS64<_recLastCSwitchDateNs) evtx.vS64 = _recLastCSwitchDateNs+1;
-    _recLastCSwitchDateNs = evtx.vS64;
+    updateDate(evtx, _recShortDateState);
+    if(evtx.vS64<_recMStreamLastCSwitchDateNs[streamId]) evtx.vS64 = _recMStreamLastCSwitchDateNs[streamId]+1;
+    _recMStreamLastCSwitchDateNs[streamId] = evtx.vS64;
 
     // Check that the CPU usage by our program changed
-    bool doAddCpuPoint = true;
+    bool doAddCpuPoint = !_isMultiStream;  // Cannot be achieved simply in multistream without an aggregator on streams. Maybe later.
     while(coreId>=_recCoreQty) _recCoreIsUsed[_recCoreQty++] = 0;
     if(evtx.newCoreId==0xFF && _recCoreIsUsed[coreId]!=0) { // Our program does not use anymore this core
         _recCoreIsUsed[coreId] = 0;
@@ -1133,22 +1186,30 @@ cmRecording::doPauseStoring(bool state)
 
 
 void
-cmRecording::updateDate(plPriv::EventExt& evtx, s64& shortDateHiPart)
+cmRecording::updateDate(plPriv::EventExt& evtx, ShortDateState& sd)
 {
     // Handle the short date and its potential wrap
     if(_isDateShort) {
-        evtx.vS64 = shortDateHiPart | (evtx.vS64&0xFFFFFFFFLL);
-        int count = 10;
-        while(evtx.vS64<_highestDateTick-0x80000000LL && --count) {
-            evtx.vS64       += (1LL<<32);
-            shortDateHiPart += (1LL<<32);
+        // Resynchronize the wrap quantity (once per buffer)
+        if(sd.doResync && sd.lastEventBufferId!=_eventBufferId) {
+            sd.lastEventBufferId = _eventBufferId; // Sync done
+            if(sd.lastDateTick<_shortDateSyncTick) sd.lastDateTick = _shortDateSyncTick;
+            sd.wrapPart = sd.lastDateTick&(~0xFFFFFFFFLL);
         }
-        plAssert(count>0);
-        if(evtx.vS64>_highestDateTick) _highestDateTick = evtx.vS64;
+
+        // Complete the short date with the wrap count, and update it if needed
+        evtx.vS64 = sd.wrapPart | (evtx.vS64&0xFFFFFFFFLL);
+        if(evtx.vS64<sd.lastDateTick-0x3FFFFFFFLL) {  // 1/4 wrap period in the past means a wrap
+            evtx.vS64   += (1LL<<32);
+            sd.wrapPart += (1LL<<32);
+        }
+        if(evtx.vS64<=sd.lastDateTick) evtx.vS64 = sd.lastDateTick+1; // Robustness against clock drift corrections on instrumentation side: ensure that dates are monotonous
+        sd.lastDateTick = evtx.vS64;
     }
 
-    // Unbias and stretch the time so that record start is 0 ns and is in nanosecond
+    // Unbias and stretch the time so that record start is 0 ns and is in nanosecond (i.e. conversion from tick to nanosecond)
     evtx.vS64 = (evtx.vS64>=_recTimeTickOrigin)? (s64)(_recTickToNs*(evtx.vS64-_recTimeTickOrigin)) : 0;
+    // @#QUESTION Shall the monotonous characteristic of the date be enforced here too?
 
     // Keep track of the full record duration
     if(evtx.vS64>_recDurationNs) _recDurationNs = evtx.vS64;
@@ -1156,9 +1217,15 @@ cmRecording::updateDate(plPriv::EventExt& evtx, s64& shortDateHiPart)
 
 
 bool
-cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
+cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty, s64 shortDateSyncTick)
 {
     plScope("storeNewEvents");
+
+    // Manage short date wrap
+    if(_isDateShort) {
+        _shortDateSyncTick = shortDateSyncTick; // Sync date is *before* any dates in this buffer. Null date will be ignored
+        ++_eventBufferId;  // To track the synchronization done once per thread
+    }
 
     // Manage the pausing/resuming of the record
     // =========================================
@@ -1193,7 +1260,7 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
         for(auto& rlp : _recLockPauses) {
             if(!rlp.isUnstoredScopeOpen) continue;
             bool doInsertLockWaitEnd = false;
-            processLockUseEvent(rlp.unstoredBeginEvt, doInsertLockWaitEnd);
+            processLockUseEvent(streamId, rlp.unstoredBeginEvt, doInsertLockWaitEnd); // @#FIXME streamId is not right, here. But it is dead code for the moment
             rlp.isUnstoredScopeOpen = false;
         }
     }
@@ -1201,35 +1268,96 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
 
     // Loop on incoming events
     // =======================
+    const bsVec<int>& streamStringLkup   = _recMStreamStringIdLkup[streamId];
+    u8*               streamThreadIdLkup = _recMStreamThreadIdLkup[streamId];
+    u8*               streamCoreIdLkup   = _recMStreamCoreIdLkup  [streamId];
+
     for(int i=0; i<eventQty; ++i) {
 
         plPriv::EventExt& evtx  = events[i];
         int               eType = evtx.flags&PL_FLAG_TYPE_MASK;
 
-        // Core event case (stop processing if it concerns an external process, else continue for the ctx switch processing)
-        if(eType==PL_FLAG_TYPE_CSWITCH) {
-            if(!processCoreUsageEvent(evtx)) continue;
-        }
+        if(_isMultiStream) {
+            if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {  // 1st part of memory events do not use strings
 
-        // String integrity check (data corruption). Should never happen with "good" client.
-        if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {  // 1st part of memory events do not use strings
+                if(eType!=PL_FLAG_TYPE_CSWITCH) {
+                    // Strings
+                    if(evtx.nameIdx>=(u32)streamStringLkup.size()) return false; // Means nameIdx is corrupted
+                    evtx.nameIdx = streamStringLkup[evtx.nameIdx];
+                    if(eType!=PL_FLAG_TYPE_SOFTIRQ) {
+                        if(evtx.filenameIdx>=(u32)streamStringLkup.size()) return false; // Means filenameIdx is corrupted
+                        evtx.filenameIdx = streamStringLkup[evtx.filenameIdx];
+                    }
+                    if(eType==PL_FLAG_TYPE_DATA_STRING) {
+                        if(evtx.vStringIdx>=(u32)streamStringLkup.size()) return false; // Means the string data value is corrupted
+                        evtx.vStringIdx = streamStringLkup[evtx.vStringIdx];
+                    }
+                }
+
+                else {
+                    // Context switch string
+                    if(evtx.nameIdx!=0xFFFFFFFF && evtx.nameIdx!=0xFFFFFFFE) {
+                        if(evtx.nameIdx>=(u32)streamStringLkup.size()) return false;  // Means that the context switch process name is corrupted
+                        evtx.nameIdx = streamStringLkup[evtx.nameIdx];
+                    }
+                    // Context switch coreId
+                    if(evtx.newCoreId!=0xFF) {
+                        if(streamCoreIdLkup[evtx.newCoreId]==0xFF) {
+                            int startCoreId = evtx.newCoreId;
+                            while(startCoreId>0 && streamCoreIdLkup[startCoreId-1]==0xFF) --startCoreId;  // Assign all previous coreID also, to try to have them in order
+                            while(startCoreId<=evtx.newCoreId) streamCoreIdLkup[startCoreId++] = _recMStreamCoreQty++;
+                        }
+                        evtx.newCoreId = streamCoreIdLkup[evtx.newCoreId];
+                    }
+                    if(evtx.prevCoreId!=0xFF) {
+                        if(streamCoreIdLkup[evtx.prevCoreId]==0xFF) {
+                            int startCoreId = evtx.prevCoreId;
+                            while(startCoreId>0 && streamCoreIdLkup[startCoreId-1]==0xFF) --startCoreId;  // Assign all previous coreID also, to try to have them in order
+                            while(startCoreId<=evtx.prevCoreId) streamCoreIdLkup[startCoreId++] = _recMStreamCoreQty++;
+                        }
+                        evtx.prevCoreId = streamCoreIdLkup[evtx.prevCoreId];
+                    }
+                }
+            }  // End of memory event exclusion
+
+            // Lock name: ensure that the lock name is not shared among streams. If it is the case, rename the subsequent ones
+            if(eType>=PL_FLAG_TYPE_LOCK_FIRST && eType<=PL_FLAG_TYPE_LOCK_LAST && _recStrings[evtx.nameIdx].lockId>=0) {
+                // A lock has already been created, so a name collision is possible and shall be checked
+                LockBuild& lb = _recLocks[_recStrings[evtx.nameIdx].lockId];
+                if(lb.mStreamNameLkup[streamId]<0) {
+                    char newLockName[256];
+                    snprintf(newLockName, sizeof(newLockName), "%s#%d", _recStrings[evtx.nameIdx].value.toChar(), streamId);  // Add "#<streamId>" to the lock name
+                    _recStrings.push_back( { newLockName, "", bsHashString(newLockName), 0LL, 0, 1, -1, -1, false, false } );
+                    lb.mStreamNameLkup[streamId] = _recStrings.size()-1;
+                }
+                evtx.nameIdx = lb.mStreamNameLkup[streamId];  // Conversion by the original lock lookup
+            }
+        } // End of multistream conversion & check
+
+        // Case monostream: String integrity check (data corruption). Should never happen with "good" clients
+        else if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {  // 1st part of memory events do not use strings
             if(eType!=PL_FLAG_TYPE_CSWITCH) {
-                // Check that nameIdx is properly declared
-                if(evtx.nameIdx>=(u32)_recStrings.size()) {
-                    return false; // Means corruption
-                }
-                // Check that filenameIdx is properly declared
-                if(eType!=PL_FLAG_TYPE_SOFTIRQ && evtx.filenameIdx>=(u32)_recStrings.size()) {
-                    return false;
-                }
-                // Check that the string data value is properly declared
-                if(eType==PL_FLAG_TYPE_DATA_STRING && evtx.vStringIdx>=(u32)_recStrings.size()) {
-                    return false;
-                }
+                if(evtx.nameIdx>=(u32)_recStrings.size()) return false; // Means nameIdx is corrupted
+                if(eType!=PL_FLAG_TYPE_SOFTIRQ && evtx.filenameIdx>=(u32)_recStrings.size()) return false; // Means filenameIdx is corrupted
+                if(eType==PL_FLAG_TYPE_DATA_STRING && evtx.vStringIdx>=(u32)_recStrings.size()) return false; // Means the string data value is corrupted
             }
             else if(evtx.nameIdx!=0xFFFFFFFF && evtx.nameIdx!=0xFFFFFFFE && evtx.nameIdx>=(u32)_recStrings.size()) {
-                return false;  // Context switch process name is corrupted
+                return false;  // Means that the context switch process name is corrupted
             }
+        }
+
+        // Core event case (stop processing if it concerns an external process, else continue for the ctx switch processing)
+        if(eType==PL_FLAG_TYPE_CSWITCH) {
+            if(!processCoreUsageEvent(streamId, evtx)) continue;
+        }
+
+        // Multistream conversion - part 2: convert threads after the core usage processing, to filter thread that do not belong to observed program
+        if(_isMultiStream) {
+            // Thread conversion
+            if(streamThreadIdLkup[evtx.threadId]==0xFF) {
+                streamThreadIdLkup[evtx.threadId] = _recThreads.size();
+            }
+            evtx.threadId = streamThreadIdLkup[evtx.threadId];
         }
 
         // Get the associated thread context
@@ -1244,6 +1372,9 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
                 plData("New thread ID", evtx.threadId);
                 _recThreads.push_back(ThreadBuild());
                 ThreadBuild& tc = _recThreads.back();
+                tc.streamId = streamId;
+                tc.shortDateStateCSwitch.doResync = false;  // Same as for CPU events
+
                 // Reserve some space in the thread internal structures
                 tc.memSSCurrentAlloc.reserve(256);
                 tc.memSSEmptyIdx.reserve(256);
@@ -1283,10 +1414,10 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
             continue;
         }
 
-        // Normalize dates
+        // Convert dates from tick to nanoseconds
         if(eType!=PL_FLAG_TYPE_CSWITCH &&  // Ctx switch dates have already been processed
            (eType==PL_FLAG_TYPE_DATA_TIMESTAMP || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST))) {
-            updateDate(evtx, (eType==PL_FLAG_TYPE_CSWITCH || eType==PL_FLAG_TYPE_SOFTIRQ)? tc.shortDateHiPartCSwitch : tc.shortDateHiPartEvt);
+            updateDate(evtx, (eType==PL_FLAG_TYPE_SOFTIRQ)? tc.shortDateStateCSwitch : tc.shortDateState);
             if(evtx.vS64>tc.durationNs) tc.durationNs = evtx.vS64;
         }
 
@@ -1296,7 +1427,7 @@ cmRecording::storeNewEvents(plPriv::EventExt* events, int eventQty)
             // This call returns false if the lock event is a duplicated one.
             // If a lock wait end shall be inserted before this one, the boolean doInsertLockWaitEnd is set
             bool doInsertLockWaitEnd = false;
-            bool doProcessLockUse    = processLockUseEvent(evtx, doInsertLockWaitEnd);
+            bool doProcessLockUse    = processLockUseEvent(streamId, evtx, doInsertLockWaitEnd);
             if(!doProcessLockUse && !doInsertLockWaitEnd) continue;
 
             // In case of lock wait insertion, we turn the lock into a lock wait end now (change in level)
@@ -1693,7 +1824,6 @@ cmRecording::endRecord(void)
 
     if(!_recFd) { // No recording case
         _recordAppName.clear();
-        _recordBuildName.clear();
         _recThreads.clear();
         _recStrings.clear();
         return;
@@ -1705,7 +1835,7 @@ cmRecording::endRecord(void)
     // Search for the empty string
     u32 emptyIdx = 0;
     while(emptyIdx<(u32)_recStrings.size() && _recStrings[emptyIdx].hash!=_hashEmptyString) ++emptyIdx;
-    if(emptyIdx==(u32)_recStrings.size()) storeNewString("", _hashEmptyString);
+    if(emptyIdx==(u32)_recStrings.size()) storeNewString(0, "", _hashEmptyString);
 
     // Force the closing of all open blocks
     plPriv::EventExt endEvtx = { 0, PL_FLAG_TYPE_DATA_TIMESTAMP | PL_FLAG_SCOPE_END, 0, emptyIdx, emptyIdx, 0, {0} };
@@ -1803,11 +1933,6 @@ cmRecording::endRecord(void)
     fwrite(&tmp,               4,   1, _recFd);
     fwrite(&_recordAppName[0], 1, tmp, _recFd);
 
-    plgText(REC, "Stage", "Write the build name");
-    tmp = _recordBuildName.size();
-    fwrite(&tmp,               4,   1, _recFd);
-    if(tmp) fwrite(&_recordBuildName[0], 1, tmp, _recFd);
-
     plgData(REC, "Write the thread quantity", _recThreads.size());
     tmp = _recThreads.size();
     fwrite(&tmp, 4,   1, _recFd);
@@ -1823,10 +1948,9 @@ cmRecording::endRecord(void)
     tmp = _isCompressionEnabled? 1 : 0;
     fwrite(&tmp, 4, 1, _recFd);
 
-    plgText(REC, "Stage", "Write the options");
-    tmp = PL_TLV_QTY;
+    plgData(REC, "Write the multistream mode", _isMultiStream);
+    tmp = _isMultiStream? 1 : 0;
     fwrite(&tmp, 4, 1, _recFd);
-    fwrite(&_options.values[0], 8, PL_TLV_QTY, _recFd);
 
     // Write the global event qty
     // We cannot recompute it fully from thread as some are thread-less (lock use, ctx switch...)
@@ -1835,6 +1959,29 @@ cmRecording::endRecord(void)
     fwrite(&_recCtxSwitchEventQty, 4, 1, _recFd);
     fwrite(&_recLockEventQty,      4, 1, _recFd);
     fwrite(&_recMarkerEventQty,    4, 1, _recFd);
+
+    // Write the streams
+    // =================
+    tmp = _recStreams.size();
+    plgData(REC, "Write the stream quantity", tmp);
+    fwrite(&tmp, 4, 1, _recFd);
+    for(const cmStreamInfo& si : _recStreams) {
+        // App name (for this stream. Same as global app name in case of monostream)
+        tmp = si.appName.size();
+        fwrite(&tmp, 4, 1, _recFd);
+        if(tmp) fwrite(&si.appName[0], 1, tmp, _recFd);
+        // Build name
+        tmp = si.buildName.size();
+        fwrite(&tmp, 4, 1, _recFd);
+        if(tmp) fwrite(&si.buildName[0], 1, tmp, _recFd);
+        // Lang name
+        tmp = si.langName.size();
+        fwrite(&tmp, 4, 1, _recFd);
+        if(tmp) fwrite(&si.langName[0], 1, tmp, _recFd);
+        tmp = PL_TLV_QTY;
+        fwrite(&tmp, 4, 1, _recFd);
+        fwrite(&si.tlvs[0], 8, PL_TLV_QTY, _recFd);
+    }
 
     // Write the strings
     // =================
@@ -1860,11 +2007,14 @@ cmRecording::endRecord(void)
         // Write the thread context
         // ========================
 
+        // Write the thread streamId
+        fwrite(&tc.streamId, 4, 1, _recFd);
+
         // Write the thread nameIdx
         fwrite(&tc.nameIdx, 4, 1, _recFd);
 
         // Write the thread hash (not the unique one, but the one used in the element hashing)
-        fwrite(&tc.threadHash,        8, 1, _recFd);
+        fwrite(&tc.threadHash, 8, 1, _recFd);
 
         // Write the thread end time
         fwrite(&tc.durationNs, 8, 1, _recFd);
@@ -2101,6 +2251,11 @@ cmRecording::createDeltaRecord(cmRecord::Delta* delta)
         _recLastIdxErrorQty = _recErrorQty;
     }
 
+    // New streams
+    for(int i=delta->streams.size(); i<_recStreams.size(); ++i) {
+        delta->streams.push_back(_recStreams[i]);
+    }
+
     // New strings
     delta->strings.resize(_recStrings.size()-_recLastSizeStrings);
     if(!delta->strings.empty()) {
@@ -2154,6 +2309,7 @@ cmRecording::createDeltaRecord(cmRecord::Delta* delta)
         dst.threadHash         = src.threadHash;
         dst.threadUniqueHash   = src.threadUniqueHash;
         dst.nameIdx            = src.nameIdx;
+        dst.streamId           = src.streamId;
     }
 
     // Thread names updated?

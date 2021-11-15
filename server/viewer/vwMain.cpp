@@ -216,7 +216,7 @@ vwMain::drawMainMenuBar(void)
     if(ImGui::BeginMenuBar()) {
         if(ImGui::BeginMenu("File")) {
             if(ImGui::MenuItem("Import", NULL, false, _underRecordAppIdx<0)) {
-                _fileDialogImport->open(getConfig().getLastFileImportPath());
+                _fileDialogImport->open(getConfig().getLastFileImportPath(), getConfig().isMultiStream()? cmConst::MAX_STREAM_QTY : 1);
                 plMarker("menu", "Open import file dialog");
             }
             if(ImGui::MenuItem("Clear", NULL, false, _underDisplayAppIdx>=0)) {
@@ -330,6 +330,61 @@ vwMain::drawMainMenuBar(void)
             ImGui::EndMenu();
         } // End of "Views" menu
 
+
+        constexpr int maxAppNameSize = 64;
+        static bool isMultiStreamMenuOpen = false;
+        static char localBuffer[maxAppNameSize];
+        if(getConfig().isMultiStream()) {
+            const bsString& multiStreamAppName = getConfig().getMultiStreamAppName();
+            if(ImGui::BeginMenu("Multistream mode")) {
+                if(!isMultiStreamMenuOpen) {
+                    isMultiStreamMenuOpen = true;
+                    memcpy(localBuffer, multiStreamAppName.toChar(), bsMin(multiStreamAppName.size()+1, maxAppNameSize));
+                    localBuffer[maxAppNameSize-1] = '\0';
+                }
+                // Input of the multi stream application name
+                bool isChanged = (strncmp(multiStreamAppName.toChar(), localBuffer, maxAppNameSize)!=0);
+                if(isChanged) ImGui::PushStyleColor(ImGuiCol_FrameBg, vwConst::darkBlue);
+                ImGui::Text("Aggregated app name:"); ImGui::SameLine();
+                ImGui::SetNextItemWidth(150);
+                bool doCloseAndSave = ImGui::InputText("##AppName", &localBuffer[0], maxAppNameSize, ImGuiInputTextFlags_EnterReturnsTrue);
+                if(isChanged) ImGui::PopStyleColor();
+                ImGui::SameLine();
+                if(doCloseAndSave || ImGui::SmallButton("OK")) {
+                    getConfig().setStreamConfig(true, bsString(localBuffer));
+                    plMarker("menu", "Changed record nickname");
+                    isMultiStreamMenuOpen = false;
+                    ImGui::CloseCurrentPopup();
+                }
+
+                ImGui::Separator();
+                if(ImGui::MenuItem("Switch to monostream")) {
+                    plMarker("menu", "Switch to monostream");
+                    getConfig().setStreamConfig(false, multiStreamAppName);
+                }
+                ImGui::EndMenu();
+            }
+            else isMultiStreamMenuOpen = false;
+            if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) {
+                ImGui::SetTooltip("Future recordings accept inputs from up to %d streams/process simultaneously.\n"
+                                  "The name of the aggregated record is '%s' (configured in this menu).\nThe name of individual streams is ignored.",
+                                  cmConst::MAX_STREAM_QTY, multiStreamAppName.toChar());
+            }
+        }
+        else {
+            isMultiStreamMenuOpen = false;
+            if(ImGui::BeginMenu("Monostream mode")) {
+                if(ImGui::MenuItem("Switch to multistream")) {
+                    plMarker("menu", "Switch to multistream");
+                    getConfig().setStreamConfig(true, getConfig().getMultiStreamAppName());
+                }
+                ImGui::EndMenu();
+            }
+            if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) {
+                ImGui::SetTooltip("Future recordings accept inputs from only one stream/process.\nThe name of the record is the one provided dynamically by the application.");
+            }
+        }
+
         if(ImGui::BeginMenu("Help")) {
             if(ImGui::MenuItem("Get started" )) {
                 plMarker("menu", "Show help");
@@ -383,10 +438,12 @@ vwMain::drawMainMenuBar(void)
 
     // Handle the import file dialog
     if(_fileDialogImport->draw(getConfig().getFontSize())) dirty();
-    if(_fileDialogImport->hasResult()) {
-        getConfig().setLastFileImportPath(_fileDialogImport->getResult());
-        _clientCnx->injectFile(_fileDialogImport->getResult());
-        _fileDialogImport->clearResult();
+    if(_fileDialogImport->hasSelection()) {
+        const bsVec<bsString>& result = _fileDialogImport->getSelection();
+        plAssert(!result.empty());
+        getConfig().setLastFileImportPath(result[0]);
+        _clientCnx->injectFiles(result);
+        _fileDialogImport->clearSelection();
     }
 
 }
@@ -542,9 +599,9 @@ vwMain::drawSettings(void)
 
     // Handle the record storage path selection file dialog
     if(_fileDialogSelectRecord->draw(getConfig().getFontSize())) dirty();
-    if(_fileDialogSelectRecord->hasResult()) {
-        getConfig().setRecordStoragePath(_fileDialogSelectRecord->getResult());
-        _fileDialogSelectRecord->clearResult();
+    if(_fileDialogSelectRecord->hasSelection()) {
+        getConfig().setRecordStoragePath(_fileDialogSelectRecord->getSelection()[0]);
+        _fileDialogSelectRecord->clearSelection();
     }
 
     ImGui::End();
@@ -613,20 +670,16 @@ vwMain::drawHelp(void)
         "This association is chosen in the top right combobox of the views\n"
         "\n"
         "By default, all views are associated with the#Group 1#. The#'Group 2'#provides a second shared focus.\n"
-        "A view can also be#'Isolated'#and become independant of all others.\n"
+        "A view can also be#'Isolated'#and become independent of others.\n"
         "\n"
         ;
     if(!_showHelp) return;
 
     ImGui::SetNextWindowSize(ImVec2(1000, 700), ImGuiCond_Once);
     ImGui::SetNextWindowBgAlpha(ImGui::GetStyle().Colors[ImGuiCol_PopupBg].w);
-    if(!ImGui::Begin("Help", &_showHelp, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse)) {
-        ImGui::End();
-        return;
+    if(ImGui::Begin("Help", &_showHelp, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse)) {
+        displayHelpText(helpStr);
     }
-
-    displayHelpText(helpStr);
-
     ImGui::End();
 }
 
@@ -988,11 +1041,19 @@ vwMain::draw(void)
         osSetWindowTitle("Palanteer - RECORDING");
         _record = *recordPtr;
         getConfig().notifyNewRecord(_record);
-        _live->remoteSetFreezeMode(getConfig().getFreezePointEnabled());
         _screenLayoutToApply = getConfig().getCurrentLayout();
         _recordWindow.isWindowSelected = true;
         _recordWindow.doForceShowLive  = true;
         setFullScreenView(-1);
+    }
+
+    // Unfreeze new streams
+    int newStreamQty = _newStreamQty;
+    if(_record && _underRecordRecIdx>=0 && newStreamQty>_streamQty) {
+        for(int streamId=_streamQty; streamId<newStreamQty; ++streamId) {
+            _live->remoteSetFreezeMode(streamId, getConfig().getFreezePointEnabled());
+        }
+        _streamQty = newStreamQty;
     }
 
     // Live-update a record
@@ -1137,15 +1198,15 @@ vwMain::setScopeHighlight(int threadId, double punctualTimeNs, int eventFlags, i
 
 // Called by client reception thread
 void
-vwMain::notifyNewRemoteBuffer(bsVec<u8>& buffer)
+vwMain::notifyNewRemoteBuffer(int streamId, bsVec<u8>& buffer)
 {
-    _live->storeNewRemoteBuffer(buffer);
+    _live->storeNewRemoteBuffer(streamId, buffer);
 }
 
 
 // Called by the remote control
 void
-vwMain::notifyNewFrozenThreadState(u64 frozenThreadBitmap)
+vwMain::notifyNewFrozenThreadState(int streamId, u64 frozenThreadBitmap)
 {
     _frozenThreadBitmap = frozenThreadBitmap;
 }
@@ -1153,23 +1214,28 @@ vwMain::notifyNewFrozenThreadState(u64 frozenThreadBitmap)
 
 // Called by the remote control
 void
-vwMain::notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answer)
+vwMain::notifyCommandAnswer(int streamId, plPriv::plRemoteStatus status, const bsString& answer)
 {
 }
 
 
 // Called by client reception thread
 bool
-vwMain::notifyRecordStarted(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
-                            const cmTlvs& options)
+vwMain::notifyRecordStarted(const cmStreamInfo& infos, s64 timeTickOrigin, double tickToNs)
 {
     plData("Subaction", plMakeString("Notif record started"));
 
+    // Multistream configuration and record naming
+    int isMultiStream = getConfig().isMultiStream();
+    bsString finalName = isMultiStream? getConfig().getMultiStreamAppName() : infos.appName;
+    finalName.strip();
+    if(finalName.empty()) finalName = "Default";
+
     // Ensure that the record storage repository exists
-    if(!osDirectoryExists(_storagePath+appName)) {
-        if(osMakeDir(_storagePath+appName)!=bsDirStatusCode::OK) {
+    if(!osDirectoryExists(_storagePath+finalName)) {
+        if(osMakeDir(_storagePath+finalName)!=bsDirStatusCode::OK) {
             plMarker("Error", "unable to create the folder for storing all records");
-            notifyErrorForDisplay(ERROR_GENERIC, bsString("Unable to create the folder ")+_storagePath+appName+
+            notifyErrorForDisplay(ERROR_GENERIC, bsString("Unable to create the folder ")+_storagePath+finalName+
                                   "\nPlease check the write permissions");
             return false;
         }
@@ -1182,32 +1248,36 @@ vwMain::notifyRecordStarted(const bsString& appName, const bsString& buildName, 
     plAssert(t);
     snprintf(recordName, sizeof(recordName), PL_DIR_SEP "rec_%04d-%02d-%02d_%02dh%02dm%02ds",
              1900+t->tm_year, 1+t->tm_mon, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
-    bsString recordFilename = _storagePath + appName + bsString(recordName) + ".plt";
+    bsString recordFilename = _storagePath + finalName + bsString(recordName) + ".plt";
 
     // Copy the external string file, if any
     bsString appExtStringsPath;
-    getConfig().getExtStringsPath(appName, appExtStringsPath);
+    getConfig().getExtStringsPath(finalName, appExtStringsPath);
     if(!appExtStringsPath.empty()) {
-        osCopyFile(appExtStringsPath, _storagePath + appName + bsString(recordName) + "_externalStrings");
+        osCopyFile(appExtStringsPath, _storagePath + finalName + bsString(recordName) + "_externalStrings");
     }
 
     // Notify the recording
     bsString errorMsg;
-    cmRecord* record = _recording->beginRecord(appName, buildName, timeTickOrigin, tickToNs, options,
+    cmRecord* record = _recording->beginRecord(finalName, infos, timeTickOrigin, tickToNs, isMultiStream,
                                                getConfig().getCacheMBytes(), recordFilename, true, errorMsg);
     if(!record) {
         notifyErrorForDisplay(ERROR_GENERIC, errorMsg);
-        osRemoveFile(_storagePath + appName + bsString(recordName) + "_externalStrings");
+        osRemoveFile(_storagePath + finalName + bsString(recordName) + "_externalStrings");
         return false;
     }
+
     // Notify the GUI
     cmRecord** recordPtr = _msgRecordStarted.t1GetFreeMsg();
     if(!recordPtr) {
         delete _record;
         return false;  // No message available (which would be very weird...)
     }
+
     _doClearRecord = true;
-    *recordPtr = record;
+    *recordPtr    = record;
+    _newStreamQty = 1;
+    _streamQty    = 0;
     _msgRecordStarted.t1Send();
 
     dirty();
@@ -1216,9 +1286,17 @@ vwMain::notifyRecordStarted(const bsString& appName, const bsString& buildName, 
 
 
 void
-vwMain::notifyNewCollectionTick(void)
+vwMain::notifyNewCollectionTick(int streamId)
 {
     // Used only in the dynamic library
+}
+
+
+void
+vwMain::notifyNewStream(const cmStreamInfo& infos)
+{
+    _recording->notifyNewStream(infos);
+    ++_newStreamQty;
 }
 
 
@@ -1251,22 +1329,22 @@ vwMain::notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u3
 
 
 void
-vwMain::notifyNewCli(u32 nameIdx, int paramSpecIdx, int descriptionIdx)
+vwMain::notifyNewCli(int streamId, u32 nameIdx, int paramSpecIdx, int descriptionIdx)
 {
 }
 
 
 void
-vwMain::notifyNewString(const bsString& newString, u64 hash)
+vwMain::notifyNewString(int streamId, const bsString& newString, u64 hash)
 {
-    _recording->storeNewString(newString, hash);
+    _recording->storeNewString(streamId, newString, hash);
 }
 
 
 bool
-vwMain::notifyNewEvents(plPriv::EventExt* events, int eventQty)
+vwMain::notifyNewEvents(int streamId, plPriv::EventExt* events, int eventQty, s64 shortDateSyncTick)
 {
-    return _recording->storeNewEvents(events, eventQty);
+    return _recording->storeNewEvents(streamId, events, eventQty, shortDateSyncTick);
 }
 
 
@@ -1397,6 +1475,7 @@ vwMain::clearRecord(void)
 
     // Delete record
     delete _record; _record = 0;
+    _streamQty = 0;
     _underDisplayAppIdx = -1;
     _underDisplayRecIdx = -1;
 

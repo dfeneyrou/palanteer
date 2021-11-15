@@ -38,11 +38,11 @@ public:
     ~pyMainItf(void);
 
     // Interface for the python binding
-    bool setMaxLatencyMs(int maxLatencyMs) { return _live->remoteSetMaxLatencyMs(maxLatencyMs); }
-    bool setFreezeMode(bool state) { return _live->remoteSetFreezeMode(state); }
-    bool stepContinue (u64 bitmap) { return _live->remoteStepContinue(bitmap); }
-    bool killProgram(void)         { return _live->remoteKillProgram(); }
-    bool cli(const bsVec<bsString>& commands) { return _live->remoteCli(commands); }
+    bool setMaxLatencyMs(int maxLatencyMs) { return _live->remoteSetMaxLatencyMs(0, maxLatencyMs); }
+    bool setFreezeMode(bool state) { return _live->remoteSetFreezeMode(0, state); }
+    bool stepContinue (u64 bitmap) { return _live->remoteStepContinue(0, bitmap); }
+    bool killProgram(void)         { return _live->remoteKillProgram(0); }
+    bool cli(const bsVec<bsString>& commands) { return _live->remoteCli(0, commands); }
     void clearAllSpecs(void);
     void clearBufferedEvents(void);
     void addSpec(const char* threadName, u64 threadHash, pyiSpec* parentPath, pyiSpec* elemArray, int elemQty);
@@ -57,21 +57,22 @@ public:
 #endif
         ;
     bool isRecordProcessingAvailable(void) const { return true; }
-    bool notifyRecordStarted(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
-                             const cmTlvs& options);
+    bool isMultiStreamEnabled(void) const { return false; }
+    bool notifyRecordStarted(const cmStreamInfo& infos, s64 timeTickOrigin, double tickToNs);
     void notifyRecordEnded(bool isRecordOk);
     void notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx);
     void notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg);
-    void notifyNewString(const bsString& newString, u64 hash);
-    bool notifyNewEvents(plPriv::EventExt* events, int eventQty);
-    void notifyNewRemoteBuffer(bsVec<u8>& buffer);
+    void notifyNewStream(const cmStreamInfo& infos);
+    void notifyNewString(int streamId, const bsString& newString, u64 hash);
+    bool notifyNewEvents(int streamId, plPriv::EventExt* events, int eventQty, s64 shortDateSyncTick);
+    void notifyNewRemoteBuffer(int streamId, bsVec<u8>& buffer);
     bool createDeltaRecord(void);
-    void notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answer);
-    void notifyNewFrozenThreadState(u64 frozenThreadBitmap);
-    void notifyNewCollectionTick(void);
+    void notifyCommandAnswer(int streamId, plPriv::plRemoteStatus status, const bsString& answer);
+    void notifyNewFrozenThreadState(int streamId, u64 frozenThreadBitmap);
+    void notifyNewCollectionTick(int streamId);
     void notifyNewThread(int threadId, u64 nameHash);
     void notifyNewElem(u64 nameHash, int elemIdx, int prevElemIdx, int threadId, int flags);
-    void notifyNewCli(u32 nameIdx, int paramSpecIdx, int descriptionIdx);
+    void notifyNewCli(int streamId, u32 nameIdx, int paramSpecIdx, int descriptionIdx);
     void notifyFilteredEvent(int elemIdx, int flags, u64 nameHash, s64 dateNs, u64 value);
 
  private:

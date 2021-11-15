@@ -205,6 +205,19 @@ vwConfig::setWindowSettingsVisibility(bool state)
 
 
 bool
+vwConfig::setStreamConfig(bool isMultiStream, const bsString& multiStreamAppName)
+{
+    plgScope(CFG, "setStreamConfig");
+    if(_multiStreamIsMulti==(int)isMultiStream && _multiStreamAppName==multiStreamAppName) return true;
+    plgVar(CFG, isMultiStream);
+    _multiStreamIsMulti = (int)isMultiStream;
+    _multiStreamAppName = multiStreamAppName;
+    _globalNeedsSaving = true;
+    return true;
+}
+
+
+bool
 vwConfig::setFreezePointEnabled(bool state)
 {
     plgScope(CFG, "setFreezePointEnabled");
@@ -673,6 +686,8 @@ vwConfig::saveGlobal(void)
     fprintf(fh, "winVisiSearch %d\n",    _winVisiSearch);
     fprintf(fh, "winVisiConsole %d\n",    _winVisiConsole);
     fprintf(fh, "winVisiSettings %d\n",    _winVisiSettings);
+    fprintf(fh, "multiStreamIsMulti %d\n", _multiStreamIsMulti);
+    fprintf(fh, "multiStreamAppName %s\n", _multiStreamAppName.toChar());
     fprintf(fh, "freezePointEnabled %d\n", _freezePointEnabled);
     fprintf(fh, "pauseStoringEnabled %d\n", _pauseStoringEnabled);
     fprintf(fh, "recordStoragePath %s\n", _recordStoragePath.toChar());
@@ -736,6 +751,11 @@ vwConfig::loadGlobal(void)
         READ_GLOBAL(winVisiSearch, 1, "%d", &_winVisiSearch);
         READ_GLOBAL(winVisiConsole, 1, "%d", &_winVisiConsole);
         READ_GLOBAL(winVisiSettings, 1, "%d", &_winVisiSettings);
+        READ_GLOBAL(multiStreamIsMulti, 1, "%d", &_multiStreamIsMulti);
+        if(!strncmp(line, "multiStreamAppName", kwLength)) {
+            _multiStreamAppName = bsString(&line[kwLength]).strip();
+            if(!_multiStreamAppName.empty() && _multiStreamAppName.back()=='\n') _multiStreamAppName.pop_back();
+        }
         READ_GLOBAL(freezePointEnabled, 1, "%d", &_freezePointEnabled);
         READ_GLOBAL(pauseStoringEnabled, 1, "%d", &_pauseStoringEnabled);
 

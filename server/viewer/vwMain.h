@@ -65,21 +65,22 @@ public:
 
     // Interface for the record library
     bool isRecordProcessingAvailable(void) const { return _actionMode==READY; }
-    bool notifyRecordStarted(const bsString& appName, const bsString& buildName, s64 timeTickOrigin, double tickToNs,
-                             const cmTlvs& options);
+    bool isMultiStreamEnabled(void) const { return _config->isMultiStream(); }
+    bool notifyRecordStarted(const cmStreamInfo& infos, s64 timeTickOrigin, double tickToNs);
     void notifyRecordEnded(bool isRecordOk);
     void notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx);
     void notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg);
-    void notifyNewString(const bsString& newString, u64 hash);
-    bool notifyNewEvents(plPriv::EventExt* events, int eventQty);
-    void notifyNewRemoteBuffer(bsVec<u8>& buffer);
+    void notifyNewStream(const cmStreamInfo& infos);
+    void notifyNewString(int streamId, const bsString& newString, u64 hash);
+    bool notifyNewEvents(int streamId, plPriv::EventExt* events, int eventQty, s64 shortDateSyncTick);
+    void notifyNewRemoteBuffer(int streamId, bsVec<u8>& buffer);
     bool createDeltaRecord(void);
-    void notifyCommandAnswer(plPriv::plRemoteStatus status, const bsString& answer);
-    void notifyNewFrozenThreadState(u64 frozenThreadBitmap);
-    void notifyNewCollectionTick(void);
+    void notifyCommandAnswer(int streamId, plPriv::plRemoteStatus status, const bsString& answer);
+    void notifyNewFrozenThreadState(int streamId, u64 frozenThreadBitmap);
+    void notifyNewCollectionTick(int streamId);
     void notifyNewThread(int threadId, u64 nameHash);
     void notifyNewElem(u64 nameHash, int elemIdx, int prevElemIdx, int threadId, int flags);
-    void notifyNewCli(u32 nameIdx, int paramSpecIdx, int descriptionIdx);
+    void notifyNewCli(int streamId, u32 nameIdx, int paramSpecIdx, int descriptionIdx);
     void notifyFilteredEvent(int elemIdx, int flags, u64 nameHash, s64 dateNs, u64 value);
 
     void log(cmLogKind kind, const bsString& msg);
@@ -950,6 +951,8 @@ private:
     };
     RecordWindow _recordWindow;
     cmRecord*    _record = 0;
+    int          _streamQty = 0;
+    int          _newStreamQty = 0;
 
     // Settings
     // ========

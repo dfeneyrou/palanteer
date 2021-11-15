@@ -35,13 +35,18 @@ constexpr static int cmElemChunkSize = 32/4*cmChunkSize; // Chunk elem quantity.
 constexpr static int cmMRElemSize    = 16;    // Size of the elem pyramid subsampling (in memory)
 constexpr static u32 PL_INVALID      = 0xFFFFFFFF;
 constexpr static int PL_MEMORY_SNAPSHOT_EVENT_INTERVAL = 10000; // Smaller value consumes disk space, bigger value increases reactivity time when accessing detailed allocations
-constexpr static int PL_RECORD_FORMAT_VERSION = 2;
+constexpr static int PL_RECORD_FORMAT_VERSION = 3;
 
 // Chunk location (=offset and size) in the big event file
 typedef u64 chunkLoc_t;
 
 // Record options description
-struct cmTlvs { u64 values[PL_TLV_QTY]; };
+struct cmStreamInfo {
+    bsString appName;
+    bsString buildName;
+    bsString langName;
+    u64 tlvs[PL_TLV_QTY];
+};
 
 
 class cmRecord {
@@ -177,7 +182,7 @@ public:
         u64      hash;
         u64      threadBitmapAsName;
         int      alphabeticalOrder;
-        int      lineQty;
+        int      lineQty;    // Multi-line management
         int      lockId;     // -1 means not a lock
         int      categoryId; // -1 means not a category
         bool     isExternal;
@@ -190,6 +195,7 @@ public:
         u64 threadUniqueHash = 0;
         int nameIdx;
         int groupNameIdx = -1;
+        int streamId;
         s64 durationNs;
         u32 elemEventQty;
         u32 memEventQty;
@@ -249,9 +255,10 @@ public:
         LOC_STORAGE(marker);
         LOC_STORAGE(lockNtf);
         LOC_STORAGE(lockUse);
+        bsVec<cmStreamInfo> streams;  // Full list of stream infos
         bsVec<Lock>   locks;   // Full lock structure
         bsVec<Thread> threads; // Full list of threads but with only delta buffers
-        bsVec<Elem>   elems;   // Full list of elems  but with only delta buffers
+        bsVec<Elem>   elems;   // Full list of elems   but with only delta buffers
         bsVec<int>    markerCategories; // Full structure
         bsVec<String> strings; // With recomputation of alphabetical order
         bsVec<DeltaString> updatedStrings; // Only the delta
@@ -268,11 +275,10 @@ public:
 
     // Fields
     bsString appName;
-    bsString buildName;
     bsString recordPath;
     bsDate   recordDate;
     int      compressionMode;
-    cmTlvs   options;
+    int      isMultiStream;
     s64      durationNs = 0;
     u64      recordByteQty   = 0;
     int      coreQty    = 0;
@@ -286,6 +292,7 @@ public:
     LOC_STORAGE(marker);
     LOC_STORAGE(lockNtf);
     LOC_STORAGE(lockUse);
+    bsVec<cmStreamInfo> streams;
     bsVec<Lock>        locks;
     bsVec<Thread>      threads;
     bsVec<Elem>        elems;
@@ -300,6 +307,7 @@ private:
     bsVec<bsString>     _extStrings;
     bsVec<String>       _strings;
     bsVec<String>       _addedStrings;
+    bsVec<u64>          _workThreadUniqueHash; // Used only at record building time
 
     // Cache
     FILE* _fdChunks;

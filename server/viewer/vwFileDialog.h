@@ -29,34 +29,37 @@ public:
     enum Mode { SELECT_DIR, OPEN_FILE, SAVE_FILE };
     vwFileDialog(const bsString& title, Mode mode, const bsVec<bsString>& typeFilters);
 
-    void open (const bsString& initialPath);
+    void open (const bsString& initialPath, int maxSelectionQty=1);
     void close(void) { _shallClose = true; }
     bool draw (int fontSize);
 
-    bool hasResult(void) const  { return _hasAnswer; }
-    void clearResult(void)      { plAssert(_hasAnswer); _hasAnswer = false; }
-    const char* getResult(void) { plAssert(_hasAnswer); return _selection; }
+    bool hasSelection(void) const  { return !_selection.empty(); }
+    void clearSelection(void)      { _selection.clear(); }
+    const bsVec<bsString>& getSelection(void) { plAssert(hasSelection()); return _selection; }
 
 private:
     struct Entry {
         bsString name;
         bsDate   date;
         s64      size;
+        bool     isSelected;
     };
 
     bsString _title;
     bsString _path;
+    bsString _displayedSelection;
     Mode     _mode;
     bsVec<bsString> _typeFilters;
     bsVec<Entry> _dirEntries;
     bsVec<Entry> _fileEntries;
-    char     _selection[256] = { 0 };
+    bsVec<bsString> _selection;
     int      _selectedFilterIdx = 0;
-    u32      _driveBitMap    = 0;
-    bool     _isEntriesDirty = true;
-    bool     _doShowHidden   = false;
-    bool     _hasAnswer  = false;
+    u32      _driveBitMap       = 0;
+    bool     _isEntriesDirty    = true;
+    bool     _isSelDisplayDirty = true;
+    bool     _doShowHidden      = false;
     bool     _isOpen     = false;
     bool     _shallOpen  = false;
     bool     _shallClose = false;
+    int      _maxSelectionQty = 1;
 };

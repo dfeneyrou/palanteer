@@ -41,6 +41,9 @@ cmRecord::cmRecord(FILE* fdChunks, int cacheMBytes) :
     _fileChunkBuffer = new u8[cmChunkSize*sizeof(Evt)];
     _workingBuffer.reserve(16384); // Will be resized anyway
     _extStrings.reserve(1024);
+    _addedStrings.reserve(128);
+    _workThreadUniqueHash.reserve(64);
+
 }
 
 
@@ -224,8 +227,8 @@ cmRecord::loadExternalStrings(void)
 #define ADD_STRING(h, s) _extStringsHashToStrIdx.insert((u32)h, h, _extStrings.size()); _extStrings.push_back(s)
 
     // Build the lookup
-    ADD_STRING(2166136261+options.values[PL_TLV_HAS_HASH_SALT], "");         // Empty string 32 bits hash (FNV 32 offset)
-    ADD_STRING(BS_FNV_HASH_OFFSET+options.values[PL_TLV_HAS_HASH_SALT], ""); // Empty string 64 bits hash
+    ADD_STRING(2166136261+streams[0].tlvs[PL_TLV_HAS_HASH_SALT], "");         // Empty string 32 bits hash (FNV 32 offset)
+    ADD_STRING(BS_FNV_HASH_OFFSET+streams[0].tlvs[PL_TLV_HAS_HASH_SALT], ""); // Empty string 64 bits hash
 
     // Read the file content
     bsVec<u8> b;
@@ -291,47 +294,73 @@ cmRecord::updateString(int strIdx)
 void
 cmRecord::updateThreadString(int tId)
 {
+    char tmpStr[256];
+
     // Ensure thread name is valid and extract thread group if any
     Thread& rt = threads[tId];
 
-    // Sanity: if no name is provided, we provide one.
+    // Skip the group search if groups have already been processed
+    if(rt.groupNameIdx>=0) return;
+
+    // Sanity: if no name is provided, we provide a canonical one.
     if(rt.nameIdx<0) {
-        rt.nameIdx = FLAG_ADDED_STRING | _addedStrings.size();
-        char tmpStr[64];
-        snprintf(tmpStr, sizeof(tmpStr), "Thread %d", tId);
-        _addedStrings.push_back( { tmpStr, "", bsHashString(tmpStr), 0LL, 0, -1, -1, false } );
+        rt.nameIdx      = FLAG_ADDED_STRING | _addedStrings.size();
+        rt.groupNameIdx = -1;
+        if(isMultiStream) snprintf(tmpStr, sizeof(tmpStr), "%s: Thread %d", streams[rt.streamId].appName.toChar(), tId);
+        else              snprintf(tmpStr, sizeof(tmpStr), "Thread %d", tId);
+        _addedStrings.push_back( { tmpStr, "", bsHashString(tmpStr), 0LL, 0, 1, -1, -1, false, false } );
+        return; // No need to search for groups, and no update of threadUniqueHash
+    }
+
+    // Multistream: prefix the thread name with the app name
+    if(isMultiStream) {
+        snprintf(tmpStr, sizeof(tmpStr), "%s: %s", streams[rt.streamId].appName.toChar(), _strings[rt.nameIdx].value.toChar());
+        rt.nameIdx      = FLAG_ADDED_STRING | _addedStrings.size();
+        rt.groupNameIdx = -1;
+        _addedStrings.push_back( { tmpStr, "", bsHashString(tmpStr), 0LL, 0, 1, -1, -1, false, false } );
     }
 
     // Copy the thread name hash inside the thread, for convenience
-    cmRecord::String& threadNameString = (rt.nameIdx&FLAG_ADDED_STRING)? _addedStrings[rt.nameIdx&(~FLAG_ADDED_STRING)] : _strings[rt.nameIdx];
-    rt.threadUniqueHash                = (rt.nameIdx&FLAG_ADDED_STRING)? rt.threadHash : _strings[rt.nameIdx].hash;
+    rt.threadUniqueHash = getString(rt.nameIdx).hash;
 
-    // Skip the rest if groups have already been processed permanently
-    if(rt.groupNameIdx>=0 && !threadNameString.isExternal) return;
+    // Check for duplicated thread names. The table has only 1 instance of each hash
+    bool isDuplicated = false;
+    while(_workThreadUniqueHash.size()<=tId) _workThreadUniqueHash.push_back(0);  // 0 is a non-hash
+    for(int tId2=0; tId2<_workThreadUniqueHash.size(); ++tId2) {
+        if(tId2==tId || _workThreadUniqueHash[tId2]!=rt.threadUniqueHash) continue;
+        isDuplicated = true; break;
+    }
+    // In case of duplicate, replace the name with a unique one
+    if(isDuplicated) {
+        snprintf(tmpStr, sizeof(tmpStr), "%s#%d", getString(rt.nameIdx).value.toChar(), tId);
+        rt.nameIdx = FLAG_ADDED_STRING | _addedStrings.size();
+        _addedStrings.push_back( { tmpStr, "", bsHashString(tmpStr), 0LL, 0, 1, -1, -1, false, false } );
+        rt.threadUniqueHash = _addedStrings.back().hash;
+    }
+    else _workThreadUniqueHash[tId] = rt.threadUniqueHash;
 
     // Search for first "/" (1 level group only)
-    bsString& sv = threadNameString.value;
+    const bsString& sv = getString(rt.nameIdx).value;
     int delimiterIdx = 0; // Find the unit delimiter '/'
     while(delimiterIdx<sv.size()-1 && sv[delimiterIdx]!='/') ++delimiterIdx;
     if(delimiterIdx>=sv.size()-1) return; // No group found. Note that unresolved external strings have no group
 
-    // Does this group already exists?
+    // A group has been found: point to an existing added string or create one
     bsString groupName = sv.subString(0, delimiterIdx).strip();
     rt.groupNameIdx    = -1;
     for(int i=0; i<_addedStrings.size(); ++i) {
         if(_addedStrings[i].value==groupName) { rt.groupNameIdx = FLAG_ADDED_STRING | i; break; }
     }
-    if(rt.groupNameIdx<0) {
-        // New group: add the group name as a string and update the thread
-        // Note: in case of external strings reloaded, the previously created group nameIdxs are kept and unused. We will survive that.
+    if(rt.groupNameIdx<0) { // New group: add the thread group name as an added string
         rt.groupNameIdx = FLAG_ADDED_STRING | _addedStrings.size();
-        _addedStrings.push_back( { groupName, "", bsHashString(groupName.toChar()), 0LL, 0, -1, -1, false } );
+        _addedStrings.push_back( { groupName, "", bsHashString(groupName.toChar()), 0LL, 0, 1, -1, -1, false, false } );
     }
 
-    // Remove the group part from the original thread name
-    ++delimiterIdx; // Skip the "/"
-    memmove(&sv[0], &sv[delimiterIdx], sv.size()-delimiterIdx);
-    sv.resize(sv.size()-delimiterIdx);
+    // Do not modify the initial thread string but replace it with a string without the group name
+    const bsString& sv2 = getString(rt.nameIdx).value;
+    rt.nameIdx = FLAG_ADDED_STRING | _addedStrings.size();
+    bsString pureThreadName = sv2.subString(delimiterIdx+1, sv2.size()).strip();
+    _addedStrings.push_back( { pureThreadName, "", bsHashString(pureThreadName.toChar()), 0LL, 0, 1, -1, -1, false, false } );
 }
 
 
@@ -411,6 +440,12 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
         sortStrings();
     }
 
+    // Stream app names
+    for(int i=streams.size(); i<delta->streams.size(); ++i) {
+        streams.push_back(delta->streams[i]);
+    }
+    plAssert(streams.size()==delta->streams.size());
+
     // Updated strings
     for(const DeltaString& src : delta->updatedStrings) {
         String& dst            = _strings[src.stringId];
@@ -452,6 +487,7 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
         dst.threadHash       = src.threadHash;
         dst.threadUniqueHash = src.threadUniqueHash;
         dst.nameIdx          = src.nameIdx;
+        dst.streamId         = src.streamId;
         updateThreadString(i);
     }
     plAssert(threads.size()==delta->threads.size());
@@ -461,6 +497,7 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
     for(int updatedTId : delta->updatedThreadIds) {
         threads[updatedTId].nameIdx          = delta->threads[updatedTId].nameIdx;
         threads[updatedTId].threadUniqueHash = delta->threads[updatedTId].threadUniqueHash;
+        threads[updatedTId].groupNameIdx     = -1;  // Need to reset it
         updateThreadString(updatedTId);
     }
     delta->updatedThreadIds.clear();
@@ -639,11 +676,6 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     if(length<=0 || length>1024) LOAD_ERROR("handle the abnormal app name size"); // Cannot be empty because set to "<no name>" in this case in cmCnx
     record->appName.resize(length);
     if((int)fread(&record->appName[0], 1, length, recFd)!=length) LOAD_ERROR("read the app name");
-    // Build name
-    READ_INT(length, "read the build name size");
-    if(length<0 || length>1024) LOAD_ERROR("handle the abnormal build name size");
-    record->buildName.resize(length);
-    if(length>0 && (int)fread(&record->buildName[0], 1, length, recFd)!=length) LOAD_ERROR("read the build name");
     // Thread quantity
     READ_INT(threadQty, "read the thread qty");
     if((u32)threadQty>255) LOAD_ERROR("handle the abnormal thread quantity");
@@ -658,12 +690,9 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     // Compression mode
     READ_INT(record->compressionMode, "read the compression mode");
     if(record->compressionMode<0 || record->compressionMode>1) LOAD_ERROR("handle the abnormal compression mode");
-    // Options
-    memset(&record->options.values[0], 0, sizeof(record->options.values));
-    READ_INT(length, "read the options size");
-    if(length<0 || length>=32) LOAD_ERROR("handle the abnormal options size");
-    length = bsMin(length, PL_TLV_QTY);
-    if((int)fread(&record->options.values[0], 8, length, recFd)!=length) LOAD_ERROR("read the options");
+    // Multistream mode
+    READ_INT(record->isMultiStream, "read the multistream mode");
+    if(record->isMultiStream<0 || record->isMultiStream>1) LOAD_ERROR("handle the abnormal multistream mode");
 
     record->recordPath = path;
     record->recordByteQty = osGetSize(path);
@@ -676,6 +705,32 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     READ_INT(record->ctxSwitchEventQty, "read the thread context switch event quantity");
     READ_INT(record->lockEventQty,      "read the thread lock event quantity");
     READ_INT(record->markerEventQty,    "read the thread marker event quantity");
+
+    // Read the streams
+    READ_INT(length, "read the stream quantity");
+    if(length<0 || length>cmConst::MAX_STREAM_QTY) LOAD_ERROR("handle the abnormal stream quantity");
+    record->streams.resize(length);
+    for(cmStreamInfo& si : record->streams) {
+        // App, build and lang names
+        READ_INT(length, "read the stream app name length");
+        if(length<0 || length>1024) LOAD_ERROR("handle the abnormal stream app name length");
+        si.appName.resize(length);
+        if(length && (int)fread(&si.appName[0], 1, length, recFd)!=length) LOAD_ERROR("read the stream app name content");
+        READ_INT(length, "read the stream build name length");
+        if(length<0 || length>1024) LOAD_ERROR("handle the abnormal stream build name length");
+        si.buildName.resize(length);
+        if(length && (int)fread(&si.buildName[0], 1, length, recFd)!=length) LOAD_ERROR("read the stream build name content");
+        READ_INT(length, "read the stream lang name length");
+        if(length<0 || length>1024) LOAD_ERROR("handle the abnormal stream lang name length");
+        si.langName.resize(length);
+        if(length && (int)fread(&si.langName[0], 1, length, recFd)!=length) LOAD_ERROR("read the stream lang name content");
+        // TLVs
+        memset(&si.tlvs[0], 0, sizeof(si.tlvs));
+        READ_INT(length, "read the options size");
+        if(length<0 || length>=32) LOAD_ERROR("handle the abnormal options size");
+        length = bsMin(length, PL_TLV_QTY);
+        if((int)fread(&si.tlvs[0], 8, length, recFd)!=length) LOAD_ERROR("read the stream tlvs");
+    }
 
     // Read the strings
     for(cmRecord::String& s : strings) {
@@ -696,7 +751,8 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     // Loop on threads
     for(int tId=0; tId<threadQty; ++tId) {
         cmRecord::Thread& rt = record->threads[tId];
-        // Duration
+        READ_INT(rt.streamId,          "read the thread stream Id");
+        if(rt.streamId<0 || rt.streamId>=record->streams.size()) LOAD_ERROR("handle the abnormal thread stream ID");
         READ_INT(rt.nameIdx,           "read the thread name idx");
         if((int)fread(&rt.threadHash, 8, 1, recFd)!=1) LOAD_ERROR("read the thread hash");
         if((int)fread(&rt.durationNs, 8, 1, recFd)!=1) LOAD_ERROR("read the thread end date");

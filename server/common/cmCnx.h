@@ -40,65 +40,89 @@ public:
 
     void runRxFromClient(void);
     void runTxToClient(void);
-    void injectFile(const bsString& filename);
+    void injectFiles(const bsVec<bsString>& filenames);
 
-    bsVec<u8>* getTxBuffer (void);
-    void       sendTxBuffer(void);
+    bsVec<u8>* getTxBuffer (int streamId);
+    void       sendTxBuffer(int streamId);
 
 private:
     cmCnx(const cmCnx& other); // To please static analyzers
     cmCnx& operator=(cmCnx other);
 
     // Private methods
-    bool initializeTransport(FILE* fd);
-    bool parseTransportLayer(u8* buf, int qty);
-    bool processNewEvents(u8* buf, int eventQty);
-    void dataReceptionLoop(FILE* fd);
+    bool checkConnection(const bsVec<bsString>& importedFilenames, bsSocket_t sockfd);
+    int  initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg);
+    void dataReceptionLoop  (bsSocket_t masterSockFd);
+    bool parseTransportLayer(int streamId, u8* buf, int qty);
+    bool processNewEvents   (int streamId, u8* buf, int eventQty);
+
+    static constexpr int CLIENT_HEADER_SIZE = 8;
+    struct ParsingCtx {
+        // Parsing
+        int headerLeft;
+        int stringLeft;
+        int eventLeft;
+        int eventHeaderLeft;
+        int remoteLeft;
+        bsVec<u8> tempStorage;
+        bool isCollectionTick = false;
+        void reset(void) {
+            headerLeft = CLIENT_HEADER_SIZE;
+            stringLeft = eventLeft = eventHeaderLeft = remoteLeft = 0;
+            tempStorage.clear();
+            isCollectionTick = false;
+        }
+    };
+    struct StreamInfo {
+        cmStreamInfo infos;
+        // Rx
+        s64    timeOriginTick;
+        s64    syncDateTick;
+        double tickToNs;
+        ParsingCtx parsing;
+        FILE*      fileDescr   = 0;
+        bsSocket_t socketDescr = bsSocketError;
+        // Tx
+        bsVec<u8>        txBuffer;
+        std::atomic<int> txBufferState; // 0=free  1=under fill   2=sending
+        // Helpers
+        void reset(void) {
+            parsing.reset();
+            txBufferState.store(0);
+            if(fileDescr!=0) { fclose(fileDescr); fileDescr = 0; }
+            if(socketDescr!=bsSocketError) { bsOsCloseSocket(socketDescr); socketDescr = bsSocketError; }
+        }
+    };
 
     // Both direction
-    cmInterface*             _itf;
-    int                      _port;
-    std::atomic<int>         _doStopThreads;
-    bsSocket_t               _clientSocket = bsSocketError;
-    bool                     _rxIsStarted = false;
-    bool                     _txIsStarted = false;
-    std::mutex               _threadInitMx;
-    std::condition_variable  _threadInitCv;
-    bsMsgExchanger<bsString> _msgInjectFile;
-
+    cmInterface*     _itf;
+    int              _port;
+    std::atomic<int> _doStopThreads;
+    bsSocket_t       _clientSocket[cmConst::MAX_STREAM_QTY];
+    bool             _rxIsStarted = false;
+    bool             _txIsStarted = false;
+    bsVec<u8>        _conversionBuffer;
+    std::mutex       _threadInitMx;
+    std::condition_variable _threadInitCv;
+    bsMsgExchanger<bsVec<bsString>> _msgInjectFile;
+    bool             _isSocketInput;  // True: socket                  False: import from file
+    bool             _isMultiStream;  // True: multi stream accepted   False: only one stream
     // Reception
     static constexpr int _recBufferSize = 256000;
     u8*          _recBuffer = 0;
     std::thread* _threadClientRx = 0;
     bsUs_t       _lastDeltaRecordTime = 0;
+    s64          _timeOriginTick;
+    u64          _timeOriginCoarseNs;
+    double       _tickToNs;
 
     // Extracted characteristics
-    cmTlvs      _tlvs;
     bool       _recordToggleBytes  = false;
-    s64        _timeTickOrigin;
-    double     _tickToNs;
-    bsString   _appName;
-    bsString   _buildName;
-
-    // Parsing
-    bsVec<u8>  _conversionBuffer;
-    static constexpr int _parseHeaderSize = 8;
-    int _parseHeaderDataLeft = _parseHeaderSize;
-    int _parseStringLeft = 0;
-    int _parseEventLeft  = 0;
-    int _parseRemoteLeft = 0;
-    bsVec<u8> _parseTempStorage;
-    bool _isCollectionTick = false;
-    void resetParser(void) {
-        _parseHeaderDataLeft = _parseHeaderSize; _parseStringLeft = 0;
-        _parseEventLeft = 0; ; _parseRemoteLeft = 0; _parseTempStorage.clear();
-        _isCollectionTick = false;
-    }
+    int        _streamQty;
+    StreamInfo _streams[cmConst::MAX_STREAM_QTY];
 
     // Transmission
     std::thread* _threadClientTx = 0;
     std::mutex   _threadWakeUpMx;
     std::condition_variable _threadWakeUpCv;
-    bsVec<u8>        _txBuffer;
-    std::atomic<int> _txBufferState; // 0=free  1=under fill   2=sending
 };

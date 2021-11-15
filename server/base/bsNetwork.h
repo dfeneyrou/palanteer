@@ -34,6 +34,8 @@
 #define bsIsSocketValid(s) ((s)>=0)
 #define bsSocketError -1
 typedef int bsSocket_t;
+#define bsOsCloseSocket(s) close(s)
+#define bsGetSocketError(s) errno
 #endif
 
 // Windows
@@ -44,4 +46,6 @@ typedef int bsSocket_t;
 #define bsIsSocketValid(s) ((s)!=INVALID_SOCKET && (s)!=SOCKET_ERROR)
 #define bsSocketError SOCKET_ERROR
 typedef uint32_t bsSocket_t ;
+#define bsOsCloseSocket(s) closesocket(s)
+#define bsGetSocketError() WSAGetLastError()
 #endif
