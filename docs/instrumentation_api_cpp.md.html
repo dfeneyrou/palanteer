@@ -1089,6 +1089,15 @@ Recording on a file reduces this requirement to: at least the required quantity 
 The system can handle up to 254 threads and 2 billion events. <br/>
 The estimated size of the record would be ~20 GB, still displayed smoothly.
 
+<br/>
+**I want to hide the `Palanteer` threads**
+
+The whole instrumentation of the implementation of the `Palanteer` threads is using the group `PL_VERBOSE`. <br/>
+It can be fully disabled with the line below, to be inserted before the `#include "palanteer.h"` which implements the service:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_GROUP_PL_VERBOSE 0
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 <h1> @@ <a href="instrumentation_configuration_cpp.md.html">C++ Instrumentation configuration</a> </h1>
 <h1> @@ <a href="instrumentation_api_python.md.html">Python Instrumentation API</a> </h1>

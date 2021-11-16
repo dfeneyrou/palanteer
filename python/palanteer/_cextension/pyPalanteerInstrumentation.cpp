@@ -42,6 +42,7 @@
 #define PL_IMPL_DYN_STRING_QTY           4096
 #define PL_IMPL_MAX_EXPECTED_STRING_QTY 16384
 #define PL_PRIV_IMPL_LANGUAGE "Python"
+#define PL_GROUP_PL_VERBOSE 0            // Do not profile the Palanteer threads
 #include "palanteer.h"
 
 
