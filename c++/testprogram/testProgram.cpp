@@ -310,7 +310,7 @@ void
 evaluatePerformance(plMode mode, const char* buildName, int durationMultipler, int serverConnectionTimeoutMsec)
 {
     constexpr int iterationQty = 250000; // 4 events per loop
-    (void) mode; (void)buildName;
+    (void) mode; (void)buildName; (void)serverConnectionTimeoutMsec;
 
     // Start the logging
     plInitAndStart("C++ perf example", mode, buildName, serverConnectionTimeoutMsec);
@@ -358,7 +358,7 @@ void
 collectInterestingData(plMode mode, const char* buildName, int durationMultiplier, int threadGroupQty, int crashKind,
                        int serverConnectionTimeoutMsec)
 {
-    (void) mode; (void)buildName;
+    (void) mode; (void)buildName; (void)serverConnectionTimeoutMsec;
 
     // Register a CLI before the initialization (this should be the nominal case)
     plRegisterCli(cliHandlerCreateMarker, "test::marker",

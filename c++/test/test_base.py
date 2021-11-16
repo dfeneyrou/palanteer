@@ -70,6 +70,9 @@ def clean_build():
 
 
 def run_cmd(cmd_and_args_list, capture_output=True):
+    if force_no_capture_output():
+        capture_output = False
+
     res = subprocess.run(
         cmd_and_args_list, universal_newlines=True, capture_output=capture_output
     )  # capture_output => Python 3.7 minimum

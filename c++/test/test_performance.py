@@ -226,7 +226,7 @@ def measure_event_size_and_timing():
 
     KPI(
         "Palanteer include - USE_PL=0",
-        "%.3f s" % (inc1_built_time_sec - inc0_built_time_sec),
+        "%.3f s" % max(0, inc1_built_time_sec - inc0_built_time_sec),
     )
     KPI(
         "Palanteer include - USE_PL=1",

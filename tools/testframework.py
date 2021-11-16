@@ -55,6 +55,7 @@ Output is on stdout and the final result is reflected in the tool execution stat
 Syntax: %s [options] <test folder>
 Options are:
    -v   : verbose mode, details of tests are displayed. Default: details are displayed only for failed tests
+   -o   : show output of all internal shell commands
    -f   : exit at first test failed
    -l   : list the found tests and exits. Default is test execution
    -nc  : no escape color codes
@@ -189,6 +190,10 @@ def KPI(name, value):
     builtins.test_ctx.kpi[name] = value
 
 
+def force_no_capture_output():
+    return builtins.test_ctx.do_not_capture_output
+
+
 # Internal test framework context
 class _Context:
     def __init__(self):
@@ -213,6 +218,7 @@ class _Context:
         self.current_test_check_qty = 0
         self.kpi = {}
         self.is_verbose = False
+        self.do_not_capture_output = False
         self.time_origin = time.time()
 
 
@@ -261,6 +267,8 @@ def main(argv):
             noColor = True
         elif argv[i].lower() in ["-v", "/v"]:
             builtins.test_ctx.is_verbose = True
+        elif argv[i].lower() in ["-o", "/o"]:
+            builtins.test_ctx.do_not_capture_output = True
         elif argv[i].lower() in ["-f", "/f"]:
             doStopAtFirstFail = True
         elif argv[i].lower() in ["-s", "/s"] and i + 1 < len(argv):

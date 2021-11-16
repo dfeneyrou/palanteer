@@ -969,7 +969,7 @@ Event logging runtime                      | 4.3 ns                       |
 Palanteer code size - Context switch (-O2) | 2560 bytes                   |
 Palanteer code size - Control part (-O2)   | 40448 bytes                  |
 Palanteer code size - Total (-O2)          | 313344 bytes                 |
-Palanteer include - USE_PL=0               | 0.146 s                      |
+Palanteer include - USE_PL=0               | 0.009 s                      |
 Palanteer include - USE_PL=0 + <thread>    | 0.318 s                      |
 Palanteer include - USE_PL=1               | 0.328 s                      |
 Palanteer include - USE_PL=1 + impl.       | 0.648 s                      |
@@ -996,7 +996,7 @@ Some details on the test:
   * Include of enabled instrumentation library is very close to the cost of the inner inclusion of `#include <thread>`
     * Using the C++ standard library in a project may fully mask the build cost of including the `Palanteer` instrumentation library
 * **Include cost on Windows**:
-  * Unlike on Linux, the include of disabled instrumentation library is not fully transparent (~150 ms)
+  * Include of disabled instrumentation library is costless (few milliseconds)
   * As for Linux, the cost of including the enabled instrumentation library is very close to the cost of the inner inclusion of `#include <thread>`, and depending on the other includes of the C++ standard library, this cost may be masked.
 
 * The asserts and event logging code size and duration are roughly consistent across OSes.

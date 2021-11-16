@@ -309,25 +309,27 @@
 // Includes
 //-----------------------------------------------------------------------------
 
+#include <cstdint> // For sized types like uintXXX_t
+
+#if USE_PL==1
+
 // Windows base header (hard to avoid this include...)
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN  // Exclude rarely-used stuff from Windows headers. If it is a problem, just comment it
 #include <windows.h>
 #endif
 
-#include <cstdint> // For sized types like uintXXX_t
-#include <cstddef> // For size_t
-
-#if USE_PL==1 && PL_NOASSERT==0
+#include <cstddef>   // For size_t
 #include <cstdlib>   // For abort(), quick_exit...
 #include <cinttypes> // For platform independent printf/scanf
+
 #ifdef __unix__
 #include <unistd.h>  // For getpid() in the display of the gdb helper
 #endif
 #ifdef _WIN32
 #include <processthreadsapi.h>  // For GetCurrentProcessId()
 #endif
-#endif // if USE_PL==1 && PL_NOASSERT==0
+#endif // if USE_PL==1
 
 #if USE_PL==1
 #include <cstdio>  // For snprintf etc...
