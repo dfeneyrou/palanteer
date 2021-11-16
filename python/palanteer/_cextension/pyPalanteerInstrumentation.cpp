@@ -537,12 +537,12 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
                 plPriv::ThreadContext_t* tCtx = &plPriv::threadCtx;
                 uint32_t vThreadId = tCtx->id;
                 if(vThreadId<PL_MAX_THREAD_QTY && PL_IS_ENABLED_()) {
-                    plPriv::VirtualThreadCtx& vc = plPriv::implCtx.vThreadCtx[vThreadId];
-                    if(vc.nameHash!=0 && !vc.isBeginSent) {
+                    plPriv::ThreadInfo_t& ti = plPriv::globalCtx.threadInfos[vThreadId];
+                    if(ti.nameHash!=0 && !ti.isBeginSent) {
                         tCtx->id = tCtx->realId; // Switch to the OS thread
-                        plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), vc.nameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
+                        plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), ti.nameHash, PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, 0, 0, 0,
                                             PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC());
-                        vc.isBeginSent = true;
+                        ti.isBeginSent = true;
                         tCtx->id = vThreadId;
                     }
                 }

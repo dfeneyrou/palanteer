@@ -315,7 +315,7 @@ evaluatePerformance(plMode mode, const char* buildName, int durationMultipler, i
     // Start the logging
     plInitAndStart("C++ perf example", mode, buildName, serverConnectionTimeoutMsec);
 
-    // Give a name to this thread (after the library initialization)
+    // Give a name to this thread (before or after the library initialization)
     plDeclareThread("Main");
 
     typedef uint64_t dateNs_t;
@@ -365,12 +365,12 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
                   "msg=string",
                   "Create a marker with the provided string");
 
+    // Give a name to this thread (before or after the library initialization)
+    plDeclareThread("Main");
+
     // Start the logging
     uint64_t startMs = GET_TIME(milliseconds);
     plInitAndStart("C++ example", mode, buildName, serverConnectionTimeoutMsec);
-
-    // Give a name to this thread (after the library initialization)
-    plDeclareThread("Main");
 
     // CLI registration
     // On purpose *after* the call to plInitAndStart in order to better test the freeze point.

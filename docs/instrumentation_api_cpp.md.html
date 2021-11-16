@@ -57,12 +57,15 @@ void plSetServer(const char* serverAddr, int serverPort);
 
 ### plInitAndStart
 
-This function initializes and starts the `Palanteer` service. It takes up to 3 parameters:
+This function initializes and starts the `Palanteer` service. It takes up to 4 parameters:
 
  - the **name** of the application (mandatory)
    - ex: "Pacman", "Space invaders"
  - the event **logging mode**: `PL_MODE_CONNECTED`, `PL_MODE_STORE_IN_FILE` and `PL_MODE_INACTIVE`
- - a **boolean state** if the program shall wait or not for the connection to the server
+ - an optional **build name**, to describe more precisely the version of the program
+ - an optional **timeout (ms)** to configure the duration that the program shall wait for the connection to the server before giving up.
+   - the value `0` means infinite waiting
+   - the value `-1` means no wait (default)
 
 The three modes of the event logging are:
   - `PL_MODE_CONNECTED` (default): connect to the server to enable remote recording and program control.
@@ -89,7 +92,7 @@ The declaration is:
 enum plMode { PL_MODE_CONNECTED, PL_MODE_STORE_IN_FILE, PL_MODE_INACTIVE};
 
 // Initializes and starts the events and remote control services
-void plInitAndStart(const char* appName, plMode mode=PL_MODE_CONNECTED, bool waitForServerConnection=false);
+void plInitAndStart(const char* appName, plMode mode=PL_MODE_CONNECTED, const char* buildName=0, int serverConnectionTimeoutMsec=0);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Details on the created threads are shared in the [collection mechanism](base_concepts.md.html#baseconcepts/c++specific/eventcollectionmechanism) section. <br/>
@@ -97,9 +100,8 @@ Details on the created threads are shared in the [collection mechanism](base_con
 Almost all memory allocations of the `Palanteer` services are done in this function. For details, refer to the section [memory usage](index.html#c++memoryusage).
 
 !!!
-    `plInitAndStart` is supposed to be called at most once per program execution. It may be called again after `plStopAndUninit`. <br/>
-    Once started, the event collection is always running until the service is stopped. <br/>
-    All resources are freed when calling the associated function `plStopAndUninit` below.
+    `plInitAndStart` is supposed to be called at most once, until `plStopAndUninit` is called. This cycle can be repeated and each will generate a distinct recording session on the server side.<br/>
+    Once started, the event collection is running until the service is stopped with `plStopAndUninit`. This function also frees all resources.
 
 
 ### plStopAndUninit
@@ -217,6 +219,16 @@ plDeclareThread("Workers/Worker 2");
 // (Called at the start of yet another thread)
 plDeclareThreadDyn("Workers/Worker %d", workerIdx);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! warning
+    Only the first call for each thread is taken into account, all subsequent ones are ignored. <br/>
+
+!!!
+    This thread name declaration is persistent across starting/stopping the service, if done multiple times. <br/>
+    The only constraint is to be called before the end of the recording. Even before the service start is ok.
+
+!!! tip
+    In case of duplicated thread name, a suffix `#<unique thread ID>` is automatically added to the subsequent ones to make them unique.
 
 ### plScope
 
@@ -951,7 +963,6 @@ The effects of using virtual threads are:
 As for [OS threads](#pldeclarethread), a name can be given to virtual threads. <br/>
 This function associates the provided name to the external virtual thread identifier. The name of the OS thread is unchanged.
 
-It can be called from any thread.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -965,6 +976,20 @@ Example of usage:
 plDeclareVirtualThread("Fibers/Fiber %d", fiberId);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Also as for OS threads, virtual threads can be grouped.
+
+!!! warning Important
+    The attach and detach calls for a non-declared virtual thread are ignored. <br/>
+    It is thus recommended to declare the virtual threads at resource creation time.
+
+!!! warning
+    Only the first declaration of each virtual thread is taken into account, all subsequent ones are ignored. <br/>
+
+!!!
+    This function can be called from any thread. Only the unique virtual thread identifier matters here.
+
+!!!
+    This function can be called before the service is started. <br/>
+    It is also persistent across starting/stopping the service, if done multiple times.
 
 ### plAttachVirtualThread
 
