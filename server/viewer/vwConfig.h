@@ -76,8 +76,6 @@ class vwConfig {
     // Live
     bool setFreezePointEnabled(bool state);
     bool getFreezePointEnabled(void) const { return _freezePointEnabled; }
-    bool setPauseStoringState(bool state);
-    bool getPauseStoringState(void) const { return _pauseStoringEnabled; }
 
     // Paths
     const bsString& getRecordStoragePath(void) const { return _recordStoragePath; }
@@ -232,7 +230,6 @@ class vwConfig {
     int      _multiStreamIsMulti = false;
     bsString _multiStreamAppName;
     int _freezePointEnabled  = false;
-    int _pauseStoringEnabled = false;
     bsString _recordStoragePath;
     bsString _lastFileImportPath;
     bsString _lastLoadedRecordPath;

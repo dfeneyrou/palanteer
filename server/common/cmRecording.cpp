@@ -128,7 +128,6 @@ cmRecording::beginRecord(const bsString& appName, const cmStreamInfo& infos, s64
     _recLastIdxErrorQty = 0;
     _recErrorQty        = 0;
     memset(_recCoreIsUsed,   0, sizeof(_recCoreIsUsed));
-    memset(_recCoreIsPaused, 0, sizeof(_recCoreIsPaused));
     _recMemAllocLkup.clear();
     _recElemPathToId.clear();
     _recMarkerCategoryNameIdxs.clear();
@@ -136,7 +135,6 @@ cmRecording::beginRecord(const bsString& appName, const cmStreamInfo& infos, s64
     _recStreams.push_back(infos);
     _recLocks.clear();
     _recElems.clear();
-    _recLockPauses.clear();
     _recThreads.clear();
     LOC_STORAGE_RESET(_recGlobal.lockUse);
     LOC_STORAGE_RESET(_recGlobal.lockNtf);
@@ -304,7 +302,6 @@ cmRecording::createLock(int streamId, u32 nameIdx)
 
     // Create the lock
     _recLocks.push_back( {nameIdx} );
-    _recLockPauses.push_back({});
 
     // Multistream initialization (to ensure unicity of the lock name globally)
     if(_isMultiStream) {
@@ -453,21 +450,6 @@ cmRecording::processLockUseEvent(int streamId, plPriv::EventExt& evtx, bool& doI
     lock.isInUse = !lock.isInUse; // Toggle the use state
 
     plAssert(_recStrings[evtx.nameIdx].lockId>=0, "By design, each lock should have a valid entry");
-    PauseState& p = _recLockPauses[_recStrings[evtx.nameIdx].lockId];
-    if(_noStoring) {
-        bool doStoreAnyway = false;
-        if(evtx.flags==PL_FLAG_TYPE_LOCK_ACQUIRED) {
-            p.unstoredBeginEvt   = evtx;
-            p.isUnstoredScopeOpen = true;
-        }
-        else if(evtx.flags==PL_FLAG_TYPE_LOCK_RELEASED) {
-            p.isUnstoredScopeOpen = false;
-            if(p.isScopeOpen) doStoreAnyway = true; // Let's close the previously open scope (before pausing)
-        }
-        if(!doStoreAnyway) return false; // No storing (in most cases)
-    }
-    p.isScopeOpen = (evtx.flags==PL_FLAG_TYPE_LOCK_ACQUIRED);
-
     ++_recLockEventQty;
 
     // Store complete chunks
@@ -562,20 +544,6 @@ cmRecording::processSoftIrqEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     if(evtx.threadId>=cmConst::MAX_THREAD_QTY) return;
     plgScope(REC, "processSoftIrqEvent");
 
-    if(_noStoring) {
-        bool doStoreAnyway = false;
-        if(evtx.flags&PL_FLAG_SCOPE_BEGIN) {
-            tc.softIrqPause.unstoredBeginEvt   = evtx;
-            tc.softIrqPause.isUnstoredScopeOpen = true;
-        }
-        else if(evtx.flags&PL_FLAG_SCOPE_END) {
-            tc.softIrqPause.isUnstoredScopeOpen = false;
-            if(tc.softIrqPause.isScopeOpen) doStoreAnyway = true; // Let's close the previously open scope (before pausing)
-        }
-        if(!doStoreAnyway) return; // No storing (in most cases)
-    }
-    tc.softIrqPause.isScopeOpen = (evtx.flags&PL_FLAG_SCOPE_BEGIN);
-
     // Store complete chunks
     if(tc.softIrqChunkData.size()==cmChunkSize) writeGenericChunk(tc.softIrqChunkData, tc.softIrqChunkLocs);
     tc.softIrqChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
@@ -606,15 +574,6 @@ cmRecording::processCoreUsageEvent(int streamId, plPriv::EventExt& evtx)
     int coreId = (evtx.newCoreId==0xFF)? evtx.prevCoreId : evtx.newCoreId;
     if(coreId==0xFF) return false; // Weird as no core is identified in this event. Client issue?
     plgScope(REC, "processCoreUsageEvent");
-
-    if(_noStoring) {
-        if(_recCoreIsPaused[coreId]) return false; // No storing
-        _recCoreIsPaused[coreId] = 1;
-        // Force the evtx to "nothing", to close the core scope before pausing
-        evtx.newCoreId = 0xFF;
-        evtx.nameIdx   = 0xFFFFFFFE;
-    }
-    else _recCoreIsPaused[coreId] = 0;
 
     // Update the date and ensure that the clock is always increasing for context switches.
     // Indeed, clock resynchronization may add some jitter and make some dates backward at these points.
@@ -923,13 +882,8 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
         lc.beginSumAllocSize   = tc.sumAllocSize;
         lc.beginSumDeallocQty  = tc.sumDeallocQty;
         lc.beginSumDeallocSize = tc.sumDeallocSize;
-        // Mark the level as 'open scope' (required for pause management)
-        lc.pause.isScopeOpen = true;
     }
     if(evtx.flags&PL_FLAG_SCOPE_END) {
-        // Mark the level as 'closed scope'
-        lc.pause.isScopeOpen = false;
-
         // Check that the name matches the "begin"
         plAssert(level+1<tc.levels.size(), level, tc.levels.size());
         if(evtx.nameIdx!=tc.levels[level+1].parentNameIdx) {
@@ -1175,17 +1129,6 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
 
 
 void
-cmRecording::doPauseStoring(bool state)
-{
-    if(state==_noStoring) return; // No change
-    if(isRecording()) {
-        _requestPauseStoring  = state;
-        _requestResumeStoring = !state;
-    } else _noStoring = state; // Not recording = set the value directly
-}
-
-
-void
 cmRecording::updateDate(plPriv::EventExt& evtx, ShortDateState& sd)
 {
     // Handle the short date and its potential wrap
@@ -1226,45 +1169,6 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
         _shortDateSyncTick = shortDateSyncTick; // Sync date is *before* any dates in this buffer. Null date will be ignored
         ++_eventBufferId;  // To track the synchronization done once per thread
     }
-
-    // Manage the pausing/resuming of the record
-    // =========================================
-    if(_requestPauseStoring) {
-        _noStoring           = true; // Written only in this thread
-        _requestPauseStoring = false;
-    }
-    if(_requestResumeStoring) {
-        _noStoring            = false; // Written only in this thread
-        _requestResumeStoring = false;
-
-        // Process the most recent "begin" without "end" of some kinds of events
-        for(ThreadBuild& tc : _recThreads) {
-            // Scopes
-            for(int level=0; level<tc.levels.size(); ++level) {
-                NestingLevelBuild& lc = tc.levels[level];
-                if(!lc.pause.isUnstoredScopeOpen) continue; // @#TBC [PAUSE] P90 break ?? Need an assert at least...
-                plPriv::EventExt& evtx  = lc.pause.unstoredBeginEvt;
-                processScopeEvent(evtx, tc, level);
-                lc.pause.isUnstoredScopeOpen = false;
-            }
-
-            // Soft IRQs
-            if(tc.softIrqPause.isUnstoredScopeOpen) {
-                processSoftIrqEvent(tc.softIrqPause.unstoredBeginEvt, tc);
-                tc.softIrqPause.isUnstoredScopeOpen = false;
-            }
-        }
-
-        // Used locks
-        // @#LATER If record pausing is revived, event logged in scope + lock wait end shall be handled too
-        for(auto& rlp : _recLockPauses) {
-            if(!rlp.isUnstoredScopeOpen) continue;
-            bool doInsertLockWaitEnd = false;
-            processLockUseEvent(streamId, rlp.unstoredBeginEvt, doInsertLockWaitEnd); // @#FIXME streamId is not right, here. But it is dead code for the moment
-            rlp.isUnstoredScopeOpen = false;
-        }
-    }
-
 
     // Loop on incoming events
     // =======================
@@ -1489,21 +1393,6 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
         if((eType>=PL_FLAG_TYPE_MEMORY_FIRST && eType<=PL_FLAG_TYPE_MEMORY_LAST)) {
             processMemoryEvent(evtx, tc, level);
             continue;
-        }
-
-        // Manage the no storing feature
-        if(_noStoring) {
-            bool doStoreAnyway = false;
-            NestingLevelBuild& lc = tc.levels[level];
-            if(evtx.flags&PL_FLAG_SCOPE_BEGIN) {
-                lc.pause.unstoredBeginEvt    = evtx;
-                lc.pause.isUnstoredScopeOpen = true;
-            }
-            else if(evtx.flags&PL_FLAG_SCOPE_END) {
-                lc.pause.isUnstoredScopeOpen = false;
-                if(lc.pause.isScopeOpen) doStoreAnyway = true; // Let's close the previously open scope (before pausing)
-            }
-            if(!doStoreAnyway) continue; // No storing (in most cases)
         }
 
         // Generic event case
@@ -1845,32 +1734,12 @@ cmRecording::endRecord(void)
         endEvtx.threadId = threadId;
         // Scopes
         for(int level=tc.levels.size()-1; level>=0; --level) {
-            NestingLevelBuild& lc = tc.levels[level];
-            if(!lc.pause.isScopeOpen) continue; // @#TBC [PAUSE] P90 break ?? Need an assert at least...
             if(level==cmConst::MAX_LEVEL_QTY-1) continue; // End event is offset by 1
             endEvtx.threadId = threadId;
             processScopeEvent(endEvtx, tc, level);
             endEvtx.nameIdx = emptyIdx; // Re-set it as it was "corrected" during the processing
         }
-        // Soft IRQs
-        if(tc.softIrqPause.isScopeOpen) {
-            processSoftIrqEvent(endEvtx, tc);
-        }
     }
-    // Used locks
-#if 0
-    // @LATER To make it close properly, the correct threadId (=the acquiring one probably) shall be known
-    //        Also the wait end event generation shall be handled + the tree storage (so before or after all scope closing?)
-    //        Do we really want to close the lock use?
-    for(int i=0; i<_recLockPauses.size(); ++i) {
-        auto& rlp = _recLockPauses[i];
-        if(!rlp.isScopeOpen) continue;
-        endEvtx.nameIdx = _recLocks[i].nameIdx;
-        endEvtx.flags   = PL_FLAG_TYPE_LOCK_RELEASED;
-        bool doInsertLockWaitEnd = false;
-        processLockUseEvent(endEvtx, doInsertLockWaitEnd);
-    }
-#endif
 
     // Flush global elems
     plgData(REC, "Flush lock notif events", _recGlobal.lockNtfChunkData.size());

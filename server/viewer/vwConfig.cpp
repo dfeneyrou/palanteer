@@ -230,18 +230,6 @@ vwConfig::setFreezePointEnabled(bool state)
 
 
 bool
-vwConfig::setPauseStoringState(bool state)
-{
-    plgScope(CFG, "setPauseStoringState");
-    if(_pauseStoringEnabled==(int)state) return true;
-    plgVar(CFG, state);
-    _pauseStoringEnabled = (int)state;
-    _globalNeedsSaving   = true;
-    return true;
-}
-
-
-bool
 vwConfig::setRecordStoragePath(const bsString& path)
 {
     plgScope(CFG, "setRecordStoragePath");
@@ -689,7 +677,6 @@ vwConfig::saveGlobal(void)
     fprintf(fh, "multiStreamIsMulti %d\n", _multiStreamIsMulti);
     fprintf(fh, "multiStreamAppName %s\n", _multiStreamAppName.toChar());
     fprintf(fh, "freezePointEnabled %d\n", _freezePointEnabled);
-    fprintf(fh, "pauseStoringEnabled %d\n", _pauseStoringEnabled);
     fprintf(fh, "recordStoragePath %s\n", _recordStoragePath.toChar());
     fprintf(fh, "lastFileImportPath %s\n", _lastFileImportPath.toChar());
     fprintf(fh, "lastLoadedRecordPath %s\n", _lastLoadedRecordPath.toChar());
@@ -757,7 +744,6 @@ vwConfig::loadGlobal(void)
             if(!_multiStreamAppName.empty() && _multiStreamAppName.back()=='\n') _multiStreamAppName.pop_back();
         }
         READ_GLOBAL(freezePointEnabled, 1, "%d", &_freezePointEnabled);
-        READ_GLOBAL(pauseStoringEnabled, 1, "%d", &_pauseStoringEnabled);
 
         if(!strncmp(line, "lastFileImportPath", kwLength)) {
             _lastFileImportPath = bsString(&line[kwLength]).strip();

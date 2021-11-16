@@ -46,7 +46,6 @@ public:
 
     // Accessors
     const bsString& getRecordsDataPath(void) const { return _storagePath; }
-    void doPauseStoring(bool state);
     u64  getThreadNameHash(int threadId) const { return _recThreads[threadId].threadUniqueHash; }
     int  getThreadNameIdx (int threadId) const { return _recThreads[threadId].nameIdx; }
     void getElemInfos(int elemIdx, u64* elemHash, int* elemPrevElemIdx, int* elemThreadId) {
@@ -92,13 +91,6 @@ private:
         s64  wrapPart     = 0;
         s64  lastDateTick = 0;
         void reset(void) { lastEventBufferId = 0; wrapPart = lastDateTick = 0; }
-    };
-
-    // No storage automata
-    struct PauseState {
-        plPriv::EventExt unstoredBeginEvt;
-        bool isUnstoredScopeOpen = false;
-        bool isScopeOpen         = false;
     };
 
     struct LockBuild {
@@ -165,7 +157,6 @@ private:
         u32  parentNameIdx  = PL_INVALID;
         u8   parentFlags    = 0;
         u32  prevElemIdx    = (u32)-1;
-        PauseState pause;
         // Working memory infos
         u64 beginSumAllocQty    = 0;
         u64 beginSumAllocSize   = 0;
@@ -209,8 +200,7 @@ private:
         // Context switches & softIrq
         LOC_STORAGE_REC(ctxSwitch);
         LOC_STORAGE_REC(softIrq);
-        PauseState softIrqPause;
-        // Locks (no need for a pause, as it is also a 'scope')
+        // Locks
         LOC_STORAGE_REC(lockWait);
         bsVec<u32> lockWaitNameIdxs;
         bool       lockWaitCurrentlyWaiting = false;
@@ -258,10 +248,6 @@ private:
     int _recLastIdxErrorQty = 0;
     int _recErrorQty        = 0;
     u8  _recCoreIsUsed[256];
-    u8  _recCoreIsPaused[256];
-    bool _requestPauseStoring  = false;
-    bool _requestResumeStoring = false;
-    bool _noStoring            = false;
     s64  _shortDateSyncTick;
     u32  _eventBufferId = 0;
     bsHashMap<u64,VMemAlloc> _recMemAllocLkup;
@@ -270,7 +256,6 @@ private:
     bsVec<cmStreamInfo> _recStreams;
     bsVec<LockBuild>    _recLocks;
     bsVec<ElemBuild>    _recElems;
-    bsVec<PauseState>   _recLockPauses;
     bsVec<ThreadBuild>  _recThreads;
     GlobalBuild         _recGlobal;
     bsVec<cmRecord::String> _recStrings; // We locally use "isHexa" to mark changes. This "hack" avoids a copy of the structure of cmRecord
