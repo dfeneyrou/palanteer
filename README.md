@@ -12,16 +12,16 @@ Simple code instrumentation, mostly automatic in Python, delivers powerful featu
   - **Remote command call and events observation can be scripted in Python**: deep testing has never been simpler
   - **C++**:
     - ultra-light single-header cross-platform instrumentation library
-    - compile-time selection of groups of instrumentation
-    - compile-time hashing of static strings to minimize their cost
-    - compile-time striping of all instrumentation static strings
-    - enhanced assertions, stack trace dump...
-    - automatic code instrumentation (Linux GCC only)
+    - compile time selection of [groups of instrumentation](https://dfeneyrou.github.io/palanteer/base_concepts.md.html#c++specific/groups)
+    - compile-time hashing of [static strings](https://dfeneyrou.github.io/palanteer/base_concepts.md.html#staticanddynamicstrings) to minimize their cost
+    - compile-time striping of [all instrumentation static strings](https://dfeneyrou.github.io/palanteer/getting_started.md.html#quickc++externalstringconfiguration)
+    - [enhanced assertions](https://dfeneyrou.github.io/palanteer/index.html#enhancedassertions), stack trace dump...
+    - [automatic code instrumentation](https://dfeneyrou.github.io/palanteer/getting_started.md.html#quickc++automaticfunctionsinstrumentation) (Linux GCC only)
   - **Python**:
-    - Automatic instrumentation of functions enter/leave, memory allocations, raised exceptions, garbage collection runs
+    - [Automatic instrumentation](https://dfeneyrou.github.io/palanteer/instrumentation_api_python.md.html#automaticinstrumentationwithoutcodemodification) of functions enter/leave, memory allocations, raised exceptions, garbage collection runs
     - Seamless support of multithreading, asyncio/gevent
 
-Recording simultaneously up to 8 streams (i.e., from different processes) is supported.
+Recording simultaneously [up to 8 streams](https://dfeneyrou.github.io/palanteer/index.html#multistream) (i.e., from different processes) is supported.
 
 Palanteer is an efficient, lean and comprehensive solution for better and enjoyable software development!
 

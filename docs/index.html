@@ -13,13 +13,14 @@
 1. An **instrumentation library** for programs to rule them all. <br/> Provides the instrumentation API and remote communication capabilities.
   - C++:
     - ultra-light single-header cross-platform library
-    - very low overhead
-    - support of Fibers / userland threads
-    - support for automatic instrumentation (GCC only)
+    - [very low](#c++instrumentationperformance) overhead
+    - compile time selection of [groups of instrumentation](base_concepts.md.html#c++specific/groups)
+    - support of [Fibers / userland threads](instrumentation_api_cpp.md.html#virtualthreads)
+    - support for [automatic instrumentation](getting_started.md.html#quickc++automaticfunctionsinstrumentation) (GCC only)
   - Python:
     - One module for manual instrumentation
-    - Unmodified program can be analyzed as for `cProfile` with `-m` option
-    - Support of asyncio / gevent
+    - [Unmodified program](instrumentation_api_python.md.html#automaticinstrumentationwithoutcodemodification) can be analyzed as for `cProfile` with `-m` option
+    - Support of [asyncio / gevent](instrumentation_api_python.md.html#virtualthreads)
 1. Associated with the **interactive viewer**:
    - Internal behaviors become obvious
    - All data can be graphically visualized and manipulated.
@@ -27,7 +28,7 @@
   - Easy stimulation and deep observation
   - Enables trivial testing, measuring or monitoring
 
-Recording simultaneously up to 8 streams (i.e., from different processes) is supported.
+Recording simultaneously [up to 8 streams](#multistream) (i.e., from different processes) is supported.
 
 <table width=100%></table>
 +++++
@@ -41,11 +42,11 @@ Recording simultaneously up to 8 streams (i.e., from different processes) is sup
  - Global structure from the event hierarchy
  - Typed (string, timestamp, float, integer...)
  - C++
-    - Compile-time selection of per-user groups of events
-    - Very low overhead, typically few nanoseconds
-    - Automatic instrumentation with `-finstrument-functions` flag (GCC only) possible
+    - Compile-time selection of per-user [groups of events](base_concepts.md.html#c++specific/groups)
+    - [Very low](#c++instrumentationperformance) overhead, typically few nanoseconds
+    - [Automatic instrumentation](getting_started.md.html#quickc++automaticfunctionsinstrumentation) with `-finstrument-functions` flag (GCC only) possible
  - Python
-    - Automatic instrumentation of functions enter/leave
+    - [Automatic instrumentation](instrumentation_api_python.md.html#automaticinstrumentationwithoutcodemodification) of functions enter/leave
     - Automatic tracking of interpreter memory allocations
     - Automatic tracking of all raised exceptions
     - Automatic tracking of garbage collection runs
@@ -99,7 +100,7 @@ Recording simultaneously up to 8 streams (i.e., from different processes) is sup
 </td></tr>
 <tr><td>
 
-- **C++: Better assertions, enhanced with provided context**
+- **C++: Better assertions, [enhanced with provided context](#enhancedassertions)**
   - Just add variables or expressions as extra parameters
   - Compile-time selection of user defined groups of assertions
 
@@ -110,7 +111,7 @@ Recording simultaneously up to 8 streams (i.e., from different processes) is sup
 </td></tr>
 <tr><td>
 
-- **C++: Stack trace dumping**
+- **C++: [Stack trace](instrumentation_configuration_cpp.md.html#pl_impl_stacktrace) dumping**
  - Displayed in the terminal
  - Recorded with all events before crash
  - Available global context ease crash investigations
@@ -122,9 +123,9 @@ Recording simultaneously up to 8 streams (i.e., from different processes) is sup
 </td></tr>
 <tr><td>
 
-- **C++: Full leveraging of static strings**
+- **C++: Full leveraging of [static strings](base_concepts.md.html#staticanddynamicstrings)**
   - Identified and hashed at compile time, no runtime cost
-  - "External strings": full stripping of instrumentation static strings from the binary
+  - ["External strings"](getting_started.md.html#quickc++externalstringconfiguration): full stripping of instrumentation static strings from the binary
     - Benefit: code size reduction and instrumentation obfuscation
     - Strings are resolved with an external lookup generated from the code (tool provided)
 
@@ -137,7 +138,7 @@ Recording simultaneously up to 8 streams (i.e., from different processes) is sup
 </td></tr>
 <tr><td>
 
-**Easy scripting of the stimulation and observation**
+**Easy [scripting](getting_started.md.html#quickremotescripting) of the stimulation and observation**
 
 - Elaborate deep and reliable system tests
   - Stimulate with CLIs (remote commands from instrumentation), monitor via events
