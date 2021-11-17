@@ -35,7 +35,7 @@ constexpr static int cmElemChunkSize = 32/4*cmChunkSize; // Chunk elem quantity.
 constexpr static int cmMRElemSize    = 16;    // Size of the elem pyramid subsampling (in memory)
 constexpr static u32 PL_INVALID      = 0xFFFFFFFF;
 constexpr static int PL_MEMORY_SNAPSHOT_EVENT_INTERVAL = 10000; // Smaller value consumes disk space, bigger value increases reactivity time when accessing detailed allocations
-constexpr static int PL_RECORD_FORMAT_VERSION = 3;
+constexpr static int PL_RECORD_FORMAT_VERSION = 4;
 
 // Chunk location (=offset and size) in the big event file
 typedef u64 chunkLoc_t;
@@ -213,11 +213,12 @@ public:
         bsVec<MemSnapshot> memSnapshotIndexes;
     };
 
-    // Chunk location in the big file: 48 bit for the offset, and 16 bits for the size of the chunk
-    // For 2 billions events (max), offset is < 24*2e9, and size is <= 24*cmChunkSize (=6144 bytes), so ok
-    static chunkLoc_t makeChunkLoc  (u64 offset, u64 size) { return offset | (size<<48); }
-    static u64        getChunkOffset(chunkLoc_t pos)       { return pos&0xFFFFFFFFFFFFLL; }
-    static int        getChunkSize  (chunkLoc_t pos)       { return (int)(pos>>48); }
+    // Chunk location in the big file: 36 bit for the offset, and 28 bits for the size of the chunk
+    // For 2 billions events (max), offset is < 24*2e9.
+    // Chunk size is <= 24*cmChunkSize (=6144 bytes). Remains the memory snapshot, which can then go up to 16 MB
+    static chunkLoc_t makeChunkLoc  (u64 offset, u64 size) { return (size<<36) | offset; }
+    static u64        getChunkOffset(chunkLoc_t pos)       { return pos&0xFFFFFFFFFLL; }
+    static int        getChunkSize  (chunkLoc_t pos)       { return (int)(pos>>36); }
 
     // Accessors and updaters
     const bsVec<Evt>& getEventChunk(chunkLoc_t pos, const bsVec<cmRecord::Evt>* lastLiveChunk=0) const; // Buffer is valid at least up to the next call

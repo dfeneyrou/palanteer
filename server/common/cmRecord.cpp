@@ -198,7 +198,8 @@ cmRecord::getMemorySnapshot(int threadId, int snapshotIdx, bsVec<u32>& currentAl
     // Read the allocations
     if(allocatedScopeQty) {
         if(compressionMode==0) {
-            plAssert(getChunkSize(pos)==(int)((1+allocatedScopeQty)*sizeof(u32)));
+            plAssert(getChunkSize(pos)==(int)((1+allocatedScopeQty)*sizeof(u32)),
+                     getChunkSize(pos), allocatedScopeQty, (int)((1+allocatedScopeQty)*sizeof(u32)));
             if(fread(&currentAllocMIdxs[0], sizeof(u32), allocatedScopeQty, _fdChunks)!=allocatedScopeQty) currentAllocMIdxs.clear();
         }
         else {
