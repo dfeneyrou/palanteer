@@ -544,6 +544,8 @@ cmRecording::processSoftIrqEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     if(evtx.threadId>=cmConst::MAX_THREAD_QTY) return;
     plgScope(REC, "processSoftIrqEvent");
 
+    tc.isSoftIrqScopeOpen = (evtx.flags&PL_FLAG_SCOPE_BEGIN);
+
     // Store complete chunks
     if(tc.softIrqChunkData.size()==cmChunkSize) writeGenericChunk(tc.softIrqChunkData, tc.softIrqChunkLocs);
     tc.softIrqChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
@@ -882,8 +884,13 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
         lc.beginSumAllocSize   = tc.sumAllocSize;
         lc.beginSumDeallocQty  = tc.sumDeallocQty;
         lc.beginSumDeallocSize = tc.sumDeallocSize;
+        // Mark the level as 'open scope' (required for pause management)
+        lc.isScopeOpen = true;
     }
     if(evtx.flags&PL_FLAG_SCOPE_END) {
+        // Mark the level as 'closed scope'
+        lc.isScopeOpen = false;
+
         // Check that the name matches the "begin"
         plAssert(level+1<tc.levels.size(), level, tc.levels.size());
         if(evtx.nameIdx!=tc.levels[level+1].parentNameIdx) {
@@ -1734,10 +1741,16 @@ cmRecording::endRecord(void)
         endEvtx.threadId = threadId;
         // Scopes
         for(int level=tc.levels.size()-1; level>=0; --level) {
+            NestingLevelBuild& lc = tc.levels[level];
+            if(!lc.isScopeOpen) continue;
             if(level==cmConst::MAX_LEVEL_QTY-1) continue; // End event is offset by 1
             endEvtx.threadId = threadId;
             processScopeEvent(endEvtx, tc, level);
             endEvtx.nameIdx = emptyIdx; // Re-set it as it was "corrected" during the processing
+        }
+        // Soft IRQs
+        if(tc.isSoftIrqScopeOpen) {
+            processSoftIrqEvent(endEvtx, tc);
         }
     }
 

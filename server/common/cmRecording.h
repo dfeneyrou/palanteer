@@ -152,6 +152,7 @@ private:
         s64  writeScopeLastTimeNs = 0;
         u32  scopeCurrentLIdx = PL_INVALID;
         bool lastIsScope    = false; // For generic events. Initial value does not matter
+        bool isScopeOpen    = false; // Required to properly close scopes when unexpected end of recording
         s64  elemTimeNs     = 0;
         u32  elemLIdx       = 0;
         u32  parentNameIdx  = PL_INVALID;
@@ -205,6 +206,7 @@ private:
         bsVec<u32> lockWaitNameIdxs;
         bool       lockWaitCurrentlyWaiting = false;
         s64        lockWaitBeginTimeNs = 0;
+        bool       isSoftIrqScopeOpen  = false; // Required to properly close scopes when unexpected end of recording
         // Levels
         bsVec<NestingLevelBuild> levels;
     };
