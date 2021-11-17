@@ -17,6 +17,7 @@
 // This file implements the catalog and record statistic views
 
 // System
+#include <cinttypes>
 #include <algorithm>
 
 // External

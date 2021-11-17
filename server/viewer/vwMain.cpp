@@ -18,6 +18,7 @@
 // This file implements the core of the viewer application. It contains also the menu bar, the log console window and the setting window
 
 // System
+#include <cinttypes>
 #include <cmath>
 #include <algorithm>
 #include <time.h>

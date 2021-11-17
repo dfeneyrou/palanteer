@@ -131,8 +131,7 @@ def test_usepl1_noassert():
     events = data_collect_events(timeout_sec=2.0)
     CHECK(events, "Some events are received")
     CHECK(
-        not [1 for e in events if e.path[-1] == "CRASH"]
-        and process_is_running(),
+        not [1 for e in events if e.path[-1] == "CRASH"] and process_is_running(),
         "No crash event has been received because of disabled assertions",
     )
     process_stop()

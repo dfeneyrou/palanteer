@@ -144,7 +144,7 @@ vwReplayAlloc::malloc(u32 size)
     }
 
     // Get the free chunk from the bin
-    plgAssert(RALLOC, bin<128);
+    plgAssert(RALLOC, binNbr<128);
     int cIdx = _bins[binNbr];
     Chunk& cf = _chunks[cIdx];
     plgBegin(RALLOC, "Found existing free chunk");
