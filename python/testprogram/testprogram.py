@@ -118,7 +118,7 @@ def doCrash_Please(crashKind):
 
 def busyWait(kRoundQty):
     cosSum = 14.0
-    for i in range(100 * kRoundQty):
+    for i in range(30 * kRoundQty):
         cosSum += math.cos(0.1 * i)
     return cosSum
 
@@ -214,7 +214,7 @@ def subTaskUsingSharedResource(taskNbr, iterNbr):
     dummyAlloc = [1] * globalRandomGenerator.get(100, 500)
 
     superList = []
-    for i in range(5000):
+    for i in range(500):
         plBegin("Add fruit")
         superList.append(fruits[(taskNbr + i * 7) % 5])
         plEnd()
