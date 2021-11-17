@@ -47,11 +47,11 @@ vwMain::Histogram::getDescr(void) const
 }
 
 // elemIdx may be negative if not known yet (case of saved layout)
-void
+bool
 vwMain::addHistogram(int id, u64 threadUniqueHash, u64 hashPath, int elemIdx, s64 startTimeNs, s64 timeRangeNs)
 {
     // Sanity
-    if(!_record) return;
+    if(!_record) return false;
     plScope("addHistogram");
     plgVar(HISTO, threadUniqueHash, hashPath, elemIdx, startTimeNs, getNiceDuration(timeRangeNs));
 
@@ -67,6 +67,7 @@ vwMain::addHistogram(int id, u64 threadUniqueHash, u64 hashPath, int elemIdx, s6
     }
     setFullScreenView(-1);
     plMarker("user", "Add a histogram");
+    return true;
 }
 
 

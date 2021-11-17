@@ -41,7 +41,7 @@ vwMain::Text::getDescr(void) const
 }
 
 
-void
+bool
 vwMain::addText(int id, int threadId, u64 threadUniqueHash, int startNestingLevel, u32 startLIdx)
 {
     // Either threadId<0 and the hash shall be known (for live case, the threadId can be discovered later)
@@ -52,14 +52,16 @@ vwMain::addText(int id, int threadId, u64 threadUniqueHash, int startNestingLeve
             threadId = i;
             break;
         }
+        if(threadId<0) return false;  // No text view added
     }
     if(threadUniqueHash==0) {
-        plAssert(threadId>=0);
+        plAssert(threadId>=0, threadId);
         threadUniqueHash = _record->threads[threadId].threadUniqueHash;
     }
     _texts.push_back( { id, threadId, threadUniqueHash, startNestingLevel, startLIdx } );
     setFullScreenView(-1);
     plMarker("user", "Add a text view");
+    return true;
 }
 
 

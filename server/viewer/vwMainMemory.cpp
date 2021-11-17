@@ -648,10 +648,10 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
 // Memory timeline data preparation
 // ================================
 
-void
+bool
 vwMain::addMemoryTimeline(int id)
 {
-    if(!_record) return;
+    if(!_record) return false;
     // Add the memory timeline window entry
     _memTimelines.push_back( { } );
     auto& mw    = _memTimelines.back();
@@ -661,6 +661,7 @@ vwMain::addMemoryTimeline(int id)
 
     setFullScreenView(-1);
     plMarker("user", "Add a memory timeline");
+    return true;
 }
 
 

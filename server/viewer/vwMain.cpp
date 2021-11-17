@@ -1686,45 +1686,51 @@ vwMain::createLayoutViews(const vwConfig::ScreenLayout& layout)
         // Timeline
         READ_VIEW(timeline, 8, 1, "%d", &syncMode);
         if(isFound) {
-            addTimeline(view.id);
-            SET_VIEW_ATTRIBUTES(_timelines);
+            if(addTimeline(view.id)) {
+                SET_VIEW_ATTRIBUTES(_timelines);
+            }
             continue;
         }
         // Memory timeline
         READ_VIEW(memtimeline, 11, 1, "%d", &syncMode);
         if(isFound) {
-            addMemoryTimeline(view.id);
-            SET_VIEW_ATTRIBUTES(_memTimelines);
+            if(addMemoryTimeline(view.id)) {
+                SET_VIEW_ATTRIBUTES(_memTimelines);
+            }
             continue;
         }
         // Marker
         READ_VIEW(marker, 6, 1, "%d", &syncMode);
         if(isFound) {
-            addMarker(view.id, 0);
-            SET_VIEW_ATTRIBUTES(_markers);
+            if(addMarker(view.id, 0)) {
+                SET_VIEW_ATTRIBUTES(_markers);
+            }
             continue;
         }
         // Text
         READ_VIEW(text, 4, 2, "%d %" PRIX64, &syncMode, &hash);
         if(isFound) {
-            addText(view.id, -1, hash, 0, 0);
-            SET_VIEW_ATTRIBUTES(_texts);
+            if(addText(view.id, -1, hash, 0, 0)) {
+                SET_VIEW_ATTRIBUTES(_texts);
+            }
             continue;
         }
         // Profile
         READ_VIEW(profile, 7, 5, "%d %d %d %d %" PRIX64, &syncMode, &tmp2, &tmp3, &tmp4, &hash);
         if(isFound) {
-            addProfileRange(view.id, (ProfileKind)tmp2, -1, hash, 0L, _record->durationNs);
-            _profiles.back().isFlameGraph         = tmp3;
-            _profiles.back().isFlameGraphDownward = tmp4;
-            SET_VIEW_ATTRIBUTES(_profiles);
+            if(addProfileRange(view.id, (ProfileKind)tmp2, -1, hash, 0L, _record->durationNs)) {
+                _profiles.back().isFlameGraph         = tmp3;
+                _profiles.back().isFlameGraphDownward = tmp4;
+                SET_VIEW_ATTRIBUTES(_profiles);
+            }
             continue;
         }
         // Histogram
         READ_VIEW(histogram, 9, 3, "%d %" PRIX64 " %" PRIX64, &syncMode, &hash, &hash2);
         if(isFound) {
-            addHistogram(view.id, hash, hash2, -1, 0, _record->durationNs);
-            SET_VIEW_ATTRIBUTES(_histograms);
+            if(addHistogram(view.id, hash, hash2, -1, 0, _record->durationNs)) {
+                SET_VIEW_ATTRIBUTES(_histograms);
+            }
             continue;
         }
         // Plot

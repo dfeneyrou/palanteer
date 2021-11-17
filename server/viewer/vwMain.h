@@ -92,13 +92,13 @@ public:
 
     // Window creation
     enum ProfileKind { TIMINGS, MEMORY, MEMORY_CALLS };
-    void addProfileScope (int id, ProfileKind kind, int threadId, int nestingLevel, u32 scopeLIdx);
-    void addProfileRange(int id, ProfileKind kind, int threadId, u64 threadUniqueHash, s64 startTimeNs, s64 timeRangeNs);
-    void addHistogram  (int id, u64 threadUniqueHash, u64 hashPath,  int elemIdx, s64 startTimeNs, s64 timeRangeNs);
-    void addText       (int id, int threadId, u64 threadUniqueHash=0, int startNestingLevel=0, u32 startLIdx=0);
-    void addMarker     (int id, s64 startTimeNs=0);
-    void addTimeline   (int id);
-    void addMemoryTimeline(int id);
+    bool addProfileScope (int id, ProfileKind kind, int threadId, int nestingLevel, u32 scopeLIdx);
+    bool addProfileRange(int id, ProfileKind kind, int threadId, u64 threadUniqueHash, s64 startTimeNs, s64 timeRangeNs);
+    bool addHistogram  (int id, u64 threadUniqueHash, u64 hashPath,  int elemIdx, s64 startTimeNs, s64 timeRangeNs);
+    bool addText       (int id, int threadId, u64 threadUniqueHash=0, int startNestingLevel=0, u32 startLIdx=0);
+    bool addMarker     (int id, s64 startTimeNs=0);
+    bool addTimeline   (int id);
+    bool addMemoryTimeline(int id);
 
     // Helper methods
     void        dirty(void); // Force several frame of redrawing

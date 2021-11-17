@@ -46,11 +46,11 @@ vwMain::Profile::getDescr(void) const
 }
 
 
-void
+bool
 vwMain::addProfileRange(int id, ProfileKind kind, int threadId, u64 threadUniqueHash, s64 startTimeNs, s64 timeRangeNs)
 {
     // Sanity
-    if(!_record) return;
+    if(!_record) return false;
     plScope("addProfile");
 
     // Either threadId<0 and the hash shall be known (for live case, the threadId can be discovered later)
@@ -71,20 +71,22 @@ vwMain::addProfileRange(int id, ProfileKind kind, int threadId, u64 threadUnique
     // Add the request
     _profiles.push_back({id, kind, startTimeNs, timeRangeNs, threadUniqueHash});
     setFullScreenView(-1);
+    return true;
 }
 
 
-void
+bool
 vwMain::addProfileScope(int id, ProfileKind kind, int threadId, int nestingLevel, u32 scopeLIdx)
 {
     // Sanity
-    if(!_record) return;
+    if(!_record) return false;
     plgScope (PROF, "addProfile");
     plgVar(PROF, threadId, nestingLevel, scopeLIdx);
 
     // Add the request
     _profiles.push_back({id, kind, 0, 0, _record->threads[threadId].threadUniqueHash, -1, nestingLevel, scopeLIdx});
     setFullScreenView(-1);
+    return true;
 }
 
 

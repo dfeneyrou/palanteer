@@ -31,11 +31,11 @@
 #include "cmCompress.h"
 
 #ifndef PL_GROUP_CLIENTRX
-#define PL_GROUP_CLIENTRX 0
+#define PL_GROUP_CLIENTRX 1
 #endif
 
 #ifndef PL_GROUP_CLIENTTX
-#define PL_GROUP_CLIENTTX 0
+#define PL_GROUP_CLIENTTX 1
 #endif
 
 

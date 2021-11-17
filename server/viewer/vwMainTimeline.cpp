@@ -31,7 +31,7 @@
 
 // Debug configuration
 #ifndef PL_GROUP_TML
-#define PL_GROUP_TML 0
+#define PL_GROUP_TML 1
 #endif
 
 
@@ -1023,10 +1023,10 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
 // Prepare data
 // =============
 
-void
+bool
 vwMain::addTimeline(int id)
 {
-    if(!_record) return;
+    if(!_record) return false;
     _timelines.push_back( { } );
     auto& tl    = _timelines.back();
     tl.uniqueId = id;
@@ -1034,6 +1034,7 @@ vwMain::addTimeline(int id)
     memset(&tl.valuePerThread[0], 0, sizeof(tl.valuePerThread));
     setFullScreenView(-1);
     plMarker("user", "Add a timeline");
+    return true;
 }
 
 

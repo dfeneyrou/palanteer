@@ -38,13 +38,14 @@ vwMain::Marker::getDescr(void) const
 }
 
 
-void
+bool
 vwMain::addMarker(int id, s64 startTimeNs)
 {
     _markers.push_back( { id } );
     _markers.back().forceTimeNs = startTimeNs;
     setFullScreenView(-1);
     plMarker("user", "Add a marker view");
+    return true;
 }
 
 
