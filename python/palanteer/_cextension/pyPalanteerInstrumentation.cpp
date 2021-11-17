@@ -257,7 +257,7 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
 
 #define HASH_FRAME(frame) (uint32_t)((uintptr_t)frame)
     bool isCoroutineNew = false;
-    bool isCoroutine = (frame->f_code->co_flags & (CO_COROUTINE|CO_ITERABLE_COROUTINE|CO_ASYNC_GENERATOR));
+    bool isCoroutine = (frame->f_code->co_flags & (CO_COROUTINE|CO_ITERABLE_COROUTINE|CO_ASYNC_GENERATOR)) && !calledFromC;
 #if PY_MINOR_VERSION >= 10
     bool isCoroutineSuspended = isCoroutine && !isEnter && (frame->f_state==FRAME_SUSPENDED);
 #else
