@@ -170,7 +170,7 @@ vwMain::prepareText(Text& t)
             --level;
         }
         y += fontHeight;
-   }
+    }
 }
 
 
@@ -264,6 +264,7 @@ vwMain::drawText(Text& t)
     const double winHeight     = ImGui::GetWindowSize().y;
     const double fontHeight    = ImGui::GetTextLineHeightWithSpacing();
     const double textPixMargin = ImGui::GetStyle().ItemSpacing.x;
+    const double mouseX        = ImGui::GetMousePos().x;
     const double mouseY        = ImGui::GetMousePos().y;
     const double normalizedScrollHeight = 1000000.; // Value does not really matter, it just defines the granularity
     const float  darkCoef = 0.7;
@@ -285,7 +286,7 @@ vwMain::drawText(Text& t)
         u32 lIdx;
         cmGetRecordPosition(_record, t.threadId, (s64)(lastScrollPos/normalizedScrollHeight*_record->durationNs), nestingLevel, lIdx);
         t.setStartPosition(nestingLevel, lIdx);
-   }
+    }
 
     // Manage keys and mouse inputs
     // ============================
@@ -414,7 +415,7 @@ vwMain::drawText(Text& t)
         li.color = ImColor(darkCoef*tmp.x, darkCoef*tmp.y, darkCoef*tmp.z, 1.f);
         if(pEvt.flags&PL_FLAG_SCOPE_MASK) {
             li.nameIdx     = pEvt.nameIdx;
-            li.flags       = (pEvt.flags&PL_FLAG_SCOPE_MASK)? ((pEvt.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN) : pEvt.flags;
+            li.flags       = (pEvt.flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN;
             li.lIdx        = t.cachedStartParents[i].lIdx;
             li.scopeStartTimeNs = pEvt.vS64;
         }
@@ -433,7 +434,7 @@ vwMain::drawText(Text& t)
         s64 scopeEndTimeNs = tci.scopeEndTimeNs;
         nestingLevel       = tci.nestingLevel;
         int flags          = evt.flags;
-        int v              = flags&PL_FLAG_TYPE_MASK;
+        int flagsType      = flags&PL_FLAG_TYPE_MASK;
         bool isHidden      = (flags&PL_FLAG_SCOPE_MASK) && t.isHidden(nestingLevel, _record->getString(evt.nameIdx).hash);
         if((flags&PL_FLAG_SCOPE_END) && isHidden) continue; // Already included in the 'begin'
 
@@ -445,45 +446,45 @@ vwMain::drawText(Text& t)
         bool      isHexa = _record->getString(evt.nameIdx).isHexa;
         int      lineQty = _record->getString(evt.nameIdx).lineQty; // Maybe overriden (marker case)
         if(flags&PL_FLAG_SCOPE_BEGIN) {
-            if(v==PL_FLAG_TYPE_LOCK_WAIT) {
+            if(flagsType==PL_FLAG_TYPE_LOCK_WAIT) {
                 snprintf(nameStr, maxMsgSize, "%s", name);
-                snprintf(valueStr, maxMsgSize, "[WAIT FOR LOCK]"); v = PL_FLAG_TYPE_DATA_TIMESTAMP;
+                snprintf(valueStr, maxMsgSize, "[WAIT FOR LOCK]"); flagsType = PL_FLAG_TYPE_DATA_TIMESTAMP;
             }
             else snprintf(nameStr, maxMsgSize, "%s %s", isHidden? "<...>" : ">", name);
         }
         else if(flags&PL_FLAG_SCOPE_END) {
-            if(v==PL_FLAG_TYPE_LOCK_WAIT) {
+            if(flagsType==PL_FLAG_TYPE_LOCK_WAIT) {
                 snprintf(nameStr, maxMsgSize, "%s", name);
-                snprintf(valueStr, maxMsgSize, "[LOCK AVAILABLE]"); v = PL_FLAG_TYPE_DATA_TIMESTAMP;
+                snprintf(valueStr, maxMsgSize, "[LOCK AVAILABLE]"); flagsType = PL_FLAG_TYPE_DATA_TIMESTAMP;
             }
             else snprintf(nameStr, maxMsgSize, "< %s", name);
         }
-        else if(v==PL_FLAG_TYPE_MARKER) {
+        else if(flagsType==PL_FLAG_TYPE_MARKER) {
             // For markers, category is stored instead of evt.name and message instead of evt.filename
             snprintf(nameStr, maxMsgSize, "%s", _record->getString(evt.filenameIdx).value.toChar());
             snprintf(valueStr, maxMsgSize, "[MARKER '%s']", name);
-            v = PL_FLAG_TYPE_DATA_TIMESTAMP;
+            flagsType = PL_FLAG_TYPE_DATA_TIMESTAMP;
             lineQty = _record->getString(evt.filenameIdx).lineQty; // Update
         }
-        else if(v==PL_FLAG_TYPE_THREADNAME) {
+        else if(flagsType==PL_FLAG_TYPE_THREADNAME) {
             snprintf(nameStr, maxMsgSize, "%s", name);
-            snprintf(valueStr, maxMsgSize, "[THREAD NAME]"); v = PL_FLAG_TYPE_DATA_NONE;
+            snprintf(valueStr, maxMsgSize, "[THREAD NAME]"); flagsType = PL_FLAG_TYPE_DATA_NONE;
         }
-        else if(v==PL_FLAG_TYPE_LOCK_ACQUIRED)  {
+        else if(flagsType==PL_FLAG_TYPE_LOCK_ACQUIRED)  {
             snprintf(nameStr, maxMsgSize, "%s", name);
-            snprintf(valueStr, maxMsgSize, "[LOCK ACQUIRED]"); v = PL_FLAG_TYPE_DATA_TIMESTAMP;
+            snprintf(valueStr, maxMsgSize, "[LOCK ACQUIRED]"); flagsType = PL_FLAG_TYPE_DATA_TIMESTAMP;
         }
-        else if(v==PL_FLAG_TYPE_LOCK_RELEASED)  {
+        else if(flagsType==PL_FLAG_TYPE_LOCK_RELEASED)  {
             snprintf(nameStr, maxMsgSize, "%s", name);
-            snprintf(valueStr, maxMsgSize, "[LOCK RELEASED]"); v = PL_FLAG_TYPE_DATA_TIMESTAMP;
+            snprintf(valueStr, maxMsgSize, "[LOCK RELEASED]"); flagsType = PL_FLAG_TYPE_DATA_TIMESTAMP;
         }
-        else if(v==PL_FLAG_TYPE_LOCK_NOTIFIED) {
+        else if(flagsType==PL_FLAG_TYPE_LOCK_NOTIFIED) {
             snprintf(nameStr, maxMsgSize, "%s", name);
-            snprintf(valueStr, maxMsgSize, "[LOCK NOTIFIED]"); v = PL_FLAG_TYPE_DATA_TIMESTAMP;
+            snprintf(valueStr, maxMsgSize, "[LOCK NOTIFIED]"); flagsType = PL_FLAG_TYPE_DATA_TIMESTAMP;
         }
         else snprintf(nameStr, maxMsgSize, "%s", name);
 
-        switch(v) {
+        switch(flagsType) {
         case PL_FLAG_TYPE_DATA_NONE:      break;
         case PL_FLAG_TYPE_DATA_TIMESTAMP: snprintf(timeStr,  maxMsgSize, "%f s", 0.000000001*evt.vS64); break;
         case PL_FLAG_TYPE_DATA_S32:       snprintf(valueStr, maxMsgSize, isHexa?"%X":"%d",   evt.vInt); break;
@@ -493,15 +494,16 @@ vwMain::drawText(Text& t)
         case PL_FLAG_TYPE_DATA_FLOAT:     snprintf(valueStr, maxMsgSize, "%f",  evt.vFloat); break;
         case PL_FLAG_TYPE_DATA_DOUBLE:    snprintf(valueStr, maxMsgSize, "%lf", evt.vDouble); break;
         case PL_FLAG_TYPE_DATA_STRING:    snprintf(valueStr, maxMsgSize, "%s",  _record->getString(evt.vStringIdx).value.toChar()); break;
-        default:                          snprintf(valueStr, maxMsgSize, "<BAD TYPE %d>", v);
+        default:                          snprintf(valueStr, maxMsgSize, "<BAD TYPE %d>", flagsType);
         };
         float heightPix = fontHeight*lineQty;
 
         // Update the level info
+        flagsType = (flags&PL_FLAG_TYPE_MASK); // Put back the original value, which may have been modified for display's needs
         if(flags&PL_FLAG_SCOPE_BEGIN) {
             auto& li = levelElems[nestingLevel];
             li.nameIdx        = evt.nameIdx;
-            li.flags          = (flags&PL_FLAG_SCOPE_MASK)? ((flags&PL_FLAG_TYPE_MASK) | PL_FLAG_SCOPE_BEGIN) : flags;
+            li.flags          = flagsType | PL_FLAG_SCOPE_BEGIN;
             li.lIdx           = tci.lIdx;
             li.scopeStartTimeNs = evt.vS64;
             li.scopeEndTimeNs   = scopeEndTimeNs;
@@ -510,14 +512,14 @@ vwMain::drawText(Text& t)
             levelElems[nestingLevel].scopeEndTimeNs = scopeEndTimeNs;
         }
 
-        if(flags&PL_FLAG_SCOPE_MASK) {
+        if((flags&PL_FLAG_SCOPE_MASK) ||
+           (flagsType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && flagsType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) {
             auto& li = levelElems[nestingLevel];
             // Update the mouse time
-            if(isWindowHovered && (flags&PL_FLAG_SCOPE_BEGIN) && mouseY>y) {
-                newMouseTimeNs = isHidden? li.scopeEndTimeNs : li.scopeStartTimeNs;
-            }
-            if(isWindowHovered && (flags&PL_FLAG_SCOPE_END) && mouseY>y) {
-                newMouseTimeNs = li.scopeEndTimeNs;
+            if(isWindowHovered && mouseY>y) {
+                if     (flags&PL_FLAG_SCOPE_BEGIN) newMouseTimeNs = isHidden? li.scopeEndTimeNs : li.scopeStartTimeNs;
+                else if(flags&PL_FLAG_SCOPE_END  ) newMouseTimeNs = li.scopeEndTimeNs;
+                else newMouseTimeNs = evt.vS64;
             }
 
             // Update the best fit for the mouse time display (yellow horizontal line)
@@ -525,8 +527,12 @@ vwMain::drawText(Text& t)
                 mouseTimeBestTimeNs = isHidden? li.scopeEndTimeNs : li.scopeStartTimeNs;
                 mouseTimeBestY      = y+heightPix;
             }
-            if((flags&PL_FLAG_SCOPE_END) && _mouseTimeNs>=li.scopeEndTimeNs && li.scopeEndTimeNs>mouseTimeBestTimeNs) {
+            else if((flags&PL_FLAG_SCOPE_END) && _mouseTimeNs>=li.scopeEndTimeNs && li.scopeEndTimeNs>mouseTimeBestTimeNs) {
                 mouseTimeBestTimeNs = li.scopeEndTimeNs;
+                mouseTimeBestY      = y+heightPix;
+            }
+            else if((flagsType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && flagsType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST) && _mouseTimeNs>=evt.vS64) {
+                mouseTimeBestTimeNs = _mouseTimeNs;
                 mouseTimeBestY      = y+heightPix;
             }
         }
@@ -548,7 +554,7 @@ vwMain::drawText(Text& t)
                 getSynchronizedRange(t.syncMode, syncStartTimeNs, syncTimeRangeNs);
 
                 // Click: set timeline position at middle screen only if outside the center third of screen
-                double targetTimeNs = li.scopeStartTimeNs; // + ((1 || li.scopeEndTimeNs<0.)? 0. : 0.5*(li.scopeEndTimeNs-li.scopeStartTimeNs));
+                double targetTimeNs = li.scopeStartTimeNs;
                 if((flags&PL_FLAG_SCOPE_END) && li.scopeEndTimeNs>=0.) targetTimeNs = li.scopeEndTimeNs;
                 else if((flags&PL_FLAG_TYPE_MASK)>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && (flags&PL_FLAG_TYPE_MASK)<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST) {
                     targetTimeNs = evt.vS64;
@@ -584,17 +590,19 @@ vwMain::drawText(Text& t)
                     prepareGraphContextualMenu(t.threadId, t.ctxNestingLevel, (flags&PL_FLAG_SCOPE_END)? (levelElems[hlLevel].lIdx&(~1)) : tci.lIdx,
                                                0, _record->durationNs);
                 }
-
             }
 
             // Tooltip
-            if(flags&PL_FLAG_SCOPE_BEGIN && scopeEndTimeNs>=0) {
+            if(mouseX<winX+textPixMargin+charWidth*14) {
+                ImGui::SetTooltip("%s", getNiceTime((s64)_mouseTimeNs, 0));
+            }
+            else if((flags&PL_FLAG_SCOPE_BEGIN) && scopeEndTimeNs>=0) {
                 ImGui::SetTooltip("Duration: %s", getNiceDuration(scopeEndTimeNs-(s64)evt.vS64));
             }
         }
         bool doHighlight = (hlLevel>=0 && isScopeHighlighted(t.threadId, levelElems[hlLevel].scopeStartTimeNs,
-                                                            levelElems[hlLevel].scopeEndTimeNs, levelElems[hlLevel].flags,
-                                                            hlLevel, levelElems[hlLevel].nameIdx));
+                                                             levelElems[hlLevel].scopeEndTimeNs, levelElems[hlLevel].flags,
+                                                             hlLevel, levelElems[hlLevel].nameIdx));
 
         // Compute colors
         ImU32  color1;
