@@ -422,7 +422,7 @@ vwMain::drawHistograms(void)
         char tmpStr[64];
         snprintf(tmpStr, sizeof(tmpStr), "Histogram %s###%d", histogram.name.toChar(), histogram.uniqueId);
         bool isOpen = true;
-        if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavInputs)) {
             drawHistogram(histogramIdx);
         }
         ImGui::End();

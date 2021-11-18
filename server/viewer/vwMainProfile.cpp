@@ -450,7 +450,8 @@ vwMain::drawProfiles(void)
         snprintf(tmpStr, sizeof(tmpStr), "%s [%s]###%d", (prof.kind==TIMINGS)? "Timings" : ((prof.kind==MEMORY)? "Alloc mem" : "Alloc calls"),
                  (prof.threadId>=0)? prof.name.toChar() : "(Not present)", prof.uniqueId);
         bool isOpen = true;
-        if(!ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing) || prof.computationLevel<100) {
+        if(!ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavInputs) ||
+           prof.computationLevel<100) {
             if(!isOpen) itemToRemoveIdx = profIdx;
             if(hasColoredTab) ImGui::PopStyleColor(7);
             ImGui::End();

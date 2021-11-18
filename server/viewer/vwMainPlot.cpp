@@ -194,7 +194,7 @@ vwMain::drawPlots(void)
         char tmpStr[64];
         snprintf(tmpStr, sizeof(tmpStr), "Plot #%d###%d", plot.uniqueId, plot.uniqueId);
         bool isOpen = true;
-        if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavInputs)) {
             drawPlot(plotWindowIdx);
         }
         ImGui::End();

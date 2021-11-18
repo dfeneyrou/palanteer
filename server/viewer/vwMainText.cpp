@@ -214,7 +214,7 @@ vwMain::drawTexts(void)
             if(text.newDockId!=0xFFFFFFFF) ImGui::SetNextWindowDockID(text.newDockId);
             else selectBestDockLocation(false, true);
         }
-        if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavInputs)) {
             drawText(text);
         }
 

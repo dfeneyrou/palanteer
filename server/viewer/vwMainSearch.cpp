@@ -179,7 +179,7 @@ vwMain::drawSearch(void)
     bool isOpenWindow = true;
     char windowStr[128];
     snprintf(windowStr, sizeof(windowStr), "Search###%d", _search.uniqueId);
-    if(!ImGui::Begin(windowStr, &isOpenWindow, ImGuiWindowFlags_NoCollapse)) {
+    if(!ImGui::Begin(windowStr, &isOpenWindow, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoNavInputs)) {
         if(isCtrlFHit) { // Case in a tab bar without visibility
             getConfig().setWindowSearchVisibility(true);
             s.isWindowSelected = true;

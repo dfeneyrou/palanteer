@@ -131,7 +131,7 @@ vwMain::drawMarkers(void)
             if(marker.newDockId!=0xFFFFFFFF) ImGui::SetNextWindowDockID(marker.newDockId);
             else selectBestDockLocation(false, true);
         }
-        if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing)) {
+        if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavInputs)) {
             drawMarker(marker);
         }
 

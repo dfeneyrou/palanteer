@@ -231,6 +231,7 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
     ImGui::CreateContext();
     ImGuiIO& io     = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.DisplaySize  = ImVec2(_displayWidth, _displayHeight);
     io.DisplayFramebufferScale  = ImVec2(1., 1.);  // High DPI is handled with increased font size and Imgui spatial constants
     io.IniFilename  = 0; // Disable config file save
