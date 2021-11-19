@@ -1134,7 +1134,8 @@ vwMain::prepareTimeline(Timeline& tl)
         bool   isCoarseScope = false, prevIsCoarse = false;
         s64    timeNs = 0, prevTimeNs = -1, endTimeNs = 0;
         double prevTimePix = -1., endTimePix = -1.;
-        cmRecord::Evt prevE, e; prevE.nameIdx = PL_INVALID;
+        cmRecord::Evt prevE, e;
+        prevE.nameIdx = PL_INVALID; prevE.flags = PL_FLAG_TYPE_LOCK_RELEASED;
         TlCachedLockUse& cachedLockUse = tl.cachedLockUse[lockIdx];
         cachedLockUse.scopes.clear();
         cachedLockUse.scopes.reserve(128);
