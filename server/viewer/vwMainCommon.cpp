@@ -397,14 +397,12 @@ vwMain::synchronizeText(int syncMode, int threadId, int level, int lIdx, s64 tim
     for(auto& mw : _markers) {
         if(mw.syncMode==syncMode) {
             mw.setStartPosition(timeNs, idToIgnore);
-            mw.didUserChangedScrollPosExt = true;
         }
     }
 
     // Search window
     if(_search.syncMode==syncMode) {
         _search.setStartPosition(timeNs, idToIgnore);
-        _search.didUserChangedScrollPosExt = true;
     }
 }
 

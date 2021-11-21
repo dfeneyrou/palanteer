@@ -213,7 +213,7 @@ vwMain::drawSearch(void)
     ImGui::AlignTextToFramePadding();
     if(ImGui::Selectable("Filter threads", false, 0, ImVec2(widthMenu, 0))) ImGui::OpenPopup("Thread search menu");
     if(s.isFilteredOnThread) ImGui::PopStyleColor();
-    if(ImGui::BeginPopup("Thread search menu", ImGuiWindowFlags_AlwaysAutoResize)) {
+    if(ImGui::BeginPopup("Thread search menu", ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoNavInputs)) {
         // Global selection
         bool forceSelectAll   = ImGui::Selectable("Select all",   false, ImGuiSelectableFlags_DontClosePopups);
         bool forceDeselectAll = ImGui::Selectable("Deselect all", false, ImGuiSelectableFlags_DontClosePopups);
@@ -269,20 +269,23 @@ vwMain::drawSearch(void)
                                            ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackEdit |
                                            ImGuiInputTextFlags_CallbackHistory | ImGuiInputTextFlags_AutoSelectAll,
                                            CallbackWrapper::cbk, (void*)&s);
-    // User it Ctrl-F and it is not a "show window"?
+
+    // User hit Ctrl-F and it is not a "show window"?
     if(isCtrlFHit && !s.isWindowSelected) {
         if(ImGui::IsItemActive()) { // Already under focus => hide
             getConfig().setWindowSearchVisibility(false);
             for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(-1);
             setFullScreenView(-1);
         }
-        else s.isWindowSelected = true;  // else set focus
+        else {
+            s.isWindowSelected = true;  // else set focus
+        }
     }
     // Handle the focus
     ImGui::SetItemDefaultFocus();
     if(s.isWindowSelected) {
         s.isWindowSelected = false;
-        ImGui::SetKeyboardFocusHere();
+        ImGui::SetKeyboardFocusHere(-1);
     }
     if(ImGui::IsItemActive()) {
         s.isInputPopupOpen = true;
@@ -362,8 +365,8 @@ vwMain::drawSearch(void)
     // =====================
 
     // Some init
-    ImGui::BeginChild("Search", ImVec2(0,0), false,
-                      ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar);  // Display area is virtual so self-managed
+    ImGui::BeginChild("Search", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar |
+                      ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
     prepareSearch(); // Ensure cache is up to date, even after window creation
     const double winX = ImGui::GetWindowPos().x;
     const double winY = ImGui::GetWindowPos().y;
@@ -383,19 +386,18 @@ vwMain::drawSearch(void)
     // Did the user click on the scrollbar? (detection based on an unexpected position change)
     const double normalizedScrollHeight = 1000000.; // Value does not really matter, it just defines the granularity
     float curScrollPos = ImGui::GetScrollY();
-    if(!s.didUserChangedScrollPos && !s.didUserChangedScrollPosExt && bsAbs(curScrollPos-s.lastScrollPos)>=1.) {
+    if(!s.didUserChangedScrollPos && bsAbs(curScrollPos-s.lastScrollPos)>=1.) {
         plgScope(SEARCH, "New user scroll position from ImGui");
         plgData(SEARCH, "expected pos", s.lastScrollPos);
         plgData(SEARCH, "new pos", curScrollPos);
         s.cachedScrollRatio = curScrollPos/normalizedScrollHeight;
         s.setStartPosition(s.cachedScrollRatio*_record->durationNs);
-        s.didUserChangedScrollPosExt = false;
+        s.didUserChangedScrollPos = false;
     }
 
     // Manage keys and mouse inputs
     // ============================
-    s.didUserChangedScrollPos = s.didUserChangedScrollPosExt;
-    s.didUserChangedScrollPosExt = false;
+    s.didUserChangedScrollPos = false;
 
     int tlWheelCounter = 0;
     if(isWindowHovered) {
@@ -420,7 +422,6 @@ vwMain::drawSearch(void)
             plgText(SEARCH, "Key", "Down pressed");
             if(s.cachedItems.size()>=2) {
                 s.setStartPosition(s.cachedItems[1].timeNs);
-                s.didUserChangedScrollPos = true;
             }
         }
 
@@ -429,7 +430,6 @@ vwMain::drawSearch(void)
             s64 newTimeNs = s.aggregatedIt.getPreviousTime(1);
             if(newTimeNs>=0) {
                 s.setStartPosition(newTimeNs);
-                s.didUserChangedScrollPos = true;
             }
         }
 
@@ -438,7 +438,6 @@ vwMain::drawSearch(void)
             const int steps = bsMin((dragLineQty!=0)?-dragLineQty:10, s.cachedItems.size()-1);
             if(steps>0 && steps<s.cachedItems.size()) {
                 s.setStartPosition(s.cachedItems[steps].timeNs);
-                s.didUserChangedScrollPos = true;
             }
         }
 
@@ -448,7 +447,6 @@ vwMain::drawSearch(void)
             s64 newTimeNs = s.aggregatedIt.getPreviousTime(steps);
             if(newTimeNs>=0) {
                 s.setStartPosition(newTimeNs);
-                s.didUserChangedScrollPos = true;
             }
         }
 

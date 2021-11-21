@@ -49,7 +49,6 @@ vwMain::addMarker(int id, s64 startTimeNs)
 }
 
 
-
 void
 vwMain::MarkerAggregatedIterator::init(cmRecord* record, const bsVec<int>& elemIdxArray, s64 initStartTimeNs, int itemMaxQty,
                                        bsVec<MarkerCacheItem>& items)
@@ -297,8 +296,8 @@ vwMain::drawMarker(Marker& mkr)
     ImGui::Separator();
 
     // Some init
-    ImGui::BeginChild("marker", ImVec2(0,0), false,
-                      ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar);  // Display area is virtual so self-managed
+    ImGui::BeginChild("marker", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar |
+                      ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
     prepareMarker(mkr); // Ensure cache is up to date, even after window creation
     const double winX = ImGui::GetWindowPos().x;
     const double winY = ImGui::GetWindowPos().y;
@@ -313,19 +312,18 @@ vwMain::drawMarker(Marker& mkr)
     // Did the user click on the scrollbar? (detection based on an unexpected position change)
     const double normalizedScrollHeight = 1000000.; // Value does not really matter, it just defines the granularity
     float curScrollPos = ImGui::GetScrollY();
-    if(!mkr.didUserChangedScrollPos && !mkr.didUserChangedScrollPosExt && bsAbs(curScrollPos-mkr.lastScrollPos)>=1.) {
+    if(!mkr.didUserChangedScrollPos && bsAbs(curScrollPos-mkr.lastScrollPos)>=1.) {
         plgScope(MARKER, "New user scroll position from ImGui");
         plgData(MARKER, "expected pos", mkr.lastScrollPos);
         plgData(MARKER, "new pos", curScrollPos);
         mkr.cachedScrollRatio = curScrollPos/normalizedScrollHeight;
         mkr.setStartPosition(mkr.cachedScrollRatio*_record->durationNs);
-        mkr.didUserChangedScrollPosExt = false;
+        mkr.didUserChangedScrollPos = false;
     }
 
     // Manage keys and mouse inputs
     // ============================
-    mkr.didUserChangedScrollPos    = mkr.didUserChangedScrollPosExt;
-    mkr.didUserChangedScrollPosExt = false;
+    mkr.didUserChangedScrollPos = false;
 
     int tlWheelCounter = 0;
     if(isWindowHovered && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
@@ -350,7 +348,6 @@ vwMain::drawMarker(Marker& mkr)
             plgText(MARKER, "Key", "Down pressed");
             if(mkr.cachedItems.size()>=2) {
                 mkr.setStartPosition(mkr.cachedItems[1].evt.vS64);
-                mkr.didUserChangedScrollPos = true;
            }
         }
 
@@ -359,7 +356,6 @@ vwMain::drawMarker(Marker& mkr)
             s64 newTimeNs = mkr.aggregatedIt.getPreviousTime(1);
             if(newTimeNs>=0) {
                 mkr.setStartPosition(newTimeNs);
-                mkr.didUserChangedScrollPos = true;
             }
         }
 
@@ -368,7 +364,6 @@ vwMain::drawMarker(Marker& mkr)
             const int steps = bsMin((dragLineQty!=0)?-dragLineQty:10, mkr.cachedItems.size()-1);
             if(steps>0 && steps<mkr.cachedItems.size()) {
                 mkr.setStartPosition(mkr.cachedItems[steps].evt.vS64);
-                mkr.didUserChangedScrollPos = true;
             }
         }
 
@@ -378,7 +373,6 @@ vwMain::drawMarker(Marker& mkr)
             s64 newTimeNs = mkr.aggregatedIt.getPreviousTime(steps);
             if(newTimeNs>=0) {
                 mkr.setStartPosition(newTimeNs);
-                mkr.didUserChangedScrollPos = true;
             }
         }
 

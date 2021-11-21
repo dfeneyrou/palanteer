@@ -646,8 +646,7 @@ private:
         double lastWinHeight = 0.; // Any growth dirties the cache (need more lines...)
         int    syncMode      = 1;  // 0 = isolated, 1+ = group
         ImGuiID newDockId    = 0xFFFFFFFF;         // 0xFFFFFFFF: use the automatic one
-        bool   didUserChangedScrollPos    = false; // When changed internally (arrow keys, drag...)
-        bool   didUserChangedScrollPosExt = false; // When changed externally (timeline synchro...)
+        bool   didUserChangedScrollPos = false;
         bool   isNew        = true;
         bool   isCacheDirty = true;
         bool   isWindowSelected = true;
@@ -672,7 +671,7 @@ private:
             if(idToIgnore==uniqueId) return;
             forceTimeNs  = timeNs;
             isCacheDirty = true;
-            didUserChangedScrollPosExt = true;
+            didUserChangedScrollPos = true;
             isWindowSelected = doSelectWindow;
         }
     };
@@ -713,8 +712,7 @@ private:
         double lastWinHeight = 0.; // Any growth dirties the cache (need more lines...)
         int    syncMode      = 1;  // 0 = isolated, 1+ = group
         ImGuiID newDockId    = 0xFFFFFFFF;         // 0xFFFFFFFF: use the automatic one
-        bool   didUserChangedScrollPos    = false; // When changed internally (arrow keys, drag...)
-        bool   didUserChangedScrollPosExt = false; // When changed externally (timeline synchro...)
+        bool   didUserChangedScrollPos = false; // When changed externally (timeline synchro...)
         bool   isNew        = true;
         bool   isCacheDirty = true;
         bool   isWindowSelected = true;
@@ -737,7 +735,7 @@ private:
             if(idToIgnore==uniqueId) return;
             forceTimeNs  = timeNs;
             isCacheDirty = true;
-            didUserChangedScrollPosExt = true;
+            didUserChangedScrollPos = true;
         }
         void reset(void) {
             input[0] = 0;

@@ -254,8 +254,8 @@ vwMain::drawText(Text& t)
     ImGui::Separator();
 
     // Some init
-    ImGui::BeginChild("text", ImVec2(0,0), false,
-                      ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar);  // Display area is virtual so self-managed
+    ImGui::BeginChild("text", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar |
+                      ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
     prepareText(t); // Ensure cache is up to date, even after window creation
     if(t.cachedStartParents.empty()) { ImGui::EndChild(); return; } // Sanity
     const double winX = ImGui::GetWindowPos().x;
