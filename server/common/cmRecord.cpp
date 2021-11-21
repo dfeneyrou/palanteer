@@ -629,6 +629,21 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
 }
 
 
+void
+cmRecord::buildMarkerCategories(void)
+{
+    // Loop on threads and categories
+    for(int tId=0; tId<threads.size(); ++tId) {
+        const Thread& t = threads[tId];
+        for(int categoryId=0; categoryId<markerCategories.size(); ++categoryId) {
+            u64 itemHashPath = bsHashStepChain(t.threadHash, markerCategories[categoryId], cmConst::MARKER_NAMEIDX);
+            int* elemIdxPtr  = elemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
+            if(elemIdxPtr) markerElems.push_back( { *elemIdxPtr, tId, categoryId } );
+        }
+    }
+}
+
+
 // ================================================================
 // Load record
 // ================================================================
@@ -1005,9 +1020,12 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
 
     // Manage external strings, units and thread groups
     record->loadExternalStrings();
-    for(int i=0; i<strings.size(); ++i) record->updateString(i);
-    for(int i=0; i<record->threads.size(); ++i) record->updateThreadString(i);
+    for(int sId=0; sId<strings.size(); ++sId) record->updateString(sId);
+    for(int tId=0; tId<record->threads.size(); ++tId) record->updateThreadString(tId);
     record->sortStrings();
+
+    // Build the marker categories items
+    record->buildMarkerCategories();
 
     return record;
 }

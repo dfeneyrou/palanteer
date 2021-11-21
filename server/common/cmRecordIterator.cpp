@@ -1074,19 +1074,13 @@ cmRecordIteratorSoftIrq::getNextSwitch(bool& isCoarse, s64& timeNs, s64& endTime
 // Marker iterator (for timeline)
 // ======================================
 
+// threadId>=0  and nameIdx==-1 for timeline thread triangles
+// threadId>=0  and nameIdx>=0  for plot/histogram of a specific category
 cmRecordIteratorMarker::cmRecordIteratorMarker(const cmRecord* record, int threadId, u32 nameIdx, s64 timeNs, double nsPerPix) :
     cmRecordIteratorTimePlotBase(record, &(record->markerLastLiveEvtChunk))
 {
-    init(record, threadId, nameIdx, timeNs, nsPerPix); // This iterator may be re-initialized
-}
-
-// threadId==-1 and nameIdx==-1 for marker view (global)
-// threadId>=0  and nameIdx==-1 for timeline thread triangles
-// threadId>=0  and nameIdx>=0  for plot/histogram of a specific category
-void
-cmRecordIteratorMarker::init(const cmRecord* record, int threadId, u32 nameIdx, s64 timeNs, double nsPerPix)
-{
-    plgScope(ITMARKER, "cmRecordIteratorMarker::init");
+    plAssert(threadId>=0);
+    plgScope(ITMARKER, "cmRecordIteratorMarker::cmRecordIteratorMarker");
     plgVar(ITMARKER, threadId);
     _record  = record;
     _lastLiveEvtChunk = &(record->markerLastLiveEvtChunk);
@@ -1094,9 +1088,8 @@ cmRecordIteratorMarker::init(const cmRecord* record, int threadId, u32 nameIdx, 
 
     // Get the hashpath, either relative to a thread or global
     u64 hashPath;
-    if     (threadId<0)          hashPath = bsHashStepChain(0 /*harcoded streamId*/, cmConst::MARKER_NAMEIDX); // @#TEMP The marker window shall be upgraded to mux the input from all streamId. When this time arrives, this "0" shall be replaced by a dynamic streamId
-    else if(nameIdx!=PL_INVALID) hashPath = bsHashStepChain(record->threads[threadId].threadHash, nameIdx, cmConst::MARKER_NAMEIDX);
-    else                         hashPath = bsHashStepChain(record->threads[threadId].threadHash, cmConst::MARKER_NAMEIDX);
+    if(nameIdx!=PL_INVALID) hashPath = bsHashStepChain(record->threads[threadId].threadHash, nameIdx, cmConst::MARKER_NAMEIDX);
+    else                    hashPath = bsHashStepChain(record->threads[threadId].threadHash, cmConst::MARKER_NAMEIDX);
 
     // Get the marker plot elem
     int* elemIdxPtr = record->elemPathToId.find(hashPath, cmConst::MARKER_NAMEIDX);
@@ -1125,20 +1118,6 @@ cmRecordIteratorMarker::init(const cmRecord* record, int elemIdx, s64 timeNs, do
 }
 
 
-cmRecordIteratorMarker::cmRecordIteratorMarker(const cmRecord* record, int idx) :
-    cmRecordIteratorTimePlotBase(record, &(record->markerLastLiveEvtChunk))
-{
-    plgScope(ITMARKER, "cmRecordIteratorMarker::cmRecordIteratorMarker");
-    plgVar(ITMARKER, idx);
-    _pmIdx = idx;
-
-    // Get the marker plot elem
-    int* elemIdxPtr = record->elemPathToId.find(bsHashStepChain(0 /*harcoded streamId*/, cmConst::MARKER_NAMEIDX),
-                                                cmConst::MARKER_NAMEIDX);
-    if(elemIdxPtr) _elemIdx = *elemIdxPtr;
-}
-
-
 bool
 cmRecordIteratorMarker::getNextMarker(bool& isCoarse, cmRecord::Evt& eOut)
 {
@@ -1153,31 +1132,31 @@ cmRecordIteratorMarker::getNextMarker(bool& isCoarse, cmRecord::Evt& eOut)
 }
 
 
-bool
-cmRecordIteratorMarker::getEvent(int idx, cmRecord::Evt& eOut)
+s64
+cmRecordIteratorMarker::getTimeRelativeIdx(int offset)
 {
-    plgScope(ITMARKER, "cmRecordIteratorMarker::getEvent");
+    plgScope(ITMARKER, "cmRecordIteratorMarker::getTimeRelativeIdx");
 
     const cmRecord::Elem&    elem          = _record->elems[_elemIdx];
     const bsVec<chunkLoc_t>& elemChunkLocs = elem.chunkLocs;
     const bsVec<u32>& elemLastLiveLocChunk = elem.lastLiveLocChunk;
+    if((int)_pmIdx+offset<0) { plgText(ITMARKER, "IterMarker", "End of record"); return -1; }
 
     // Get the index of the event from the plot index arrays (full resolution required)
-    int pmrIdx = idx/cmElemChunkSize;
-    int peIdx  = idx%cmElemChunkSize;
-    if(pmrIdx>=elemChunkLocs.size()) { plgText(ITMARKER, "IterMarker", "elem data chunk out of bound"); return false; }
+    int pmrIdx = (_pmIdx+offset)/cmElemChunkSize;
+    int peIdx  = (_pmIdx+offset)%cmElemChunkSize;
+    if(pmrIdx>=elemChunkLocs.size()) { plgText(ITMARKER, "IterMarker", "elem data chunk out of bound"); return -1; }
     const bsVec<u32>& elemChunkData = _record->getElemChunk(elemChunkLocs[pmrIdx], &elemLastLiveLocChunk);
-    if(peIdx>=elemChunkData.size())  { plgText(ITMARKER, "IterMarker", "elem data index out of bound (1)"); return false; }
+    if(peIdx>=elemChunkData.size())  { plgText(ITMARKER, "IterMarker", "elem data index out of bound (1)"); return -1; }
     u32 mIdx = elemChunkData[peIdx];
 
     // Get the event
     int mrIdx = mIdx/cmChunkSize;
     int eIdx  = mIdx%cmChunkSize;
-    if(mrIdx>=_record->markerChunkLocs.size()) { plgText(ITMARKER, "IterMarker", "chunk index out of bound"); return false; }
+    if(mrIdx>=_record->markerChunkLocs.size()) { plgText(ITMARKER, "IterMarker", "chunk index out of bound"); return -1; }
     const bsVec<cmRecord::Evt>& chunkData = _record->getEventChunk(_record->markerChunkLocs[mrIdx], _lastLiveEvtChunk);
-    if(eIdx>=chunkData.size())  { plgText(ITMARKER, "IterMarker", "data index out of bound"); return false; }
-    eOut = chunkData[eIdx];
-    return true;
+    if(eIdx>=chunkData.size())  { plgText(ITMARKER, "IterMarker", "data index out of bound"); return -1; }
+    return chunkData[eIdx].vS64;
 }
 
 

@@ -112,7 +112,7 @@ vwMain::prepareText(Text& t)
     if(eType==PL_FLAG_TYPE_DATA_TIMESTAMP || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) {
         t.firstTimeNs = t.lastTimeNs = csp[0].evt.vS64;
     }
-    t.cachedScrollRatio = (double)t.firstTimeNs/(double)_record->durationNs;
+    t.cachedScrollRatio = bsMinMax((double)t.firstTimeNs/bsMax((double)_record->durationNs, 1.), 0., 1.);
 
     // Compute the hash chain to get the Elem and eventually the color
     u64 hashPathPerLevel[cmConst::MAX_LEVEL_QTY+1];

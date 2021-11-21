@@ -49,6 +49,78 @@ vwMain::addMarker(int id, s64 startTimeNs)
 }
 
 
+
+void
+vwMain::MarkerAggregatedIterator::init(cmRecord* record, const bsVec<int>& elemIdxArray, s64 initStartTimeNs, int itemMaxQty,
+                                       bsVec<MarkerCacheItem>& items)
+{
+    // Loop on elems
+    itElems.clear();
+    itElemsEvts.clear();
+    startTimeNs = initStartTimeNs;
+    bool   isCoarse, isValid;
+    cmRecord::Evt e;
+    for(int elemIdx : elemIdxArray) {
+        // Store the iterator
+        itElems.push_back(cmRecordIteratorMarker(record, elemIdx, startTimeNs, 0.));
+        // and the first element after the date
+        while((isValid=itElems.back().getNextMarker(isCoarse, e)) && e.vS64<startTimeNs) ;
+        if(!isValid) e.vS64 = -1;
+        itElemsEvts.push_back({e, elemIdx });
+    }
+
+    // Get a working copy of the iterators (so that stored iterators are still relative to the start date and we can go 'backward')
+    bsVec<cmRecordIteratorMarker> itElems2 = itElems;
+
+    // Get all items to display
+    items.clear();
+    while(items.size()<itemMaxQty) {
+        // Store the earliest event
+        int earliestIdx    = -1;
+        for(int i=0; i<itElemsEvts.size(); ++i) {
+            if(itElemsEvts[i].evt.vS64>=0 && (earliestIdx==-1 || itElemsEvts[i].evt.vS64<itElemsEvts[earliestIdx].evt.vS64)) earliestIdx = i;
+        }
+        if(earliestIdx<0) break;
+        items.push_back(itElemsEvts[earliestIdx]);
+
+        // Refill the used iterator
+        isValid = itElems2[earliestIdx].getNextMarker(isCoarse, e);
+        if(!isValid) e.vS64 = -1;
+        itElemsEvts[earliestIdx] = {e, itElemsEvts[earliestIdx].elemIdx };
+    }
+}
+
+
+s64
+vwMain::MarkerAggregatedIterator::getPreviousTime(int itemQty)
+{
+    // Initialize the return in time by getting the time for each event just before the start date
+    bsVec<int> offsets(itElems.size());
+    for(int i=0; i< itElems.size(); ++i) {
+        offsets[i] = -1; // One event before the start date (iterator was post incremented once, hence the -1)
+        itElemsEvts[i].evt.vS64 = itElems[i].getTimeRelativeIdx(offsets[i]); // Result is -1 if none
+        if(itElemsEvts[i].evt.vS64>=startTimeNs) { // This case should happen all the time, except when reaching the end of the recorded info
+            itElemsEvts[i].evt.vS64 = itElems[i].getTimeRelativeIdx(--offsets[i]);
+        }
+    }
+
+    s64 previousTimeNs = -1;
+    while((itemQty--)>0) {
+        // Store the earliest time
+        int latestIdx = -1;
+        for(int i=0; i<itElemsEvts.size(); ++i) {
+            if(itElemsEvts[i].evt.vS64>=0 && (latestIdx==-1 || itElemsEvts[i].evt.vS64>itElemsEvts[latestIdx].evt.vS64)) latestIdx = i;
+        }
+        if(latestIdx<0) return previousTimeNs;
+        previousTimeNs = itElemsEvts[latestIdx].evt.vS64;
+
+        // Refill the used iterator
+        itElemsEvts[latestIdx].evt.vS64 = itElems[latestIdx].getTimeRelativeIdx(--offsets[latestIdx]); // Result is -1 if none
+    }
+    return previousTimeNs;
+}
+
+
 void
 vwMain::prepareMarker(Marker& mkr)
 {
@@ -63,7 +135,6 @@ vwMain::prepareMarker(Marker& mkr)
     mkr.cachedItems.clear();
 
     // Precomputations on record (could be done once)
-    mkr.maxIdx = _record->markerEventQty;
     // Category max length
     mkr.maxCategoryLength = 8; // For the header word "Category"
     for(int catNameIdx : _record->markerCategories) {
@@ -77,32 +148,24 @@ vwMain::prepareMarker(Marker& mkr)
         if(length>mkr.maxThreadNameLength) mkr.maxThreadNameLength = length;
     }
 
-    cmRecord::Evt evt;
-    bool isCoarseScope = false;
-    // Resynchonization on a date?
+    // Compute matching marker Elements
+    bsVec<int> elemIdxArray;
+    for(const cmRecord::MarkerElem& me : _record->markerElems) {
+        if(mkr.threadSelection[me.threadId] && mkr.categorySelection[me.categoryId]) elemIdxArray.push_back(me.elemIdx);
+    }
+
+    // Resynchronization on a date?
     if(mkr.forceTimeNs>=0) {
-        cmRecordIteratorMarker itMarker(_record, -1, -1, mkr.forceTimeNs, 0.);
-        // Iterator points somewhere before the date, we need to adjust it
-        while(itMarker.getNextMarker(isCoarseScope, evt) && evt.vS64<mkr.forceTimeNs) ;
-        // Store the adjusted start index
-        mkr.startIdx = bsMax(0, itMarker.getIndex()-1); // -1 because getNextMarker() increments
+        mkr.startTimeNs = mkr.forceTimeNs;
         mkr.forceTimeNs = -1;
     }
 
-    // Collect the lines
-    int  maxLineQty = 1+winHeight/ImGui::GetTextLineHeightWithSpacing();
-    cmRecordIteratorMarker itMarker(_record, mkr.startIdx);
-    while(mkr.cachedItems.size()<maxLineQty && itMarker.getNextMarker(isCoarseScope, evt)) {
-        // Filter here on category and threads
-        int catId = _record->getString(evt.nameIdx).categoryId;
-        plAssert(catId>=0);
-        if(mkr.isFiltered(evt.threadId, catId)) continue;
-        // Find the elemIdx
-        u64  itemHashPath = bsHashStepChain(_record->threads[evt.threadId].threadHash, evt.nameIdx, cmConst::MARKER_NAMEIDX);
-        int* elemIdx      = _record->elemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
-        // Store
-        mkr.cachedItems.push_back({ evt, elemIdx? *elemIdx : -1});
-    }
+    // Get the data
+    int maxLineQty = bsMax(10, 1+winHeight/ImGui::GetTextLineHeightWithSpacing()); // 10 minimum for the page down
+    mkr.aggregatedIt.init(_record, elemIdxArray, mkr.startTimeNs, maxLineQty, mkr.cachedItems);
+
+    // Compute the scroll ratio (for the scroll bar indication) from the dates
+    mkr.cachedScrollRatio = bsMinMax(mkr.startTimeNs/bsMax((double)_record->durationNs, 1.), 0., 1.);
 }
 
 
@@ -169,6 +232,7 @@ vwMain::drawMarker(Marker& mkr)
     // Sanity
     while(mkr.threadSelection  .size()<_record->threads         .size()) mkr.threadSelection  .push_back(true);
     while(mkr.categorySelection.size()<_record->markerCategories.size()) mkr.categorySelection.push_back(true);
+
     // Thread filtering
     float padMenuX    = ImGui::GetStyle().FramePadding.x;
     float offsetMenuX = ImGui::GetStyle().ItemSpacing.x+padMenuX+charWidth*14;
@@ -200,6 +264,7 @@ vwMain::drawMarker(Marker& mkr)
         }
         ImGui::EndPopup();
     }
+
     // Category filtering
     offsetMenuX += charWidth*(mkr.maxThreadNameLength+1);
     widthMenu = ImGui::CalcTextSize("Category").x;
@@ -246,28 +311,29 @@ vwMain::drawMarker(Marker& mkr)
     char tmpStr [maxMsgSize];
 
     // Did the user click on the scrollbar? (detection based on an unexpected position change)
+    const double normalizedScrollHeight = 1000000.; // Value does not really matter, it just defines the granularity
     float curScrollPos = ImGui::GetScrollY();
     if(!mkr.didUserChangedScrollPos && !mkr.didUserChangedScrollPosExt && bsAbs(curScrollPos-mkr.lastScrollPos)>=1.) {
         plgScope(MARKER, "New user scroll position from ImGui");
         plgData(MARKER, "expected pos", mkr.lastScrollPos);
         plgData(MARKER, "new pos", curScrollPos);
-        mkr.startIdx = curScrollPos/fontHeight;
-        mkr.isCacheDirty = true;
+        mkr.cachedScrollRatio = curScrollPos/normalizedScrollHeight;
+        mkr.setStartPosition(mkr.cachedScrollRatio*_record->durationNs);
+        mkr.didUserChangedScrollPosExt = false;
     }
 
     // Manage keys and mouse inputs
     // ============================
     mkr.didUserChangedScrollPos    = mkr.didUserChangedScrollPosExt;
     mkr.didUserChangedScrollPosExt = false;
+
     int tlWheelCounter = 0;
     if(isWindowHovered && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         // Check mouse input
-        // No Ctrl key: wheel is for the text
-        int textWheelCounter =  (ImGui::GetIO().KeyCtrl)? 0 : (ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion());
-        // Ctrl key: wheel is for the timeline (processed in highlighted text display)
-        tlWheelCounter       = (!ImGui::GetIO().KeyCtrl)? 0 : (ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion());
-        cmRecord::Evt nextEvt;
-        bool eventStatus = false;
+        int textWheelCounter =  (ImGui::GetIO().KeyCtrl)? 0 :
+            (ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion()); // No Ctrl key: wheel is for the text
+        tlWheelCounter       = (!ImGui::GetIO().KeyCtrl)? 0 :
+            (ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline (processed in highlighted text display)
         int  dragLineQty = 0;
         if(ImGui::IsMouseDragging(2)) {
             mkr.isDragging = true;
@@ -280,61 +346,39 @@ vwMain::drawMarker(Marker& mkr)
         } else mkr.dragReminder = 0.;
 
         // Move start position depending on keys, wheel or drag
-        if(ImGui::IsKeyPressed(KC_Down) && mkr.startIdx<mkr.maxIdx-1) {
+        if(ImGui::IsKeyPressed(KC_Down)) {
             plgText(MARKER, "Key", "Down pressed");
-            cmRecordIteratorMarker it(_record, 0);
-            int newStartIdx = mkr.startIdx+1;
-            while(newStartIdx<mkr.maxIdx && (eventStatus=it.getEvent(newStartIdx, nextEvt)) &&
-                  mkr.isFiltered(nextEvt.threadId, _record->getString(nextEvt.nameIdx).categoryId)) ++newStartIdx;
-            if(newStartIdx<mkr.maxIdx && eventStatus) {
-                mkr.startIdx                = newStartIdx;
-                mkr.isCacheDirty            = true;
+            if(mkr.cachedItems.size()>=2) {
+                mkr.setStartPosition(mkr.cachedItems[1].evt.vS64);
                 mkr.didUserChangedScrollPos = true;
-            }
+           }
         }
 
-        if(ImGui::IsKeyPressed(KC_Up) && mkr.startIdx>0) {
+        if(ImGui::IsKeyPressed(KC_Up)) {
             plgText(MARKER, "Key", "Up pressed");
-            cmRecordIteratorMarker it(_record, 0);
-            int newStartIdx = mkr.startIdx-1;
-            while(newStartIdx>=0 && (eventStatus=it.getEvent(newStartIdx, nextEvt)) &&
-                  mkr.isFiltered(nextEvt.threadId, _record->getString(nextEvt.nameIdx).categoryId)) --newStartIdx;
-            if(newStartIdx>=0 && eventStatus) {
-                mkr.startIdx                = newStartIdx;
-                mkr.isCacheDirty            = true;
+            s64 newTimeNs = mkr.aggregatedIt.getPreviousTime(1);
+            if(newTimeNs>=0) {
+                mkr.setStartPosition(newTimeNs);
                 mkr.didUserChangedScrollPos = true;
             }
         }
 
-        if((textWheelCounter<0 || dragLineQty<0 || ImGui::IsKeyPressed(KC_PageDown)) && mkr.startIdx<mkr.maxIdx-1) {
+        if(textWheelCounter<0 || dragLineQty<0 || ImGui::IsKeyPressed(KC_PageDown)) {
             plgText(MARKER, "Key", "Page Down pressed");
-            const int steps = (dragLineQty!=0)?-dragLineQty:10;
-            cmRecordIteratorMarker it(_record, 0);
-            int newStartIdx = mkr.startIdx+1;
-            for(int i=0; i<steps && mkr.startIdx<mkr.maxIdx; ++i) {
-                while(newStartIdx<mkr.maxIdx && (eventStatus=it.getEvent(newStartIdx, nextEvt)) &&
-                      mkr.isFiltered(nextEvt.threadId, _record->getString(nextEvt.nameIdx).categoryId)) ++newStartIdx;
-                if(newStartIdx<mkr.maxIdx && eventStatus) {
-                    mkr.startIdx                = newStartIdx++;
-                    mkr.isCacheDirty            = true;
-                    mkr.didUserChangedScrollPos = true;
-                }
-                else break;
+            const int steps = bsMin((dragLineQty!=0)?-dragLineQty:10, mkr.cachedItems.size()-1);
+            if(steps>0 && steps<mkr.cachedItems.size()) {
+                mkr.setStartPosition(mkr.cachedItems[steps].evt.vS64);
+                mkr.didUserChangedScrollPos = true;
             }
         }
 
-        if((textWheelCounter>0 || dragLineQty>0 || ImGui::IsKeyPressed(KC_PageUp)) && mkr.startIdx>0) {
+        if(textWheelCounter>0 || dragLineQty>0 || ImGui::IsKeyPressed(KC_PageUp)) {
             plgText(MARKER, "Key", "Page Up pressed");
-            const int steps = (dragLineQty!=0)?dragLineQty:10;
-            cmRecordIteratorMarker it(_record, 0);
-            int newStartIdx = mkr.startIdx-1;
-            for(int i=0; i<steps && mkr.startIdx>0; ++i) {
-                while(newStartIdx>0 && (eventStatus=it.getEvent(newStartIdx, nextEvt)) && mkr.isFiltered(nextEvt.threadId, _record->getString(nextEvt.nameIdx).categoryId)) --newStartIdx;
-                if(newStartIdx>=0 && eventStatus) {
-                    mkr.startIdx                = newStartIdx--;
-                    mkr.isCacheDirty            = true;
-                    mkr.didUserChangedScrollPos = true;
-                }
+            const int steps = (dragLineQty!=0)? dragLineQty : 10;
+            s64 newTimeNs = mkr.aggregatedIt.getPreviousTime(steps);
+            if(newTimeNs>=0) {
+                mkr.setStartPosition(newTimeNs);
+                mkr.didUserChangedScrollPos = true;
             }
         }
 
@@ -357,12 +401,12 @@ vwMain::drawMarker(Marker& mkr)
 
     // Set the modified scroll position in ImGui, if not changed through imGui
     if(mkr.didUserChangedScrollPos) {
-        plgData(MARKER, "Set new scroll pos from user", mkr.startIdx);
-        ImGui::SetScrollY(mkr.startIdx*fontHeight);
+        plgData(MARKER, "Set new scroll pos from user", mkr.cachedScrollRatio*normalizedScrollHeight);
+        ImGui::SetScrollY(mkr.cachedScrollRatio*normalizedScrollHeight);
     }
     // Mark the virtual total size
     mkr.lastScrollPos = ImGui::GetScrollY();
-    ImGui::SetCursorPosY(mkr.maxIdx*fontHeight); // Float overrun may create not precise positioning after 2^23 markers (8M), not a big deal
+    ImGui::SetCursorPosY(normalizedScrollHeight);
     plgData(MARKER, "Current scroll pos", mkr.lastScrollPos);
 
     // Compute initial state for all levels

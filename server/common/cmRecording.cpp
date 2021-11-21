@@ -261,19 +261,7 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     ElemBuild& elem  = _recElems[elemIdx];
     INSERT_IN_ELEM(elem, elemIdx, lIdx, evtx.vS64, 1., 1LL<<evtx.threadId);
 
-    // Elem 2: Global storage, for dedicated marker window
-    itemHashPath = bsHashStepChain(tc.streamId, cmConst::MARKER_NAMEIDX);
-    elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
-    if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, itemHashPath, 0, cmConst::MARKER_NAMEIDX, (u32)-1, -1, -1,
-                evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, false, 1., 1. } );
-        _recElemPathToId.insert(itemHashPath, cmConst::MARKER_NAMEIDX, _recElems.size()-1);
-    }
-    elemIdx     = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
-    ElemBuild& elem2 = _recElems[elemIdx];
-    INSERT_IN_ELEM(elem2, elemIdx, lIdx, evtx.vS64, 1., 1LL<<evtx.threadId);
-
-    // Elem 3: Per thread and per nameIdx (=category), for plot & histogram
+    // Elem 2: Per thread and per nameIdx (=category), for plot & histogram
     u64 partialItemHashPath = bsHashStepChain(evtx.nameIdx, cmConst::MARKER_NAMEIDX);
     itemHashPath = bsHashStep(tc.threadHash, partialItemHashPath);
     elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
@@ -284,12 +272,12 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
         if(_doForwardEvents && doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, evtx.flags);
     }
     elemIdx     = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
-    ElemBuild& elem3 = _recElems[elemIdx];
+    ElemBuild& elem2 = _recElems[elemIdx];
     // Update the elem
     double value = evtx.filenameIdx;
-    if(elem3.absYMin>value) elem3.absYMin = value;
-    if(elem3.absYMax<value) elem3.absYMax = value;
-    INSERT_IN_ELEM(elem3, elemIdx, lIdx, evtx.vS64, 1., 1LL<<evtx.threadId);
+    if(elem2.absYMin>value) elem2.absYMin = value;
+    if(elem2.absYMax<value) elem2.absYMax = value;
+    INSERT_IN_ELEM(elem2, elemIdx, lIdx, evtx.vS64, 1., 1LL<<evtx.threadId);
     if(_doForwardEvents && doForwardEvents) _itf->notifyFilteredEvent(elemIdx, evtx.flags, _recStrings[evtx.nameIdx].hash, evtx.vS64, evtx.filenameIdx);
 }
 

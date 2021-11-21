@@ -628,12 +628,18 @@ private:
     // ==============
     struct MarkerCacheItem {
         cmRecord::Evt evt;
-        int elemIdx;
+        int           elemIdx;
+    };
+    struct MarkerAggregatedIterator {
+        void init(cmRecord* record, const bsVec<int>& elemIdxArray, s64 initStartTimeNs,
+                  int itemMaxQty, bsVec<MarkerCacheItem>& items);
+        s64  getPreviousTime(int itemQty);
+        s64  startTimeNs = 0;
+        bsVec<cmRecordIteratorMarker> itElems;
+        bsVec<MarkerCacheItem>        itElemsEvts;
     };
     struct Marker {
         int uniqueId;
-        int startIdx = 0;
-        int maxIdx   = 1;
         int maxCategoryLength   = 1;
         int maxThreadNameLength = 1;
         float  lastScrollPos = 0.;
@@ -648,6 +654,7 @@ private:
         bool   isDragging     = false;
         double dragReminder   = 0.;
         s64    forceTimeNs    = -1;
+        s64    startTimeNs    = 0;
         bsVec<bool> threadSelection;
         bsVec<bool> categorySelection;
         bool isFilteredOnThread   = false;
@@ -658,6 +665,7 @@ private:
         // Cache (rebuilt if dirty)
         double cachedScrollRatio = 0.;
         bsVec<MarkerCacheItem> cachedItems;
+        MarkerAggregatedIterator aggregatedIt;
         // Helpers
         bsString getDescr(void) const;
         void setStartPosition(s64 timeNs, int idToIgnore=-1, bool doSelectWindow=false) {
@@ -666,10 +674,6 @@ private:
             isCacheDirty = true;
             didUserChangedScrollPosExt = true;
             isWindowSelected = doSelectWindow;
-        }
-        bool isFiltered(int threadId, int categoryId) {
-            return ((threadId<threadSelection    .size() && !threadSelection[threadId]) ||
-                    (categoryId<categorySelection.size() && !categorySelection[categoryId]));
         }
     };
     bsVec<Marker> _markers;
@@ -695,8 +699,6 @@ private:
     };
     struct Search {
         int uniqueId;
-        int startIdx = 0;
-        int maxIdx   = 1;
         char input[128] = { 0 };
         bool isInputCaseSensitive = false;
         bool isInputPopupOpen  = false;

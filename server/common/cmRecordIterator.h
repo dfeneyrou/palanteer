@@ -151,12 +151,9 @@ public:
     cmRecordIteratorMarker(void) = default;
     cmRecordIteratorMarker(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix);
     cmRecordIteratorMarker(const cmRecord* record, int threadId, u32 nameIdx, s64 timeNs, double nsPerPix);
-    cmRecordIteratorMarker(const cmRecord* record, int idx); // Implies global marker data
-    void init(const cmRecord* record, int threadId, u32 nameIdx, s64 timeNs, double nsPerPix);
     void init(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix);
     bool getNextMarker(bool& isCoarse, cmRecord::Evt& e);
-    bool getEvent(int idx, cmRecord::Evt& e);
-    int  getIndex(void) const { plAssert(_mrLevel<0, "Usable only in full resolution"); return _pmIdx; }
+    s64  getTimeRelativeIdx(int offset); // Works only for full res
 };
 
 

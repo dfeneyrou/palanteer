@@ -133,7 +133,7 @@ vwMain::prepareSearch(void)
         if(length>s.maxThreadNameLength) s.maxThreadNameLength = length;
     }
 
-    // Resynchonization on a date?
+    // Resynchronization on a date?
     if(s.forceTimeNs>=0) {
         s.startTimeNs = s.forceTimeNs;
         s.forceTimeNs = -1;

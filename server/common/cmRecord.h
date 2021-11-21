@@ -159,6 +159,13 @@ public:
         u32 allocMIdx;
     };
 
+    // Marker category
+    struct MarkerElem {
+        int elemIdx;
+        int threadId;
+        int categoryId;  // Corresponding nameIdx can be retrieved with the field 'markerCategories'
+    };
+
 #define LOC_STORAGE(name)                      \
     bsVec<Evt>        name##LastLiveEvtChunk;  \
     bsVec<chunkLoc_t> name##ChunkLocs
@@ -274,6 +281,9 @@ public:
     // Live update
     bool updateFromDelta(Delta* delta);
 
+    // Others
+    void buildMarkerCategories(void);
+
     // Fields
     bsString appName;
     bsString recordPath;
@@ -298,6 +308,7 @@ public:
     bsVec<Thread>      threads;
     bsVec<Elem>        elems;
     bsVec<int>         markerCategories;
+    bsVec<MarkerElem>  markerElems;
     bsHashMap<int,int> elemPathToId;
     RecError errors[MAX_REC_ERROR_QTY];
 
