@@ -28,17 +28,17 @@ class vwConst {
  public:
 
     // Application constants
-    static constexpr int    CACHE_MB_MIN              = 50;      // Minimum and maximum cache size (MB)
+    static constexpr int    CACHE_MB_MIN              = 50;       // Minimum and maximum cache size (MB)
     static constexpr int    CACHE_MB_MAX              = 1000;
-    static constexpr double ANIM_DURATION_US          = 100000.; // Transitions of 100 ms (trade-off reactivity-visibility)
-    static constexpr bsUs_t COMPUTATION_TIME_SLICE_US = 100000.; // Duration of a chunk of computation (profile, histogram)
-    static constexpr double DCLICK_RANGE_FACTOR       = 3.;      // The range is N times the item size
-    static constexpr int    MAX_EXTRA_LINE_PER_CONFIG = 500;     // Persistence of (temporarily) non used config file lines
+    static constexpr bsUs_t ANIM_DURATION_US          = 100000;   // Transitions of 100 ms (trade-off reactivity-visibility)
+    static constexpr bsUs_t COMPUTATION_TIME_SLICE_US = 100000;   // Duration of a chunk of computation (profile, histogram)
+    static constexpr s64    DCLICK_RANGE_FACTOR       = 3;      // The range is N times the item size
+    static constexpr int    MAX_EXTRA_LINE_PER_CONFIG = 500;      // Persistence of (temporarily) non used config file lines
     static constexpr int    CLI_HISTORY_MAX_LINE_QTY  = 100;
-    static constexpr float  TEXT_BG_FOOTPRINT_ALPHA   = 0.15;
-    static constexpr float  MEM_BG_FOOTPRINT_ALPHA    = 0.25;
-    static constexpr double OVERVIEW_VBAR_WIDTH       = 8.;
-    static constexpr double CLI_CONSOLE_MIN_HEIGHT    = 100.; // Pixels
+    static constexpr float  TEXT_BG_FOOTPRINT_ALPHA   = 0.15f;
+    static constexpr float  MEM_BG_FOOTPRINT_ALPHA    = 0.25f;
+    static constexpr float  OVERVIEW_VBAR_WIDTH       = 8.f;
+    static constexpr float  CLI_CONSOLE_MIN_HEIGHT    = 100.f; // Pixels
     static constexpr int    FONT_SIZE_MIN = 10;
     static constexpr int    FONT_SIZE_MAX = 30;
     static constexpr int    LOCK_LATENCY_LIMIT_MAX_US = 20000;  // Maximum lock latency limit set to 20 ms

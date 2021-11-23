@@ -47,17 +47,17 @@ vwConfig::vwConfig(vwMain* main, const bsString& programDataPath) :
         float r, g, b;
 
         // Create the color from the hue modulo 8. Some adjustment are required due to perceptual
-        float h = hues[i8]/360.;
-        float s = ((i& 0x8)==0)? 1.0 : 0.5;
-        float v = ((i&0x10)==0)? 1.0 : 0.55;
-        if(i<16 && (i==8 || i8==1 || i8==2 || i8==3)) v -= 0.2;  // Yellow, green, cyan too bright
-        else if(i16==5 || i16==6 || i16==7) s -= 0.1;  // Dark blue, violet and magenta  are too saturated
+        float h = hues[i8]/360.f;
+        float s = ((i& 0x8)==0)? 1.0f : 0.5f;
+        float v = ((i&0x10)==0)? 1.0f : 0.55f;
+        if(i<16 && (i==8 || i8==1 || i8==2 || i8==3)) v -= 0.2f;  // Yellow, green, cyan too bright
+        else if(i16==5 || i16==6 || i16==7) s -= 0.1f;  // Dark blue, violet and magenta  are too saturated
 
         // Build the dark and light colors from the average one
-        ImGui::ColorConvertHSVtoRGB(h, s, bsMin(1.0f, 1.2*v), r, g, b); // Boost a bit the value for light color
-        _colorPaletteLight.push_back(ImVec4(r, g, b, 1.));
-        ImGui::ColorConvertHSVtoRGB(h, s, 0.9*v, r, g, b); // Reduce a bit the value for dark color
-        _colorPaletteDark.push_back(ImVec4(r, g, b, 1.));
+        ImGui::ColorConvertHSVtoRGB(h, s, bsMin(1.0f, 1.2f*v), r, g, b); // Boost a bit the value for light color
+        _colorPaletteLight.push_back(ImVec4(r, g, b, 1.f));
+        ImGui::ColorConvertHSVtoRGB(h, s, 0.9f*v, r, g, b); // Reduce a bit the value for dark color
+        _colorPaletteDark.push_back(ImVec4(r, g, b, 1.f));
     }
 
     // Optimize allocations
@@ -731,7 +731,7 @@ vwConfig::loadGlobal(void)
         READ_GLOBAL(vTimelineSpacing, 1, "%d", &tmp);
         if(!strncmp(line, "vTimelineSpacing", kwLength)) {
             if(sscanf(line+kwLength+1, "%d", &tmp)!=1) { _main->log(cmLogKind::LOG_WARNING, "Unable to read global config for field 'vTimelineSpacing'\n"); }
-            _vTimelineSpacing = 0.01*tmp;
+            _vTimelineSpacing = 0.01f*tmp;
         }
         READ_GLOBAL(winVisiCatalog, 1, "%d", &_winVisiCatalog);
         READ_GLOBAL(winVisiRecord, 1, "%d", &_winVisiRecord);
@@ -898,7 +898,7 @@ vwConfig::loadApplication(const bsString& appName)
             else isKwFound = true;                                        \
         }
         u64 hash = 0;
-        int tmp1, tmp2, tmp3;
+        int tmp1=0, tmp2=0, tmp3=0;
         bool isKwFound = false;
 
         // Lock latency

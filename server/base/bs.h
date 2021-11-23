@@ -51,8 +51,8 @@ typedef u32 bsColor_t;   // 0xAABBGGRR, directly convertible in GL color
 // Utils
 template <class T> T    bsAbs(T a) { return (a>=0.)? a:-a; }
 template <class T> T    bsRound(T a) { return (a>=0.)? (a+0.5):-(0.5-a); }
-template <class T1, class T2> T1 bsMax(T1 a, T2 b) { return a>b? a:b; }
-template <class T1, class T2> T1 bsMin(T1 a, T2 b) { return a<b? a:b; }
+template <class T1, class T2> T1 bsMax(T1 a, T2 b) { return (T1)(a>b? a:b); }
+template <class T1, class T2> T1 bsMin(T1 a, T2 b) { return (T1)(a<b? a:b); }
 template <class T> T    bsMinMax(T v, T min, T max) { return v<=min? min: ((v>=max)?max:v); }
 template <class T> int  bsSign(T a)     { return a>=0? 1:-1; }
 template <class T> void bsSwap(T& a, T& b) { T tmp = b; b = a; a = tmp; }
@@ -89,7 +89,7 @@ struct bsChar {
     u16      style; // 4 fg + 4 bg + 3 delta font size (+/-4) + 5 reserved
     // Accessors
     static inline u16 getStyle(u32 fColorIdx, u32 bColorIdx, int deltaSize) {
-        return ((fColorIdx&0xF)<<0) | ((bColorIdx&0xF)<<4) | (bsMinMax(deltaSize+3, 0, 7)<<8);
+        return (u16)(((fColorIdx&0xF)<<0) | ((bColorIdx&0xF)<<4) | (bsMinMax(deltaSize+3, 0, 7)<<8));
     }
     static inline u16 getFColorIdx(u16 style) { return style&0xF; }
     static inline u16 getBColorIdx(u16 style) { return (style>>4)&0xF; }

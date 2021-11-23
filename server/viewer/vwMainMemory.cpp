@@ -40,10 +40,10 @@
 //                    There shall be a checkbox. And also the syncMode selector for the table view (which seems another complete kind of view, not a satellite viewlet from memory timeline)
 
 
-constexpr double CALL_BIN_PIX      = 10.;
-constexpr int    CALL_BIN_MARGIN   = 2;
-constexpr double BLOCK_MIN_ROW_PIX = 4.;
-constexpr int    SMALL_BLOCK_PATTERN_WIDTH = 20;
+constexpr int   CALL_BIN_PIX      = 10;
+constexpr int   CALL_BIN_MARGIN   = 2;
+constexpr float BLOCK_MIN_ROW_PIX = 4.f;
+constexpr int   SMALL_BLOCK_PATTERN_WIDTH = 20;
 
 
 bsString
@@ -61,20 +61,20 @@ vwMain::MemoryTimeline::getDescr(void) const
 struct MemoryDrawHelper {
     vwMain*   main;
     cmRecord* record;
-    double winX;
-    double winY;
-    double winWidth;
-    double winHeight;
-    double fontHeight;
-    double fontHeightNoSpacing;
-    double fontSpacing;
-    double callBarHeight;
-    double fullHeaderHeight;
-    double threadTitleMargin;
-    double drawableHeight;
+    float winX;
+    float winY;
+    float winWidth;
+    float winHeight;
+    float fontHeight;
+    float fontHeightNoSpacing;
+    float fontSpacing;
+    float callBarHeight;
+    float fullHeaderHeight;
+    float threadTitleMargin;
+    float drawableHeight;
     bool   isWindowHovered;
-    double mouseX;
-    double mouseY;
+    float mouseX;
+    float mouseY;
     // Draw helpers
     u32  drawMemoryCurves    (vwMain::MemoryTimeline& mw);
     void drawDetailedBlocks  (vwMain::MemoryTimeline& mw);
@@ -204,14 +204,14 @@ MemoryDrawHelper::drawMemoryCurves(vwMain::MemoryTimeline& mw)
     plgScope(MEM, "drawMemoryCurves");
 
     vwConfig& cfg = main->getConfig();
-    const double pointSize      = 3.;
+    const float pointSize      = 3.;
     const double xFactor        = winWidth/bsMax(1., mw.timeRangeNs);
     const double mouseTimeToPix = winX+(main->_mouseTimeNs-mw.startTimeNs)*xFactor;
     struct ClosePoint {
         vwMain::MemCachedPoint point;
         double distanceX  = 1e300;
         double deltaValue = 0.;
-        double x, y;
+        float x, y;
     };
     ClosePoint closestPoint    = { { 0, 0., 0, 0, PL_INVALID, PL_INVALID } };
     int        closestPointTId = -1;
@@ -259,7 +259,7 @@ MemoryDrawHelper::drawMemoryCurves(vwMain::MemoryTimeline& mw)
         // Draw only if the thread is expanded
         if(isGroupExpanded && ti.isExpanded) {
             baseValue += mct.maxAllocSizeValue;
-            double baseY = winY+fullHeaderHeight+yFactor*(baseValue-mw.viewByteMin);
+            float baseY = winY+fullHeaderHeight+(float)(yFactor*(baseValue-mw.viewByteMin));
             baseValue += vSpacing/yFactor;
             const ImColor colorPoint   = cfg.getThreadColor(tId, true);
             const ImVec4  colorBase    = cfg.getThreadColor(tId);
@@ -267,22 +267,22 @@ MemoryDrawHelper::drawMemoryCurves(vwMain::MemoryTimeline& mw)
             const ImColor colorOutline = colorPoint;
 
             // Draw the filled outline
-            bool isFirst = true; double lastX=0., lastY=0.;
+            bool isFirst = true; float lastX=0.f, lastY=0.f;
             for(const vwMain::MemCachedPoint& point : mct.points) {
-                double x = winX+xFactor*(point.timeNs-mw.startTimeNs);
-                double y = baseY-yFactor*point.value;
+                float x = winX+(float)(xFactor*(point.timeNs-mw.startTimeNs));
+                float y = baseY-(float)(yFactor*point.value);
                 if(isFirst) { lastX = x; lastY = y; isFirst = false; continue; }
-                DRAWLIST->AddRectFilled(ImVec2(lastX-1., lastY-1.), ImVec2(x+1, baseY+1), colorOutline);
+                DRAWLIST->AddRectFilled(ImVec2(lastX-1.f, lastY-1.f), ImVec2(x+1.f, baseY+1.f), colorOutline);
                 lastX = x; lastY = y;
             }
 
             // Draw the filled curves
             isFirst = true; lastX=0., lastY=0.; double lastValue=0.;
             for(const vwMain::MemCachedPoint& point : mct.points) {
-                const float   dimCoef    = 0.6+0.4*lastValue/mct.maxAllocSizeValue;
+                const float   dimCoef    = 0.6f+0.4f*(float)(lastValue/mct.maxAllocSizeValue);
                 const ImColor colorFill1 = ImColor(dimCoef*colorBase.x, dimCoef*colorBase.y, dimCoef*colorBase.z);
-                double x = winX+xFactor*(point.timeNs-mw.startTimeNs);
-                double y = baseY-yFactor*point.value;
+                float x = winX +(float)(xFactor*(point.timeNs-mw.startTimeNs));
+                float y = baseY-(float)(yFactor*point.value);
                 if(isFirst) { lastX = x; lastY = y; isFirst = false; lastValue = point.value; continue; }
                 DRAWLIST->AddRectFilledMultiColor(ImVec2(lastX, lastY), ImVec2(x, baseY), colorFill1, colorFill1, colorFill, colorFill);
                 lastX = x; lastY = y; lastValue = point.value;
@@ -291,8 +291,8 @@ MemoryDrawHelper::drawMemoryCurves(vwMain::MemoryTimeline& mw)
             // Draw the points (after the polygon, not to be covered)
             ClosePoint cp = { { 0, 0., 0, 0 } }; lastValue = lastX = 0.;
             for(const vwMain::MemCachedPoint& point : mct.points) {
-                double x = winX+xFactor*(point.timeNs-mw.startTimeNs);
-                double y = baseY-yFactor*point.value;
+                float x = winX +(float)(xFactor*(point.timeNs-mw.startTimeNs));
+                float y = baseY-(float)(yFactor*point.value);
 
                 // Update closest point per curve (using the mouse time, not the mouse position which may be in another window)
                 if(mouseTimeToPix>x-pointSize && bsAbs(x-mouseTimeToPix)<cp.distanceX) cp = { point, bsAbs(x-mouseTimeToPix), point.value-lastValue, x, y };
@@ -320,12 +320,12 @@ MemoryDrawHelper::drawMemoryCurves(vwMain::MemoryTimeline& mw)
 
             // Draw the permanent tooltip (small colored box with the value)
             if(cp.distanceX<winWidth || cp.point.timeNs<=mw.startTimeNs) {
-                totalUsedBytes += cp.point.value;
-                double x = winX+bsMax(xFactor*(cp.point.timeNs-mw.startTimeNs), 0.);
-                double y = baseY-yFactor*cp.point.value;
+                totalUsedBytes += (u32)cp.point.value;
+                float x = winX+(float)bsMax(xFactor*(cp.point.timeNs-mw.startTimeNs), 0.);
+                float y = baseY-(float)(yFactor*cp.point.value);
                 snprintf(tmpStr, sizeof(tmpStr), "%s bytes (%s%s)", main->getNiceBigPositiveNumber((s64)cp.point.value),
                          (cp.deltaValue>=0.)?"+":"-", main->getNiceBigPositiveNumber((s64)bsAbs(cp.deltaValue), 1));
-                double sWidth = ImGui::CalcTextSize(tmpStr).x;
+                float sWidth = ImGui::CalcTextSize(tmpStr).x;
                 const ImColor color  = cfg.getThreadColor(tId);
                 DRAWLIST->AddRectFilled(ImVec2(x+5, y), ImVec2(x+5+sWidth, y+fontHeightNoSpacing), color);
                 DRAWLIST->AddText(ImVec2(x+5, y), vwConst::uWhite, tmpStr);
@@ -335,8 +335,8 @@ MemoryDrawHelper::drawMemoryCurves(vwMain::MemoryTimeline& mw)
 
         // Draw the group&thread headers afterwards (for transparency effects)
         bool isThreadHovered=false, isGroupHovered=false;
-        double yHeader = winY+fullHeaderHeight+yFactor*(headerBaseValue-mw.viewByteMin);
-        double yBottom = winY+fullHeaderHeight+yFactor*(baseValue-mw.viewByteMin);
+        float yHeader = winY+fullHeaderHeight+(float)(yFactor*(headerBaseValue-mw.viewByteMin));
+        float yBottom = winY+fullHeaderHeight+(float)(yFactor*(baseValue-mw.viewByteMin));
         if(main->displayTimelineHeader(yHeader, yBottom, ti.threadId, doDrawGroupHeader, false, isThreadHovered, isGroupHovered)) {
             if(mw.allocBlockThreadId==ti.threadId) mw.allocBlockThreadId = -1; // Invalidate the detailed memory blocks
             main->synchronizeThreadLayout();
@@ -381,11 +381,11 @@ MemoryDrawHelper::drawMemoryCurves(vwMain::MemoryTimeline& mw)
     double vBarCoef    = winHeight/bsMax(1., viewByteEnd);
     for(int layoutIdx=0; layoutIdx<vBarUsedLayoutQty; ++layoutIdx) {
         bool isLast = (layoutIdx==vBarUsedLayoutQty-1);
-        DRAWLIST->AddRectFilled(ImVec2(winX+winWidth, winY+vBarCoef*vBarData[layoutIdx].viewByteStart),
-                                ImVec2(winX+winWidth+vwConst::OVERVIEW_VBAR_WIDTH, winY+vBarCoef*(isLast? viewByteEnd : vBarData[layoutIdx+1].viewByteStart)),
+        DRAWLIST->AddRectFilled(ImVec2(winX+winWidth, winY+(float)(vBarCoef*vBarData[layoutIdx].viewByteStart)),
+                                ImVec2(winX+winWidth+vwConst::OVERVIEW_VBAR_WIDTH, winY+(float)(vBarCoef*(isLast? viewByteEnd : vBarData[layoutIdx+1].viewByteStart))),
                                 ImColor(cfg.getThreadColor(vBarData[layoutIdx].threadId)));
     }
-    DRAWLIST->AddRectFilled(ImVec2(winX+winWidth, winY), ImVec2(winX+winWidth+4., winY+winHeight), vwConst::uGreyDark);
+    DRAWLIST->AddRectFilled(ImVec2(winX+winWidth, winY), ImVec2(winX+winWidth+4.f, winY+winHeight), vwConst::uGreyDark);
 
     // Tooltip
     if(isWindowHovered && closestPointTId>=0) {
@@ -422,28 +422,28 @@ MemoryDrawHelper::drawAllocCallTopBars(vwMain::MemoryTimeline& mw)
     plgScope(MEM, "drawAllocCallTopBars");
 
     int    binQty       =  mw.cachedCallBins[0].size(); // Both have same size
-    double binPixOffset = -mw.binTimeOffset*winWidth/mw.timeRangeNs;
+    double binPixOffset = -(double)mw.binTimeOffsetNs*(double)winWidth/(double)mw.timeRangeNs;
 
     // Background (we use transparency)
-    DRAWLIST->AddRectFilled(ImVec2(winX, winY), ImVec2(winX+winWidth, winY+2.*callBarHeight), vwConst::uBlack);
+    DRAWLIST->AddRectFilled(ImVec2(winX, winY), ImVec2(winX+winWidth, winY+2.f*callBarHeight), vwConst::uBlack);
 
     // Data
     for(int callKind=0; callKind<2; ++callKind) { // 0=alloc, 1=dealloc
-        double y             = winY+callKind*callBarHeight;
-        double valueNormCoef = 1./bsMax(1., mw.maxCallQty);
+        float y              = winY+callKind*callBarHeight;
+        double valueNormCoef = 1./(double)bsMax(mw.maxCallQty,1);
         ImU32  colorPrev     = IM_COL32(0,0,0,255);
         for(int i=0; i<binQty; ++i) {
             // Heat colors: black->red->yellow->white
-            constexpr float thres1=0.4, thres2=0.80;
-            float value = valueNormCoef*mw.cachedCallBins[callKind][i]; // In [0.; 1.]
-            ImU32  color = 0.;
-            if     (value>thres2) color = ImColor(1.0f, 1.0f, (value-thres2)/(1.f-thres2),   1.f); // yellow(1,1,0) -> white (1,1,1)
-            else if(value>thres1) color = ImColor(1.0f, (value-thres1)/(thres2-thres1), 0.f, 1.f); // red   (1,0,0) -> yellow(1,1,0)
-            else if(value>0.f)    color = ImColor(bsMax(value,0.5f*thres1)/thres1, 0.f, 0.f, 1.f); // black (0,0,0) -> red   (1,0,0)
+            constexpr double thres1=0.4, thres2=0.8;
+            double value = valueNormCoef*mw.cachedCallBins[callKind][i]; // In [0.; 1.]
+            ImU32  color = 0;
+            if     (value>thres2) color = ImColor(1.0f, 1.0f, (float)((value-thres2)/(1.-thres2)),   1.f);  // yellow(1,1,0) -> white (1,1,1)
+            else if(value>thres1) color = ImColor(1.0f, (float)((value-thres1)/(thres2-thres1)), 0.f, 1.f); // red   (1,0,0) -> yellow(1,1,0)
+            else if(value>0.f)    color = ImColor((float)(bsMax(value,0.5*thres1)/thres1), 0.f, 0.f, 1.f);  // black (0,0,0) -> red   (1,0,0)
 
             // Draw the colored chunk
-            double x1  = winX+bsMin(winWidth, binPixOffset+(i-1)*CALL_BIN_PIX);
-            double x2  = winX+bsMin(winWidth, binPixOffset+i*CALL_BIN_PIX);
+            float x1  = winX+bsMin(winWidth, binPixOffset+(i-1)*CALL_BIN_PIX);
+            float x2  = winX+bsMin(winWidth, binPixOffset+i*CALL_BIN_PIX);
             DRAWLIST->AddRectFilledMultiColor(ImVec2(x1, y), ImVec2(x2, y+callBarHeight), colorPrev, color, color, colorPrev);
             colorPrev = color;
         }
@@ -451,9 +451,9 @@ MemoryDrawHelper::drawAllocCallTopBars(vwMain::MemoryTimeline& mw)
 
     // Some framing
     DRAWLIST->AddRect(ImVec2(winX, winY), ImVec2(winX+winWidth, winY+callBarHeight),
-                      vwConst::uGrey64, 0., ImDrawCornerFlags_All, 2.);
-    DRAWLIST->AddRect(ImVec2(winX, winY+callBarHeight), ImVec2(winX+winWidth, winY+2*callBarHeight),
-                      vwConst::uGrey64, 0., ImDrawCornerFlags_All, 2.);
+                      vwConst::uGrey64, 0.f, ImDrawCornerFlags_All, 2.f);
+    DRAWLIST->AddRect(ImVec2(winX, winY+callBarHeight), ImVec2(winX+winWidth, winY+2.f*callBarHeight),
+                      vwConst::uGrey64, 0.f, ImDrawCornerFlags_All, 2.f);
 }
 
 
@@ -464,18 +464,18 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
     plgScope(MEM, "drawDetailedBlocks");
 
     // Get some values
-    constexpr float blockBorder = 1;
-    const double  textMargin  = 0.5*ImGui::GetStyle().ItemSpacing.x;
+    constexpr float blockBorder = 1.f;
+    const float  textMargin   = 0.5f*ImGui::GetStyle().ItemSpacing.x;
     const ImColor colorBlock1 = ImColor(1.f, 1.f, 1.f, 0.3f); // Transparent
     const ImColor colorBlock2 = ImColor(1.f, 1.f, 1.f, 0.5f);
-    const ImColor colorThin1   = ImColor(1.f, 1.f, 1.f, 0.3f);
+    const ImColor colorThin1  = ImColor(1.f, 1.f, 1.f, 0.3f);
     const ImColor colorThin2  = ImColor(1.f, 1.f, 1.f, 0.4f);
-    const double  yMin        = winY+2*callBarHeight;
+    const float  yMin         = winY+2.f*callBarHeight;
     const double  xFactor     = winWidth/bsMax(1., mw.timeRangeNs);
     const double  yBlockFactor = bsMin(mw.cachedThreadData[mw.allocBlockThreadId].maxAllocSizeValue/(mw.startTimeVPtr+mw.maxVPtr), 1.)*yFactor; // Correction for higher vPtr due to packing holes
     const double  bottomValue = mw.valuePerThread[mw.allocBlockThreadId]+mw.cachedThreadData[mw.allocBlockThreadId].maxAllocSizeValue;;
-    const double  baseY       = winY+fullHeaderHeight+yFactor*(bottomValue-mw.viewByteMin - yBlockFactor/yFactor*mw.startTimeVPtr);
-    const double minCharWidth = 2.*8.+textMargin;
+    const float  baseY        = winY+fullHeaderHeight+(float)(yFactor*(bottomValue-mw.viewByteMin - yBlockFactor/yFactor*mw.startTimeVPtr));
+    const float  minCharWidth = 2.f*8.f+textMargin;
 
     char tmpStr[128];
     mw.workLkupFusionedBlocks.clear();
@@ -488,11 +488,11 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
         if(ma.endTimeNs>=0 && ma.endTimeNs<mw.startTimeNs) continue;
         if(ma.startTimeNs>=mw.startTimeNs+mw.timeRangeNs)  continue;
 
-        double y1 = baseY-yBlockFactor* ma.vPtr;
-        double y2 = baseY-yBlockFactor*(ma.vPtr+ma.size);
+        float y1 = baseY-(float)(yBlockFactor* ma.vPtr);
+        float y2 = baseY-(float)(yBlockFactor*(ma.vPtr+ma.size));
         if(y1<winY+fullHeaderHeight || y2>winY+winHeight) continue;
-        double x1 = winX+xFactor*(ma.startTimeNs-mw.startTimeNs);
-        double x2 = winX+xFactor*(((ma.endTimeNs>=0)? ma.endTimeNs : record->durationNs)-mw.startTimeNs);
+        float x1 = winX+(float)(xFactor*(ma.startTimeNs-mw.startTimeNs));
+        float x2 = winX+(float)(xFactor*(((ma.endTimeNs>=0)? ma.endTimeNs : record->durationNs)-mw.startTimeNs));
         bool isAllocSide   = (ma.endThreadId==0xFFFF || main->_mouseTimeNs-ma.startTimeNs<ma.endTimeNs-main->_mouseTimeNs);
         bool isHighlighted = (main->isScopeHighlighted(mw.allocBlockThreadId, ma.startTimeNs, -1, ma.startLevel-1, ma.startParentNameIdx) ||
                               main->isScopeHighlighted(ma.endThreadId, ma.endTimeNs, -1, ma.endLevel-1, ma.endParentNameIdx));
@@ -510,10 +510,10 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
             } else {
                 // Draw the previous & non-overlapping thin block per strip (blocks are sorted by x)
                 int x      = fusion->x1;
-                int colIdx = fusion->y/BLOCK_MIN_ROW_PIX + x/SMALL_BLOCK_PATTERN_WIDTH;
+                int colIdx = (int)(fusion->y/BLOCK_MIN_ROW_PIX + x/SMALL_BLOCK_PATTERN_WIDTH);
                 while(x<fusion->x2) {
                     int nextX = ((x/SMALL_BLOCK_PATTERN_WIDTH)+1)*SMALL_BLOCK_PATTERN_WIDTH;
-                    DRAWLIST->AddRectFilled(ImVec2(x, fusion->y), ImVec2(nextX, fusion->y-BLOCK_MIN_ROW_PIX), (colIdx&1)? colorThin1 : colorThin2);
+                    DRAWLIST->AddRectFilled(ImVec2((float)x, (float)fusion->y), ImVec2((float)nextX, (float)(fusion->y-BLOCK_MIN_ROW_PIX)), (colIdx&1)? colorThin1 : colorThin2);
                     x = nextX; ++colIdx;
                 }
                 // Insert the new incoming thin scope at the place of the displayed line just above
@@ -550,7 +550,8 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
                 ImGui::TextColored(vwConst::gold, "All allocations present at time %s", main->getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0));
             } else {
                 ImGui::TextColored(vwConst::gold, "Allocations from scope '%s' (%s -> %s)", mw.allocScopeName.toChar(),
-                                   main->getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0), main->getNiceTime(mw.allocBlockEndTimeNs, timeRangeNs, 1));
+                                   main->getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0),
+                                   main->getNiceTime(mw.allocBlockEndTimeNs, timeRangeNs, 1));
             }
             ImGui::Separator();
             ImGui::TextColored(vwConst::grey, "%s", main->getNiceBigPositiveNumber(ma.size)); ImGui::SameLine();
@@ -570,7 +571,7 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
                                hasDetailedName? "/":"", hasDetailedName? record->getString(ma.startNameIdx).value.toChar():"");
             ImGui::SameLine();
             ImGui::TextColored(vwConst::white, "at time"); ImGui::SameLine();
-            ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ma.startTimeNs, 0.1*mw.timeRangeNs)); // Time precision is ~10% if the range
+            ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ma.startTimeNs, (s64)(0.1*mw.timeRangeNs))); // Time precision is ~10% if the range
             if(ma.endTimeNs>=0) {
                 ImGui::TextColored(vwConst::white, "Deallocated in"); ImGui::SameLine();
                 hasDetailedName = !record->getString(ma.endNameIdx).value.empty();
@@ -580,20 +581,20 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
                                    hasDetailedName? "/":"", hasDetailedName? record->getString(ma.endNameIdx).value.toChar():"");
                 ImGui::SameLine();
                 ImGui::TextColored(vwConst::white, "at time"); ImGui::SameLine();
-                ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ma.endTimeNs, 0.1*mw.timeRangeNs));
+                ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ma.endTimeNs, (s64)(0.1*mw.timeRangeNs)));
             }
             ImGui::EndTooltip();
         }
 
         // Draw the rectangle
-        DRAWLIST->AddRectFilled(ImVec2(x1-blockBorder, y1+blockBorder), ImVec2(x2+blockBorder, bsMin(y1-1.,y2)-blockBorder), colorThin1); // Outlook
+        DRAWLIST->AddRectFilled(ImVec2(x1-blockBorder, y1+blockBorder), ImVec2(x2+blockBorder, bsMin(y1-1.f,y2)-blockBorder), colorThin1); // Outlook
         if(isHighlighted) {
-            if(isAllocSide) DRAWLIST->AddRectFilledMultiColor(ImVec2(x1, y1), ImVec2(x2, bsMin(y1-1., y2)),
+            if(isAllocSide) DRAWLIST->AddRectFilledMultiColor(ImVec2(x1, y1), ImVec2(x2, bsMin(y1-1.f, y2)),
                                                               vwConst::uYellow, vwConst::uWhite, vwConst::uWhite, vwConst::uYellow);
-            else            DRAWLIST->AddRectFilledMultiColor(ImVec2(x1, y1), ImVec2(x2, bsMin(y1-1., y2)),
+            else            DRAWLIST->AddRectFilledMultiColor(ImVec2(x1, y1), ImVec2(x2, bsMin(y1-1.f, y2)),
                                                               vwConst::uWhite, vwConst::uYellow, vwConst::uYellow, vwConst::uWhite);
         }
-        else                DRAWLIST->AddRectFilledMultiColor(ImVec2(x1, y1), ImVec2(x2, bsMin(y1-1., y2)),
+        else                DRAWLIST->AddRectFilledMultiColor(ImVec2(x1, y1), ImVec2(x2, bsMin(y1-1.f, y2)),
                                                               colorBlock1, colorBlock2, colorBlock1, colorBlock1);
 
         // Draw the text, if enough space
@@ -609,8 +610,8 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
                     u32 idx = i? ma.startNameIdx:ma.startParentNameIdx;
                     const char* s         = (idx!=PL_INVALID)? record->getString(idx).value.toChar() : "<root>";
                     const char* remaining = 0;
-                    double      textWidth = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), x2-x1-textMargin, 0.0f, s, NULL, &remaining).x;
-                    if(s!=remaining) DRAWLIST->AddText(ImVec2(0.5*(x1+x2-textWidth), 0.5*(y1+y2+(i-1)*2*fontHeightNoSpacing)), vwConst::uGrey64, s, remaining);
+                    float textWidth = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), x2-x1-textMargin, 0.0f, s, NULL, &remaining).x;
+                    if(s!=remaining) DRAWLIST->AddText(ImVec2(0.5f*(x1+x2-textWidth), 0.5f*(y1+y2+(i-1)*2*fontHeightNoSpacing)), vwConst::uGrey64, s, remaining);
                 }
             }
             // Write on 1 line
@@ -623,8 +624,8 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
                     s = tmpStr;
                 } else s = (ma.startParentNameIdx!=PL_INVALID)? record->getString(ma.startParentNameIdx).value.toChar() : "<root>";
                 const char* remaining = 0;
-                double      textWidth = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), x2-x1-textMargin, 0.0f, s, NULL, &remaining).x;
-                if(s!=remaining) DRAWLIST->AddText(ImVec2(0.5*(x1+x2-textWidth), 0.5*(y1+y2-fontHeightNoSpacing)), vwConst::uGrey64, s, remaining);
+                float textWidth = ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), x2-x1-textMargin, 0.0f, s, NULL, &remaining).x;
+                if(s!=remaining) DRAWLIST->AddText(ImVec2(0.5f*(x1+x2-textWidth), 0.5f*(y1+y2-fontHeightNoSpacing)), vwConst::uGrey64, s, remaining);
             }
         }
 
@@ -635,10 +636,10 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
     mw.workLkupFusionedBlocks.exportData(remainingThinBlocks);
     for(auto& fusion : remainingThinBlocks) {
         int x      = fusion.x1;
-        int colIdx = fusion.y/BLOCK_MIN_ROW_PIX + x/SMALL_BLOCK_PATTERN_WIDTH;
+        int colIdx = (int)(fusion.y/BLOCK_MIN_ROW_PIX + x/SMALL_BLOCK_PATTERN_WIDTH);
         while(x<fusion.x2) {
             int nextX = ((x/SMALL_BLOCK_PATTERN_WIDTH)+1)*SMALL_BLOCK_PATTERN_WIDTH;
-            DRAWLIST->AddRectFilled(ImVec2(x, fusion.y), ImVec2(nextX, fusion.y-BLOCK_MIN_ROW_PIX), (colIdx&1)? colorThin1 : colorThin2);
+            DRAWLIST->AddRectFilled(ImVec2((float)x, (float)fusion.y), ImVec2((float)nextX, (float)(fusion.y-BLOCK_MIN_ROW_PIX)), (colIdx&1)? colorThin1 : colorThin2);
             x = nextX; ++colIdx;
         }
     }
@@ -669,7 +670,7 @@ void
 vwMain::prepareMemoryTimeline(MemoryTimeline& mw)
 {
     // Worth working?
-    const double winWidth = bsMax(1.f, ImGui::GetWindowContentRegionMax().x-vwConst::OVERVIEW_VBAR_WIDTH);
+    const float winWidth = bsMax(1.f, ImGui::GetWindowContentRegionMax().x-vwConst::OVERVIEW_VBAR_WIDTH);
     if(!mw.isCacheDirty && mw.lastWinWidth==winWidth) return;
     mw.isCacheDirty = false;
     mw.lastWinWidth = winWidth;
@@ -679,11 +680,11 @@ vwMain::prepareMemoryTimeline(MemoryTimeline& mw)
 
     // Some init for the top call bands
     plgScope(MEM, "prepareMemoryTimeline");
-    int    binQty        = bsDivCeil(winWidth, CALL_BIN_PIX);
+    int    binQty        = bsDivCeil((int)winWidth, CALL_BIN_PIX);
     double timeToBinCoef = ((double)binQty)/mw.timeRangeNs;
     // Margin required to prevent bad display on bar extremities
     // In order to avoid flickering, we phase the bin. Also we add a bin margin on borders to enforce good values there
-    mw.binTimeOffset = (double)CALL_BIN_MARGIN/timeToBinCoef + (timeToBinCoef*mw.startTimeNs-(int)(timeToBinCoef*mw.startTimeNs))/timeToBinCoef;
+    mw.binTimeOffsetNs = (s64)((double)CALL_BIN_MARGIN/timeToBinCoef + (timeToBinCoef*mw.startTimeNs-(int)(timeToBinCoef*mw.startTimeNs))/timeToBinCoef);
     mw.maxCallQty = 15;
     // Initialize the bins
     for(int callKind=0; callKind<2; ++callKind) { // 0=alloc, 1=dealloc
@@ -719,7 +720,7 @@ vwMain::prepareMemoryTimeline(MemoryTimeline& mw)
             if(e->vS64>=mw.startTimeNs+mw.timeRangeNs) break; // Time break after storage as we want 1 point past the range
         }
         if(e && e->memElemValue>0. && e->vS64<mw.startTimeNs+mw.timeRangeNs) { // Push a last point if needed
-            curve.push_back( { (s64)(mw.startTimeNs+mw.timeRangeNs), (double)e->memElemValue, 0, 0, 0, 0 } );
+            curve.push_back( { mw.startTimeNs+mw.timeRangeNs, (double)e->memElemValue, 0, 0, 0, 0 } );
         }
 
         // Update the (de-)allocation call bins with this thread
@@ -732,13 +733,13 @@ vwMain::prepareMemoryTimeline(MemoryTimeline& mw)
             // Collect the alloc and dealloc counts
             double lastPtValue = 0.;
             bool   isFirst = true;
-            cmRecordIteratorMemStat it2(_record, *elemIdx, mw.startTimeNs-mw.binTimeOffset, mw.timeRangeNs/winWidth);
-            while((e=it2.getNextMemStat()) && e->vS64<=mw.startTimeNs+mw.timeRangeNs+mw.binTimeOffset) {
+            cmRecordIteratorMemStat it2(_record, *elemIdx, mw.startTimeNs-mw.binTimeOffsetNs, mw.timeRangeNs/winWidth);
+            while((e=it2.getNextMemStat()) && e->vS64<=mw.startTimeNs+mw.timeRangeNs+mw.binTimeOffsetNs) {
                 // Get the bin index
-                double ptValue = e->memElemValue;
+                double ptValue = (double)e->memElemValue;
                 if(isFirst) { lastPtValue = ptValue; isFirst = false; }
                 if(ptValue==lastPtValue) continue;
-                int binIdx = int(timeToBinCoef*(e->vS64-mw.startTimeNs+mw.binTimeOffset)+CALL_BIN_MARGIN+0.5)-CALL_BIN_MARGIN; // Such rounding works only when positive, hence the +CALL_BIN_MARGIN+0.5
+                int binIdx = int(timeToBinCoef*(e->vS64-mw.startTimeNs+mw.binTimeOffsetNs)+CALL_BIN_MARGIN+0.5)-CALL_BIN_MARGIN; // Such rounding works only when positive, hence the +CALL_BIN_MARGIN+0.5
                 if(binIdx<0 || binIdx>=binQty+2*CALL_BIN_MARGIN) { lastPtValue = ptValue; continue; }
                 // Update the bin
                 double deltaCallQty = ptValue-lastPtValue;
@@ -913,7 +914,7 @@ vwMain::drawMemoryTimelines(void)
 
         if(m.isNew) {
             m.isNew = false;
-             if(m.newDockId!=0xFFFFFFFF) ImGui::SetNextWindowDockID(m.newDockId);
+            if(m.newDockId!=0xFFFFFFFF) ImGui::SetNextWindowDockID(m.newDockId);
             else selectBestDockLocation(true, true);
         }
         if(m.isWindowSelected) {
@@ -955,8 +956,8 @@ vwMain::drawMemoryTimelines(void)
 
         // Window & content
         bool isOpen = true;
-        ImGui::SetNextWindowPos(ImVec2(0.5*getDisplayWidth(),0.5*getDisplayHeight()), ImGuiCond_Once, ImVec2(0.5f,0.5f));
-        ImGui::SetNextWindowSize(ImVec2(0.8*getDisplayWidth(),0.8*getDisplayHeight()), ImGuiCond_Once);
+        ImGui::SetNextWindowPos(ImVec2(0.5f*getDisplayWidth(),0.5f*getDisplayHeight()), ImGuiCond_Once, ImVec2(0.5f,0.5f));
+        ImGui::SetNextWindowSize(ImVec2(0.8f*getDisplayWidth(),0.8f*getDisplayHeight()), ImGuiCond_Once);
         if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse)) {
             drawMemoryDetailList(detailWindowIdx);
         }
@@ -983,9 +984,9 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
     MemoryTimeline& mw = _memTimelines[curMwWindowIdx];
 
     // Ruler and visible range bar
-    double rbWidth, rbStartPix, rbEndPix;
-    double rulerHeight = getTimelineHeaderHeight(false, true);
-    ImGui::BeginChild("ruler", ImVec2(0, 2.0*ImGui::GetStyle().WindowPadding.y+rulerHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
+    float rbWidth, rbStartPix, rbEndPix;
+    float rulerHeight = getTimelineHeaderHeight(false, true);
+    ImGui::BeginChild("ruler", ImVec2(0.f, 2.0f*ImGui::GetStyle().WindowPadding.y+rulerHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
     const bool isBarHovered  = ImGui::IsWindowHovered();
     drawTimeRuler(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowContentRegionMax().x, rulerHeight,
                   mw.startTimeNs, mw.timeRangeNs, mw.syncMode, rbWidth, rbStartPix, rbEndPix);
@@ -996,15 +997,15 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
                       ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
     MemoryDrawHelper ctx;
-    const double fontHeight      = ImGui::GetTextLineHeightWithSpacing();
+    const float fontHeight      = ImGui::GetTextLineHeightWithSpacing();
     const bool   isWindowHovered = ImGui::IsWindowHovered();
-    const double winX      = ImGui::GetWindowPos().x;
-    const double winY      = ImGui::GetWindowPos().y;
-    const double winWidth  = ImGui::GetWindowContentRegionMax().x-vwConst::OVERVIEW_VBAR_WIDTH;
-    const double winHeight = bsMax(1.f, ImGui::GetWindowSize().y);
-    const double mouseX    = ImGui::GetMousePos().x;
-    const double mouseY    = ImGui::GetMousePos().y;
-    const double vMargin   = ImGui::GetTextLineHeight();  // fontHeight margin to allow overlayed text on top;
+    const float winX      = ImGui::GetWindowPos().x;
+    const float winY      = ImGui::GetWindowPos().y;
+    const float winWidth  = ImGui::GetWindowContentRegionMax().x-vwConst::OVERVIEW_VBAR_WIDTH;
+    const float winHeight = bsMax(1.f, ImGui::GetWindowSize().y);
+    const float mouseX    = ImGui::GetMousePos().x;
+    const float mouseY    = ImGui::GetMousePos().y;
+    const float vMargin   = ImGui::GetTextLineHeight();  // fontHeight margin to allow overlayed text on top;
     vwConfig& cfg = getConfig();
 
     ctx.main       = this;
@@ -1015,15 +1016,15 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
     ctx.winHeight  = winHeight;
     ctx.fontHeight = fontHeight;
     ctx.fontHeightNoSpacing = ImGui::GetTextLineHeight();
-    ctx.fontSpacing         = 0.5*ImGui::GetStyle().ItemSpacing.y;
-    ctx.callBarHeight       = 8.;
-    ctx.fullHeaderHeight    = 2*ctx.callBarHeight+vMargin;
-    ctx.threadTitleMargin   = 2*ctx.fontSpacing;
+    ctx.fontSpacing         = 0.5f*ImGui::GetStyle().ItemSpacing.y;
+    ctx.callBarHeight       = 8.f;
+    ctx.fullHeaderHeight    = 2.f*ctx.callBarHeight+vMargin;
+    ctx.threadTitleMargin   = 2.f*ctx.fontSpacing;
     ctx.drawableHeight      = bsMax(ctx.winHeight-ctx.fullHeaderHeight, 1);
     ctx.isWindowHovered     = isWindowHovered;
     ctx.mouseX = ImGui::GetMousePos().x;
     ctx.mouseY = ImGui::GetMousePos().y;
-    const double fullHeaderHeight = ctx.fullHeaderHeight;
+    const float fullHeaderHeight = ctx.fullHeaderHeight;
 
     prepareMemoryTimeline(mw); // Ensure cache is up-to-date, even at window creation
     ctx.computeLayout(mw);
@@ -1051,8 +1052,8 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
         plgScope(MEM, "New user scroll position from ImGui");
         plgData(MEM, "expected pos", mw.lastScrollPos);
         plgData(MEM, "new pos", lastScrollPos);
-        float visibleRatio = (mw.viewByteMax-mw.viewByteMin)/ctx.viewByteMaxLimit;
-        float cursorEndY   = fullHeaderHeight+(winHeight-fullHeaderHeight)/visibleRatio;
+        float visibleRatio = (float)((mw.viewByteMax-mw.viewByteMin)/ctx.viewByteMaxLimit);
+        float cursorEndY   = fullHeaderHeight+(float)((winHeight-fullHeaderHeight)/visibleRatio);
         double deltaY      = (lastScrollPos/(cursorEndY-fullHeaderHeight))*ctx.viewByteMaxLimit-mw.viewByteMin;
         deltaY = bsMin(deltaY, ctx.viewByteMaxLimit-mw.viewByteMax);
         deltaY = bsMax(deltaY, -mw.viewByteMin);
@@ -1086,12 +1087,12 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
     ctx.computeLayout(mw);
 
     const double visibleRatio = (mw.viewByteMax-mw.viewByteMin)/ctx.viewByteMaxLimit;
-    const double cursorEndY   = fullHeaderHeight+(winHeight-fullHeaderHeight)/visibleRatio;
+    const float  cursorEndY   = fullHeaderHeight+(float)((winHeight-fullHeaderHeight)/visibleRatio);
     const double xFactor      = winWidth/bsMax(1., mw.timeRangeNs);
 
     // Set the modified scroll position in ImGui, if not changed through ImGui
     if(mw.didUserChangedScrollPos) {
-        float scrollPosY = bsMax((cursorEndY-fullHeaderHeight)*mw.viewByteMin/ctx.viewByteMaxLimit, 0.);
+        float scrollPosY = (float)bsMax((cursorEndY-fullHeaderHeight)*mw.viewByteMin/ctx.viewByteMaxLimit, 0.);
         plgData(MEM, "Set new scroll pos from user", scrollPosY);
         plgData(MEM, "Max possible pos", ImGui::GetScrollMaxY());
         ImGui::SetScrollY(scrollPosY);
@@ -1116,33 +1117,33 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
 
     // Display the vertical background stripes marking the detailed memory range, if any
     if(mw.allocBlockThreadId>=0) {
-        double firstTimeNs = bsMinMax(mw.allocBlockStartTimeNs, mw.startTimeNs, mw.startTimeNs+mw.timeRangeNs);
-        double lastTimeNs  = bsMinMax(mw.allocBlockEndTimeNs,   mw.startTimeNs, mw.startTimeNs+mw.timeRangeNs);
+        s64 firstTimeNs = bsMinMax(mw.allocBlockStartTimeNs, mw.startTimeNs, mw.startTimeNs+mw.timeRangeNs);
+        s64 lastTimeNs  = bsMinMax(mw.allocBlockEndTimeNs,   mw.startTimeNs, mw.startTimeNs+mw.timeRangeNs);
         if(firstTimeNs!=lastTimeNs || !(firstTimeNs==mw.startTimeNs || firstTimeNs==mw.startTimeNs+mw.timeRangeNs)) {
             const ImVec4  tmp         = cfg.getThreadColor(mw.allocBlockThreadId);
             const ImColor colorThread = ImColor(tmp.x, tmp.y, tmp.z, vwConst::MEM_BG_FOOTPRINT_ALPHA);
-            double x1 = winX+xFactor*(firstTimeNs-mw.startTimeNs);
-            double x2 = bsMax(x1+3., winX+xFactor*(lastTimeNs -mw.startTimeNs));
+            float x1 = winX+(float)(xFactor*(firstTimeNs-mw.startTimeNs));
+            float x2 = bsMax(x1+3.f, winX+(float)(xFactor*(lastTimeNs -mw.startTimeNs)));
             DRAWLIST->AddRectFilled(ImVec2(x1, winY+1), ImVec2(x2, winY+winHeight-1), colorThread);
         }
     }
 
     // Overlay some text: total size and alloc quantity (overlay on previous drawings)
-    const double mouseTimeToPix = winX+(_mouseTimeNs-mw.startTimeNs)*xFactor;
-    if(mouseTimeToPix>=0. && mouseTimeToPix<winX+winWidth) {
+    const float mouseTimeToPix = winX+(float)((_mouseTimeNs-mw.startTimeNs)*xFactor);
+    if(mouseTimeToPix>=0.f && mouseTimeToPix<winX+winWidth) {
 
         // Display the total allocated bytes in text on top of the window
-        constexpr double xMargin = 8.;
+        constexpr float xMargin = 8.f;
         char tmpStr[64];
         snprintf(tmpStr, sizeof(tmpStr), "Total %s bytes in use", getNiceBigPositiveNumber(totalUsedBytes));
-        double sWidth = ImGui::CalcTextSize(tmpStr).x;
-        double y      = winY+fullHeaderHeight-vMargin;
+        float sWidth = ImGui::CalcTextSize(tmpStr).x;
+        float y      = winY+fullHeaderHeight-vMargin;
         DRAWLIST->AddRectFilled(ImVec2(mouseTimeToPix-xMargin-sWidth, y), ImVec2(mouseTimeToPix-xMargin, y+ctx.fontHeightNoSpacing),
                                 IM_COL32(32, 32, 32, 192));
         DRAWLIST->AddText(ImVec2(mouseTimeToPix-xMargin-sWidth, y), vwConst::uYellow, tmpStr);
 
         // Display the call quantities in text inside the alloc/dealloc top bars
-        int callIdx = (int) ((double)bsDivCeil(winWidth, CALL_BIN_PIX)/mw.timeRangeNs*(_mouseTimeNs-mw.startTimeNs+mw.binTimeOffset));
+        int callIdx = (int)((double)bsDivCeil((int)winWidth, CALL_BIN_PIX)/mw.timeRangeNs*(_mouseTimeNs-mw.startTimeNs+mw.binTimeOffsetNs));
         if(callIdx>=0 && callIdx<mw.cachedCallBins[0].size()) {
             int a = mw.cachedCallBins[0][callIdx], b = mw.cachedCallBins[1][callIdx];
             if(a+b>0) {
@@ -1167,7 +1168,7 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
 
     if(isWindowHovered || isBarHovered) {
         // Update the time of the mouse
-        _mouseTimeNs = mw.startTimeNs + (mouseX-winX)/winWidth*mw.timeRangeNs;
+        _mouseTimeNs = mw.startTimeNs + (s64)((mouseX-winX)/winWidth*mw.timeRangeNs);
 
         // Wheel input
         int deltaWheel = (int)io.MouseWheel;
@@ -1179,12 +1180,11 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
             // Ctrl: (Horizontal) range zoom
             if(io.KeyCtrl) {
                 deltaWheel *= cfg.getHWheelInversion();
-                const double scrollFactor = 1.25;
-                double newTimeRangeNs = mw.getTimeRangeNs();
-                while(deltaWheel>0) { newTimeRangeNs /= scrollFactor; --deltaWheel; }
-                while(deltaWheel<0) { newTimeRangeNs *= scrollFactor; ++deltaWheel; }
-                if(newTimeRangeNs<1000.) newTimeRangeNs = 1000.; // No point zooming more than this
-                mw.setView(mw.getStartTimeNs()+(mouseX-winX)/winWidth*(mw.getTimeRangeNs()-newTimeRangeNs), newTimeRangeNs);
+                s64 newTimeRangeNs = mw.getTimeRangeNs();
+                while(deltaWheel>0) { newTimeRangeNs -= newTimeRangeNs/4; --deltaWheel; }
+                while(deltaWheel<0) { newTimeRangeNs += newTimeRangeNs/4; ++deltaWheel; }
+                if(newTimeRangeNs<1000) newTimeRangeNs = 1000; // No point zooming more than this
+                mw.setView(mw.getStartTimeNs()+(s64)((mouseX-winX)/winWidth*(mw.getTimeRangeNs()-newTimeRangeNs)), newTimeRangeNs);
                 changedNavigation = true;
             }
 
@@ -1203,7 +1203,7 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
                 const double newValueRange   = bsMinMax(alpha*(mw.viewByteMax-mw.viewByteMin), 1., 1.05*ctx.viewByteMaxLimit);  // Slight overshoot
 
                 // Compute the new viewByteMin and viewByteMax
-                const double screenRatio = bsMinMax((mouseY-winY-fullHeaderHeight)/ctx.drawableHeight, 0., 1.);
+                const double screenRatio = bsMinMax((mouseY-winY-fullHeaderHeight)/ctx.drawableHeight, 0.f, 1.f);
                 double newValueUnderMouse, newValueMaxLimit;
                 ctx.getValueFromIValue(mw, mouseThreadId, mouseThreadValue, ctx.drawableHeight/newValueRange,
                                        newValueUnderMouse, newValueMaxLimit);
@@ -1227,8 +1227,8 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
             if(ImGui::IsKeyPressed(KC_Right)) deltaMoveX = +0.25*mw.getTimeRangeNs();
         }
         else { // Ctrl+up/down is handled by the mouse wheel code
-            if(ImGui::IsKeyPressed(KC_Left))  deltaMoveX = -mw.getTimeRangeNs();
-            if(ImGui::IsKeyPressed(KC_Right)) deltaMoveX = +mw.getTimeRangeNs();
+            if(ImGui::IsKeyPressed(KC_Left))  deltaMoveX = (double)-mw.getTimeRangeNs();
+            if(ImGui::IsKeyPressed(KC_Right)) deltaMoveX = (double)+mw.getTimeRangeNs();
         }
     }
 
@@ -1242,7 +1242,7 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
 
     if(deltaMoveX!=0. || deltaMoveY!=0.) {
         // Update X coordinate
-        mw.setView(mw.getStartTimeNs()+deltaMoveX, mw.getTimeRangeNs());
+        mw.setView(mw.getStartTimeNs()+(s64)deltaMoveX, mw.getTimeRangeNs());
         changedNavigation = true;
         // Update Y coordinate
         if(mw.viewByteMin+deltaMoveY<0.) deltaMoveY = -mw.viewByteMin;
@@ -1352,7 +1352,7 @@ vwMain::drawMemoryDetailList(int detailWindowIdx)
     plAssert(lkup.size()==data.size());
 
     ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3., style.CellPadding.y));
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3.f, style.CellPadding.y));
     if(ImGui::BeginTable("##table profile", 5, ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollX |
                          ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
         ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
@@ -1408,7 +1408,7 @@ vwMain::drawMemoryDetailList(int detailWindowIdx)
         clipper.Begin(lkup.size());
         while(clipper.Step()) {
             for(int i=clipper.DisplayStart; i<clipper.DisplayEnd; ++i) {
-                double targetTimeNs   = -1;
+                s64 targetTimeNs   = -1;
                 int    targetThreadId = -1;
                 // Byte size
                 int dataIdx = lkup[i];
@@ -1461,19 +1461,19 @@ vwMain::drawMemoryDetailList(int detailWindowIdx)
 
                 // Synchronized navigation
                 if(targetTimeNs>=0 && mdl.syncMode>0) {
-                    double syncStartTimeNs, syncTimeRangeNs;
+                    s64 syncStartTimeNs, syncTimeRangeNs;
                     getSynchronizedRange(mdl.syncMode, syncStartTimeNs, syncTimeRangeNs);
-                    int tlWheelCounter = (!ImGui::GetIO().KeyCtrl)? 0 : (ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline
+                    int tlWheelCounter = (!ImGui::GetIO().KeyCtrl)? 0 : (int)(ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline
 
                     // Click: set timeline position at middle screen only if outside the center third of screen
                     if(ImGui::IsMouseReleased(0) || tlWheelCounter) {
-                        synchronizeNewRange(mdl.syncMode, bsMax(0., targetTimeNs-0.5*syncTimeRangeNs), syncTimeRangeNs);
+                        synchronizeNewRange(mdl.syncMode, bsMax(targetTimeNs-(s64)(0.5*syncTimeRangeNs), 0LL), syncTimeRangeNs);
                         ensureThreadVisibility(mdl.syncMode, targetThreadId);
                         //synchronizeText(mdl.syncMode, targetThreadId, hlLevel, li.lIdx, li.scopeStartTimeNs, t.uniqueId);
                     }
                     // Zoom the timeline
-                   if(tlWheelCounter!=0) {
-                        double newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
+                    if(tlWheelCounter!=0) {
+                        s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
                         synchronizeNewRange(mdl.syncMode, syncStartTimeNs+(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
                                             newTimeRangeNs);
                         ensureThreadVisibility(mdl.syncMode, targetThreadId);

@@ -225,7 +225,7 @@ cmRecord::loadExternalStrings(void)
     // Find the hash->string lookup file (per record or application default)
     _extStringsHashToStrIdx.clear();
     _extStrings.clear();
-#define ADD_STRING(h, s) _extStringsHashToStrIdx.insert((u32)h, h, _extStrings.size()); _extStrings.push_back(s)
+#define ADD_STRING(h, s) _extStringsHashToStrIdx.insert((u32)(h), h, _extStrings.size()); _extStrings.push_back(s)
 
     // Build the lookup
     ADD_STRING(2166136261+streams[0].tlvs[PL_TLV_HAS_HASH_SALT], "");         // Empty string 32 bits hash (FNV 32 offset)

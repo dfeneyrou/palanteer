@@ -117,6 +117,7 @@ typedef HRESULT(WINAPI* PFN_GetDpiForMonitor)(HMONITOR, MONITOR_DPI_TYPE, UINT*,
 void
 osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft, float ratioTop, float ratioRight, float ratioBottom, bool overrideWindowManager)
 {
+    (void)windowTitle; (void)overrideWindowManager;
     plAssert(ratioLeft>=0.   && ratioLeft<=1.);
     plAssert(ratioTop>=0.    && ratioTop<=1.);
     plAssert(ratioRight>=0.  && ratioRight<=1.);
@@ -440,6 +441,7 @@ osGetProgramDataPath(void)
 void
 osPushToClipboard(ClipboardType pushType, const bsStringUtf16& data)
 {
+    (void)pushType;
     if(data.empty() || !OpenClipboard(NULL) || !EmptyClipboard()) return;
 
     HANDLE clipHandle = GlobalAlloc(GMEM_MOVEABLE, (data.size()+1)*sizeof(WCHAR));
@@ -458,6 +460,7 @@ osPushToClipboard(ClipboardType pushType, const bsStringUtf16& data)
 bsStringUtf16
 osReqFromClipboard(ClipboardType reqType)
 {
+    (void)reqType;
     bsStringUtf16 result;
 
     // Open the clipboard
@@ -644,7 +647,7 @@ LRESULT CALLBACK WindowProcedure(HWND hWnd, UINT messageType, WPARAM wParam, LPA
     switch (messageType) {
 
     case WM_CHAR:
-        if(bsIsUnicodeDisplayable((u32)wParam)) {
+        if(bsIsUnicodeDisplayable((char16_t)wParam)) {
             gGlob.osHandler->eventChar((char16_t)wParam);
         }
         break;
@@ -765,6 +768,7 @@ osProcessInputs(bsOsHandler* handler)
 int
 APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
+    (void)hPrevInstance; (void)lpCmdLine; 
     // Update global scope
     gGlob.hInstance = hInstance;
     gGlob.nCmdShow  = nCmdShow;
@@ -1013,6 +1017,7 @@ osRemoveFile(const bsString& path)
 bsDirStatusCode
 osRemoveDir(const bsString& path, bool onlyIfEmpty)
 {
+    (void)path; (void)onlyIfEmpty;
     plAssert(0, "Not implemented for Windows");
     return bsDirStatusCode::FAILURE;
 }

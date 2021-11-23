@@ -81,7 +81,7 @@ private:
         double tickToNs;
         ParsingCtx parsing;
         FILE*      fileDescr   = 0;
-        bsSocket_t socketDescr = bsSocketError;
+        bsSocket_t socketDescr = (bsSocket_t)bsSocketError;
         // Tx
         bsVec<u8>        txBuffer;
         std::atomic<int> txBufferState; // 0=free  1=under fill   2=sending
@@ -90,7 +90,7 @@ private:
             parsing.reset();
             txBufferState.store(0);
             if(fileDescr!=0) { fclose(fileDescr); fileDescr = 0; }
-            if(socketDescr!=bsSocketError) { bsOsCloseSocket(socketDescr); socketDescr = bsSocketError; }
+            if(socketDescr!=bsSocketError) { bsOsCloseSocket(socketDescr); socketDescr = (bsSocket_t)bsSocketError; }
         }
     };
 

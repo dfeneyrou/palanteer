@@ -106,8 +106,8 @@ cmLiveControl::_prepareCommand(int streamId, enum plPriv::RemoteCommandType ct, 
         (*txBuffer)[5] = (commandSize>>16)&0xFF;
         (*txBuffer)[6] = (commandSize>> 8)&0xFF;
         (*txBuffer)[7] = (commandSize>> 0)&0xFF;
-        (*txBuffer)[8] = ((int)ct)>>8;
-        (*txBuffer)[9] = ((int)ct)&0xFF;
+        (*txBuffer)[8] = (u8)(((int)ct)>>8);
+        (*txBuffer)[9] = (u8)(((int)ct)&0xFF);
     }
     return txBuffer;
 }

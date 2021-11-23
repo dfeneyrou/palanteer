@@ -65,7 +65,7 @@ crashSubContractor(uint16_t crashKind, T zero)
 void
 doCrash_Please(int crashKind, int zero)
 {
-    crashSubContractor(crashKind, zero);
+    crashSubContractor((uint16_t)crashKind, zero);
 }
 
 
@@ -108,7 +108,7 @@ float
 busyWait(int kRoundQty)
 {
     float cosSum = 14.;
-    for(int i=0; i<1000*kRoundQty; ++i) cosSum += cos(0.1*i);
+    for(int i=0; i<1000*kRoundQty; ++i) cosSum += (float)cos(0.1*i);
     return cosSum;
 }
 

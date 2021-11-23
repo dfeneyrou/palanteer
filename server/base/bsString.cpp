@@ -67,7 +67,7 @@ bsCharUnicodeToUtf8(char16_t codepoint, bsString& outUtf8) {
     switch(outSize) {
     case 3: outUtf8[curSize+2] = (codepoint | 0x80) & 0xBF; codepoint >>= 6; // fall through
     case 2: outUtf8[curSize+1] = (codepoint | 0x80) & 0xBF; codepoint >>= 6; // fall through
-    case 1: outUtf8[curSize+0] = (codepoint | firstBytes[outSize]);
+    case 1: outUtf8[curSize+0] = (u8)(codepoint | firstBytes[outSize]);
     }
     return true;
 }
@@ -178,7 +178,7 @@ bsString
 bsString::capitalize(void) const
 {
     bsString copy(*this);
-    if(!copy.empty() && copy._array[0]>='a' && copy._array[0]<='z') copy._array[0] += 'A'-'a';
+    if(!copy.empty() && copy._array[0]>='a' && copy._array[0]<='z') copy._array[0] += (u8)('A'-'a');
     return copy;
 }
 

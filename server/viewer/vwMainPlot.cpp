@@ -53,7 +53,7 @@ void
 vwMain::preparePlot(PlotWindow& p)
 {
     // Worth working?
-    const double winWidth = bsMax(100.f, ImGui::GetWindowContentRegionMax().x);
+    const float winWidth = bsMax(100.f, ImGui::GetWindowContentRegionMax().x);
     if(!p.isCacheDirty && p.lastWinWidth==winWidth) return;
     p.isCacheDirty = false;
     p.lastWinWidth = winWidth;
@@ -105,7 +105,7 @@ vwMain::preparePlot(PlotWindow& p)
         if(c.elemIdx<0) { // ElemID is not known yet, so we cannot retrieve any content
             p.curveNames.push_back("");
             p.curveThreadNames.push_back("");
-             continue;
+            continue;
         }
         bsVec<PlotCachedPoint>& cache = p.cachedItems.back(); cache.reserve(1024);
         cmRecord::Elem& elem = _record->elems[c.elemIdx];
@@ -115,16 +115,16 @@ vwMain::preparePlot(PlotWindow& p)
 
         // Compute its name and thread names
         p.curveNames.push_back(getElemName(s.value, elem.flags));
-        p.maxWidthCurveName  = bsMax(p.maxWidthCurveName,  (double)ImGui::CalcTextSize(p.curveNames.back().toChar()).x);
+        p.maxWidthCurveName  = bsMax(p.maxWidthCurveName,  ImGui::CalcTextSize(p.curveNames.back().toChar()).x);
         snprintf(tmpStr, sizeof(tmpStr), " [%s]", (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
         p.curveThreadNames.push_back(tmpStr);
-        p.maxWidthThreadName = bsMax(p.maxWidthThreadName, (double)ImGui::CalcTextSize(tmpStr).x);
-        double nsPerPix = MIN_PIX_PER_POINT*p.timeRangeNs/winWidth;
+        p.maxWidthThreadName = bsMax(p.maxWidthThreadName, ImGui::CalcTextSize(tmpStr).x);
+        double nsPerPix = MIN_PIX_PER_POINT*(double)p.timeRangeNs/(double)winWidth;
 
         // Fill it with data
         if(eType==PL_FLAG_TYPE_MARKER) { // Marker case (specific iterator)
             bool isCoarseScope = false; cmRecord::Evt evt;
-            cmRecordIteratorMarker itMarker(_record, c.elemIdx, (s64)p.startTimeNs, nsPerPix);
+            cmRecordIteratorMarker itMarker(_record, c.elemIdx, p.startTimeNs, nsPerPix);
             while(itMarker.getNextMarker(isCoarseScope, evt)) {
                 double ptValue = evt.filenameIdx;
                 cache.push_back( { evt.vS64, ptValue, PL_INVALID, evt } );
@@ -136,14 +136,14 @@ vwMain::preparePlot(PlotWindow& p)
         else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) { // Lock notifier case (specific iterator)
             bool isCoarseScope = false; cmRecord::Evt evt;
             int nameIdx = elem.nameIdx;
-            cmRecordIteratorLockNtf itLockNtf(_record, nameIdx, (s64)p.startTimeNs, nsPerPix);
+            cmRecordIteratorLockNtf itLockNtf(_record, nameIdx, p.startTimeNs, nsPerPix);
             while(itLockNtf.getNextLock(isCoarseScope, evt)) {
                 double ptValue = (double)evt.threadId;
                 cache.push_back( { evt.vS64, ptValue, PL_INVALID, evt } );
                 c.absYMin = bsMin(c.absYMin, ptValue);
                 c.absYMax = bsMax(c.absYMax, ptValue);
                 if(evt.vS64>p.startTimeNs+p.timeRangeNs) break; // Time break at the end, as we want 1 point past the range
-           } // End of loop on lock notification events
+            } // End of loop on lock notification events
         }
         else if(eType==PL_FLAG_TYPE_LOCK_ACQUIRED) { // Lock use case (specific iterator)
             cmRecordIteratorLockUseGraph it(_record, elem.threadId, elem.nameIdx, p.startTimeNs, nsPerPix);
@@ -219,9 +219,9 @@ vwMain::drawPlot(int curPlotWindowIdx)
     PlotWindow&  pw = _plots[curPlotWindowIdx];
 
     // Ruler and visible range bar
-    double rbWidth, rbStartPix, rbEndPix;
-    double rulerHeight = getTimelineHeaderHeight(false, true);
-    ImGui::BeginChild("ruler", ImVec2(0, 2.0*ImGui::GetStyle().WindowPadding.y+rulerHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
+    float rbWidth, rbStartPix, rbEndPix;
+    float rulerHeight = getTimelineHeaderHeight(false, true);
+    ImGui::BeginChild("ruler", ImVec2(0, 2.0f*ImGui::GetStyle().WindowPadding.y+rulerHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
     const bool isBarHovered  = ImGui::IsWindowHovered();
     drawTimeRuler(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowContentRegionMax().x, rulerHeight,
                   pw.startTimeNs, pw.timeRangeNs, pw.syncMode, rbWidth, rbStartPix, rbEndPix);
@@ -229,15 +229,15 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
     ImGui::BeginChild("plotArea", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar);  // We manage the wheel ourselves as the display area is virtual
 
-    const double winX  = ImGui::GetWindowPos().x;
-    const double winY  = ImGui::GetWindowPos().y;
-    const double winWidth  = ImGui::GetWindowContentRegionMax().x;
-    const double winHeight = bsMax(1.f, ImGui::GetWindowSize().y);
-    const double mouseX  = ImGui::GetMousePos().x;
-    const double mouseY  = ImGui::GetMousePos().y;
+    const float winX  = ImGui::GetWindowPos().x;
+    const float winY  = ImGui::GetWindowPos().y;
+    const float winWidth  = ImGui::GetWindowContentRegionMax().x;
+    const float winHeight = bsMax(1.f, ImGui::GetWindowSize().y);
+    const float mouseX  = ImGui::GetMousePos().x;
+    const float mouseY  = ImGui::GetMousePos().y;
     const bool   isWindowHovered = ImGui::IsWindowHovered();
-    const double fontHeight  = ImGui::GetTextLineHeightWithSpacing();
-    const double vMargin = ImGui::GetTextLineHeight();
+    const float fontHeight  = ImGui::GetTextLineHeightWithSpacing();
+    const float vMargin = ImGui::GetTextLineHeight();
 
     // Prepare if cache is dirty (in case of removed curve for instance)
     preparePlot(pw);
@@ -259,7 +259,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
         plgScope(PLOT, "New user scroll position from ImGui");
         plgData(PLOT, "expected pos", pw.lastScrollPos);
         plgData(PLOT, "new pos", lastScrollPos);
-        float visibleRatio = (pw.valueMax-pw.valueMin)/(valueMaxLimit-valueMinLimit);
+        float visibleRatio = (float)((pw.valueMax-pw.valueMin)/(valueMaxLimit-valueMinLimit));
         float scrollMaxY   = winHeight/visibleRatio;
         double deltaY      = valueMinLimit-(lastScrollPos/scrollMaxY-1.)*(valueMaxLimit-valueMinLimit)  - pw.valueMax;
         deltaY = bsMin(deltaY, valueMaxLimit-pw.valueMax);
@@ -291,12 +291,12 @@ vwMain::drawPlot(int curPlotWindowIdx)
     // Previous navigation may have made dirty the cached data
     pw.checkTimeBounds(_record->durationNs);
     preparePlot(pw);
-    float visibleRatio = (pw.valueMax-pw.valueMin)/(valueMaxLimit-valueMinLimit);
+    float visibleRatio = (float)((pw.valueMax-pw.valueMin)/(valueMaxLimit-valueMinLimit));
     float scrollMaxY   = winHeight/visibleRatio;
 
     // Set the modified scroll position in ImGui, if not changed through imGui
     if(pw.didUserChangedScrollPos || bsAbs(pw.lastWinHeight-winHeight)>1.) {
-        float scrollPosY   = scrollMaxY*(valueMaxLimit-pw.valueMax)/(valueMaxLimit-valueMinLimit);
+        float scrollPosY   = scrollMaxY*(float)((valueMaxLimit-pw.valueMax)/(valueMaxLimit-valueMinLimit));
         plgData(PLOT, "Set new scroll pos from user", scrollPosY);
         plgData(PLOT, "Max possible pos", ImGui::GetScrollMaxY());
         ImGui::SetScrollY(scrollPosY);
@@ -327,19 +327,19 @@ vwMain::drawPlot(int curPlotWindowIdx)
     // Drawing
     // ========
 
-    double yLowest = winY+winHeight-vMargin;
+    float yLowest = winY+winHeight-vMargin;
 
     // Grid (draw the major ticks only)
     double scaleMajorTick, scaleMinorTick;
-    computeTickScales(pw.valueMax-pw.valueMin, bsMinMax(0.2*winHeight/getConfig().getFontSize(), 2., 9.),
+    computeTickScales(pw.valueMax-pw.valueMin, bsMinMax((int)(0.2f*winHeight/getConfig().getFontSize()), 2, 9),
                       scaleMajorTick, scaleMinorTick);
     double valueTick = scaleMajorTick*floor(pw.valueMin/scaleMajorTick);
-    double pixTick   = yLowest-yFactor*(valueTick-pw.valueMin);
+    float pixTick   = yLowest-float(yFactor*(valueTick-pw.valueMin));
     if(yFactor*scaleMajorTick>0.) {
         while(pixTick>=winY) {
             DRAWLIST->AddLine(ImVec2(winX, pixTick), ImVec2(winX+winWidth, pixTick),
                               vwConst::uGrey128&0x3FFFFFFF, 1.0); // Quarter transparency);
-            pixTick   -= yFactor*scaleMajorTick;
+            pixTick   -= (float)(yFactor*scaleMajorTick);
             valueTick += scaleMajorTick;
         }
     }
@@ -352,17 +352,17 @@ vwMain::drawPlot(int curPlotWindowIdx)
         cmRecord::Elem& elem  = _record->elems[curve.elemIdx];
         ImU32 color = getConfig().getCurveColor(curve.elemIdx, true);
         if(!pw.curves[curveIdx].isEnabled) continue;
-        float pointSize = getConfig().getCurvePointSize(curve.elemIdx);
+        float pointSize = (float)getConfig().getCurvePointSize(curve.elemIdx);
         vwConfig::CurveStyle style = getConfig().getCurveStyle(curve.elemIdx);
         ClosePoint& cp = closePoints[curveIdx];
         ClosePoint& hp = highlightedPoints[curveIdx];
 
         // Loop on points on the curve
-        bool isFirst = true; double lastX=0., lastY=0.;
+        bool isFirst = true; float lastX=0., lastY=0.;
         for(const PlotCachedPoint& point : pw.cachedItems[curveIdx]) {
             // Get coordinates
-            double x = winX+xFactor*(point.timeNs-pw.startTimeNs);
-            double y = yLowest-yFactor*(point.value-pw.valueMin);
+            float x = winX+(float)(xFactor*(point.timeNs-pw.startTimeNs));
+            float y = yLowest-(float)(yFactor*(point.value-pw.valueMin));
 
             // Draw the point
             if(style!=vwConfig::LOLLIPOP || y<=yLowest) {
@@ -393,14 +393,14 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
             // Draw the line
             if(style==vwConfig::LOLLIPOP && y<yLowest) {
-                DRAWLIST->AddLine(ImVec2(x, yLowest), ImVec2(x, y), color, 1.5);
+                DRAWLIST->AddLine(ImVec2(x, yLowest), ImVec2(x, y), color, 1.5f);
             }
             if(!isFirst) {
                 if(style==vwConfig::LINE) {
-                    DRAWLIST->AddLine(ImVec2(lastX, lastY), ImVec2(x, y), color, 1.5);
+                    DRAWLIST->AddLine(ImVec2(lastX, lastY), ImVec2(x, y), color, 1.5f);
                 } else if(style==vwConfig::STEP) {
-                    DRAWLIST->AddLine(ImVec2(lastX, lastY), ImVec2(x, lastY), color, 1.5);
-                    DRAWLIST->AddLine(ImVec2(x, lastY),     ImVec2(x, y),     color, 1.5);
+                    DRAWLIST->AddLine(ImVec2(lastX, lastY), ImVec2(x, lastY), color, 1.5f);
+                    DRAWLIST->AddLine(ImVec2(x, lastY),     ImVec2(x, y),     color, 1.5f);
                 }
             }
             else isFirst = false;
@@ -412,11 +412,11 @@ vwMain::drawPlot(int curPlotWindowIdx)
     bool changedNavigation = false;
     if(!pw.cachedItems.empty() && typicalFlag!=0 && flagType!=PL_FLAG_TYPE_DATA_STRING && flagType!=PL_FLAG_TYPE_MARKER &&
        flagType!=PL_FLAG_TYPE_LOCK_NOTIFIED) { // Extreme range display for strings has no sense
-        double yUnderMouse = pw.valueMin-(mouseY-winY-winHeight+vMargin)/yFactor;
+        float yUnderMouse = (float)(pw.valueMin-(mouseY-winY-winHeight+vMargin)/yFactor);
         if(isWindowHovered) {
             const char* yString = getValueAsChar(typicalFlag, yUnderMouse, pw.valueMax-pw.valueMin, pw.curves[0].isHexa);
-            double x = winX+winWidth-ImGui::CalcTextSize(yString).x;
-            double y = winY+winHeight-vMargin-yFactor*(yUnderMouse-pw.valueMin);
+            float x = winX+winWidth-ImGui::CalcTextSize(yString).x;
+            float y = winY+winHeight-vMargin-float(yFactor*(yUnderMouse-pw.valueMin));
             DRAWLIST->AddText(ImVec2(x, y), vwConst::uYellow, yString);
             DRAWLIST->AddLine(ImVec2(winX, y), ImVec2(x, y), vwConst::uYellow&0x3FFFFFFF, 1.0); // Quarter transparency
         }
@@ -439,21 +439,21 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
     // Draw legend
     {
-        const double legendTextMargin = 5.;
-        const double legendSegmWidth  = 25.;
-        const double lineHeight       = fontHeight;
-        const double legendWidth      = pw.maxWidthCurveName+pw.maxWidthThreadName+30/* ~ bracket size */+legendSegmWidth+3*legendTextMargin;
-        const int    unitLineQty      = pw.unit.empty()? 0:1;
-        const double legendHeight     = (pw.cachedItems.size()+unitLineQty)*lineHeight;
-        double legendX = winX+pw.legendPosX*winWidth-0.5*legendWidth;
-        double legendY = winY+pw.legendPosY*winHeight;
+        const float legendTextMargin = 5.f;
+        const float legendSegmWidth  = 25.f;
+        const float lineHeight       = fontHeight;
+        const float legendWidth      = (float)(pw.maxWidthCurveName+pw.maxWidthThreadName)+30/* ~ bracket size */+legendSegmWidth+3*legendTextMargin;
+        const int    unitLineQty     = pw.unit.empty()? 0:1;
+        const float legendHeight     = (pw.cachedItems.size()+unitLineQty)*lineHeight;
+        float legendX = winX+pw.legendPosX*winWidth-0.5f*legendWidth;
+        float legendY = winY+pw.legendPosY*winHeight;
 
         // Draw the box
         DRAWLIST->AddRectFilled(ImVec2(legendX, legendY), ImVec2(legendX+legendWidth, legendY+legendHeight), IM_COL32(0,0,0,160));
         DRAWLIST->AddRect(ImVec2(legendX, legendY), ImVec2(legendX+legendWidth, legendY+legendHeight), vwConst::uWhite);
         // Draw the unit
         if(unitLineQty) {
-            DRAWLIST->AddText(ImVec2(legendX+0.5*(legendWidth-ImGui::CalcTextSize(pw.unit.toChar()).x), legendY),
+            DRAWLIST->AddText(ImVec2(legendX+0.5f*(legendWidth-ImGui::CalcTextSize(pw.unit.toChar()).x), legendY),
                               vwConst::uYellow, pw.unit.toChar());
             DRAWLIST->AddLine(ImVec2(legendX, legendY+lineHeight-2), ImVec2(legendX+legendWidth, legendY+lineHeight-2), vwConst::uWhite);
         }
@@ -467,12 +467,12 @@ vwMain::drawPlot(int curPlotWindowIdx)
             ImU32 color  = getConfig().getCurveColor(curve.elemIdx, true);
             ImU32 colorThread = ImColor(getConfig().getThreadColor(threadId, true));
             if(!pw.curves[curveIdx].isEnabled) color = colorThread = vwConst::uGrey;
-            double y = legendY+lineHeight*(curveIdx+unitLineQty);
+            float y = legendY+lineHeight*(curveIdx+unitLineQty);
             bool doHighlight = globalClosestPoint.curveIdx==curveIdx;
 
             // Draw the colored line
-            DRAWLIST->AddLine(ImVec2(legendX+legendTextMargin, y+0.5*lineHeight),
-                              ImVec2(legendX+legendTextMargin+legendSegmWidth, y+0.5*lineHeight), color, 2.5);
+            DRAWLIST->AddLine(ImVec2(legendX+legendTextMargin, y+0.5f*lineHeight),
+                              ImVec2(legendX+legendTextMargin+legendSegmWidth, y+0.5f*lineHeight), color, 2.5f);
 
             // Draw the colored curve name
             float textStartPix = legendX+2*legendTextMargin+legendSegmWidth;
@@ -500,7 +500,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
                     ImGui::OpenPopup("Plot curve menu");
                     _plotMenuItems.clear();
                     _plotMenuSpecificCurveIdx = curveIdx;
-                    prepareGraphContextualMenu(pw.curves[curveIdx].elemIdx, (s64)pw.getStartTimeNs(), (s64)pw.getTimeRangeNs(), false, true);
+                    prepareGraphContextualMenu(pw.curves[curveIdx].elemIdx, pw.getStartTimeNs(), pw.getTimeRangeNs(), false, true);
                 }
 
                 // Tooltip: build the full path
@@ -526,8 +526,8 @@ vwMain::drawPlot(int curPlotWindowIdx)
             }
             if(pw.legendDragMode==DATA) {
                 if(ImGui::IsMouseDragging(2)) {
-                    pw.legendPosX = bsMinMax(pw.legendPosX+ImGui::GetMouseDragDelta(2).x/winWidth, 0., 0.9);
-                    pw.legendPosY = bsMinMax(pw.legendPosY+ImGui::GetMouseDragDelta(2).y/winHeight, 0., 0.9);
+                    pw.legendPosX = bsMinMax(pw.legendPosX+ImGui::GetMouseDragDelta(2).x/winWidth,  0.f, 0.9f);
+                    pw.legendPosY = bsMinMax(pw.legendPosY+ImGui::GetMouseDragDelta(2).y/winHeight, 0.f, 0.9f);
                     ImGui::ResetMouseDragDelta(2);
                 } else pw.legendDragMode = NONE;
             }
@@ -536,16 +536,16 @@ vwMain::drawPlot(int curPlotWindowIdx)
     } // End of legend drawing
 
     // Manage highlights and tooltips
-    const double fontHeightNoSpacing = ImGui::GetTextLineHeight();
+    const float fontHeightNoSpacing = ImGui::GetTextLineHeight();
     for(int i=0; i<closePoints.size(); ++i) {
         if(closePoints[i].distanceX>100.) continue;
         // Display a small colored box with the value
         const PlotCachedPoint& pcp = closePoints[i].point;
         const PlotCurve& curve = pw.curves[i];
-        double x = winX+xFactor*(pcp.timeNs-pw.startTimeNs);
-        double y = winY+winHeight-vMargin-yFactor*(bsMinMax(pcp.value, pw.valueMin, pw.valueMax)-pw.valueMin)-fontHeightNoSpacing;
+        float x = winX+(float)(xFactor*(pcp.timeNs-pw.startTimeNs));
+        float y = winY+winHeight-vMargin-(float)(yFactor*(bsMinMax(pcp.value, pw.valueMin, pw.valueMax)-pw.valueMin))-fontHeightNoSpacing;
         const char* s = getValueAsChar(typicalFlag, pcp.value, pw.valueMax-pw.valueMin, curve.isHexa);
-        double sWidth = ImGui::CalcTextSize(s).x;
+        float sWidth = ImGui::CalcTextSize(s).x;
         ImU32 color = getConfig().getCurveColor(curve.elemIdx, false);
         DRAWLIST->AddRectFilled(ImVec2(x+5, y), ImVec2(x+5+sWidth, y+fontHeightNoSpacing), color);
         DRAWLIST->AddText(ImVec2(x+5, y), vwConst::uWhite, s);
@@ -557,9 +557,9 @@ vwMain::drawPlot(int curPlotWindowIdx)
         if(hp.curveIdx<0) continue;
         const PlotCachedPoint& pcp = hp.point;
         const PlotCurve& curve = pw.curves[hp.curveIdx];
-        const double hlPointHSize = 1.5*getConfig().getCurvePointSize(curve.elemIdx);
-        double x = winX+xFactor*(pcp.timeNs-pw.startTimeNs);
-        double y = winY+winHeight-vMargin-yFactor*(bsMinMax(pcp.value, pw.valueMin, pw.valueMax)-pw.valueMin);
+        const float hlPointHSize = 1.5f*getConfig().getCurvePointSize(curve.elemIdx);
+        float x = winX+(float)(xFactor*(pcp.timeNs-pw.startTimeNs));
+        float y = winY+winHeight-vMargin-(float)(yFactor*(bsMinMax(pcp.value, pw.valueMin, pw.valueMax)-pw.valueMin));
         // Add a rectangle on the highlighted point
         DRAWLIST->AddRectFilled(ImVec2(x-hlPointHSize, y-hlPointHSize), ImVec2(x+hlPointHSize, y+hlPointHSize), vwConst::uWhite);
     }
@@ -586,16 +586,16 @@ vwMain::drawPlot(int curPlotWindowIdx)
             // Display is toggle when clicking on the highlighted point
             pw.doShowPointTooltip = !pw.doShowPointTooltip;
             // Synchronize the text (after getting the nesting level and lIdx for this date on this thread)
-            int nestingLevel;
+            int nestingLevel2;
             u32 lIdx;
-            cmGetRecordPosition(_record, pcp.evt.threadId, pcp.timeNs, nestingLevel, lIdx);
-            synchronizeText(pw.syncMode, pcp.evt.threadId, nestingLevel, lIdx, pcp.timeNs, pw.uniqueId);
+            cmGetRecordPosition(_record, pcp.evt.threadId, pcp.timeNs, nestingLevel2, lIdx);
+            synchronizeText(pw.syncMode, pcp.evt.threadId, nestingLevel2, lIdx, pcp.timeNs, pw.uniqueId);
             ensureThreadVisibility(pw.syncMode, pcp.evt.threadId);
         }
         // Show the tooltip
         if(pw.doShowPointTooltip) {
             char titleStr[256];
-            u64  durationNs = 1;
+            s64  durationNs = 1;
             _workDataChildren.clear();
             if(pcp.evt.flags&PL_FLAG_SCOPE_BEGIN) { // Case scope: build title and collect the children
                 durationNs = (s64)pcp.value;
@@ -612,16 +612,16 @@ vwMain::drawPlot(int curPlotWindowIdx)
         }
 
         if(pw.syncMode>0 && ImGui::IsMouseDoubleClicked(0)) {
-            double newTimeRangeNs = 0.;
+            s64 newTimeRangeNs = 0;
             if   (pcp.lIdx==PL_INVALID) { } // Marker case (we do not know the parent, so no duration)
-            else if(elem.nameIdx==elem.hlNameIdx) newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*pcp.value; // For scopes, the value is the duration
+            else if(elem.nameIdx==elem.hlNameIdx) newTimeRangeNs = (s64)(vwConst::DCLICK_RANGE_FACTOR*pcp.value); // For scopes, the value is the duration
             else {
                 // For "flat" items, the duration is the one of the parent
                 cmRecordIteratorHierarchy it(_record, pcp.evt.threadId, nestingLevel, pcp.lIdx);
                 newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*it.getParentDurationNs();
             }
             if(newTimeRangeNs>0.) {
-                double newStartTimeNs = bsMax(0., pw.startTimeNs+(pcp.timeNs-pw.startTimeNs)/pw.timeRangeNs*(pw.timeRangeNs-newTimeRangeNs));
+                s64 newStartTimeNs = bsMax(pw.startTimeNs+(s64)((pcp.timeNs-pw.startTimeNs)/pw.timeRangeNs*(pw.timeRangeNs-newTimeRangeNs)), 0LL);
                 pw.setView(newStartTimeNs, newTimeRangeNs);
                 changedNavigation = true;
             }
@@ -639,7 +639,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
     pw.didUserChangedScrollPos = false;
     if(isWindowHovered || isBarHovered) {
         // Update the time of the mouse
-        _mouseTimeNs = pw.startTimeNs + (mouseX-winX)/winWidth*pw.timeRangeNs;
+        _mouseTimeNs = pw.startTimeNs + (s64)((mouseX-winX)/winWidth*(double)pw.timeRangeNs);
 
         // Wheel input
         int deltaWheel = (int)io.MouseWheel;
@@ -656,12 +656,11 @@ vwMain::drawPlot(int curPlotWindowIdx)
             // Ctrl: (Horizontal) range zoom
             if(io.KeyCtrl) {
                 deltaWheel *= getConfig().getHWheelInversion();
-                constexpr double scrollFactor = 1.25;
-                double newTimeRangeNs = pw.getTimeRangeNs();
-                while(deltaWheel>0) { newTimeRangeNs /= scrollFactor; --deltaWheel; }
-                while(deltaWheel<0) { newTimeRangeNs *= scrollFactor; ++deltaWheel; }
-                if(newTimeRangeNs<1000.) newTimeRangeNs = 1000.; // No point zooming more than this
-                pw.setView(pw.getStartTimeNs()+(mouseX-winX)/winWidth*(pw.getTimeRangeNs()-newTimeRangeNs), newTimeRangeNs);
+                s64 newTimeRangeNs = pw.getTimeRangeNs();
+                while(deltaWheel>0) { newTimeRangeNs -= newTimeRangeNs/4; --deltaWheel; }
+                while(deltaWheel<0) { newTimeRangeNs += newTimeRangeNs/4; ++deltaWheel; }
+                if(newTimeRangeNs<1000) newTimeRangeNs = 1000; // No point zooming more than this
+                pw.setView(pw.getStartTimeNs()+(s64)((mouseX-winX)/winWidth*(pw.getTimeRangeNs()-newTimeRangeNs)), newTimeRangeNs);
                 changedNavigation = true;
             }
             // No Ctrl: (Vertical) Y scale zoom
@@ -700,8 +699,8 @@ vwMain::drawPlot(int curPlotWindowIdx)
             if(ImGui::IsKeyPressed(KC_Right)) deltaMoveX = +0.25*pw.getTimeRangeNs();
         }
         else { // Ctrl+up/down is handled by the mouse wheel code
-            if(ImGui::IsKeyPressed(KC_Left))  deltaMoveX = -pw.getTimeRangeNs();
-            if(ImGui::IsKeyPressed(KC_Right)) deltaMoveX = +pw.getTimeRangeNs();
+            if(ImGui::IsKeyPressed(KC_Left))  deltaMoveX = (double)-pw.getTimeRangeNs();
+            if(ImGui::IsKeyPressed(KC_Right)) deltaMoveX = (double)+pw.getTimeRangeNs();
         }
     }
 
@@ -713,7 +712,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
     if(deltaMoveX!=0. || deltaMoveY!=0.) {
         // Update X coordinate
-        pw.setView(pw.getStartTimeNs()+deltaMoveX, pw.getTimeRangeNs());
+        pw.setView(pw.getStartTimeNs()+(s64)deltaMoveX, pw.getTimeRangeNs());
         changedNavigation = true;
         // Update Y coordinate
         if(pw.valueMin+deltaMoveY<valueMinLimit) deltaMoveY = valueMinLimit-pw.valueMin;
@@ -740,8 +739,8 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
     // Curve contextual menu for configuration (curve type, color, etc...)
     if(ImGui::BeginPopup("Plot curve menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-        double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Point size ").x+5;
-        double widgetWidth = 1.5*ImGui::CalcTextSize("Lollipop XXX").x;
+        float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Point size ").x+5;
+        float widgetWidth = 1.5f*ImGui::CalcTextSize("Lollipop XXX").x;
         PlotCurve& curve = pw.curves[_plotMenuSpecificCurveIdx];
         cmRecord::Elem& elem = _record->elems[curve.elemIdx];
 

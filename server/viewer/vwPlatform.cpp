@@ -70,6 +70,7 @@ static
 const char*
 vwGetClipboardText(void* user_data)
 {
+    (void)user_data;
     static bsString lastString;
     lastString = osReqFromClipboard(ClipboardType::UTF8).toUtf8();
     return lastString.toChar();
@@ -80,6 +81,7 @@ static
 void
 vwSetClipboardText(void* user_data, const char* text)
 {
+    (void)user_data;
     osPushToClipboard(ClipboardType::UTF8, bsString(text).toUtf16());
 }
 
@@ -184,7 +186,7 @@ bsBootstrap(int argc, char* argv[])
     plDeclareThread("Main");
     {
         plScope("Initialize OS layer");
-        osCreateWindow("Palanteer", "palanteer", 0.03, 0.03, 0.95, 0.95);
+        osCreateWindow("Palanteer", "palanteer", 0.03f, 0.03f, 0.95f, 0.95f);
     }
     vwPlatform* platform = 0;
     {
@@ -219,7 +221,7 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
     // Update ImGui
     int dpiWidth, dpiHeight;
     osGetWindowSize(_displayWidth, _displayHeight, dpiWidth, dpiHeight);
-    _dpiScale = (float)dpiWidth/96.; // No support of dynamic DPI change
+    _dpiScale = (float)dpiWidth/96.f; // No support of dynamic DPI change
 
     // Initialize the compression
     cmInitChunkCompress();
@@ -232,8 +234,8 @@ vwPlatform::vwPlatform(int rxPort, bool doLoadLastFile, const bsString& override
     ImGuiIO& io     = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.DisplaySize  = ImVec2(_displayWidth, _displayHeight);
-    io.DisplayFramebufferScale  = ImVec2(1., 1.);  // High DPI is handled with increased font size and Imgui spatial constants
+    io.DisplaySize  = ImVec2((float)_displayWidth, (float)_displayHeight);
+    io.DisplayFramebufferScale  = ImVec2(1.f, 1.f);  // High DPI is handled with increased font size and Imgui spatial constants
     io.IniFilename  = 0; // Disable config file save
     io.MouseDragThreshold = 1.; // 1 pixel threshold to detect that we are dragging
     io.ConfigInputTextCursorBlink = false;
@@ -310,7 +312,7 @@ vwPlatform::run(void)
         // Power management (frame rate limit)
         _lastRenderingDurationUs = bsGetClockUs()-frameStartUs;
         bsUs_t sleepDurationUs   = RENDER_FRAME_US-_lastRenderingDurationUs;
-        if((s64)sleepDurationUs>0) {
+        if(sleepDurationUs>0) {
             plScope("frame rate limiting");
             bsSleep(sleepDurationUs);
         }
@@ -348,15 +350,15 @@ vwPlatform::redraw(void)
     // Change font, if needed
     if(_newFontSizeToInstall>0) {
         vwBackendInstallFont(vwGetFontDataRobotoMedium(), vwGetFontDataSizeRobotoMedium(),
-                             bsRound(_dpiScale*_newFontSizeToInstall));
+                             (int)bsRound((double)(_dpiScale*_newFontSizeToInstall)));
         _newFontSizeToInstall = -1;
     }
 
     // Update inputs for ImGui
     plScope("vwPlatform::redraw");
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(_displayWidth, _displayHeight);
-    io.DeltaTime = (_lastRenderingTimeUs==0)? 0.001 : 0.000001*(double)(currentTimeUs-_lastRenderingTimeUs);
+    io.DisplaySize = ImVec2((float)_displayWidth, (float)_displayHeight);
+    io.DeltaTime = (_lastRenderingTimeUs==0)? 0.001f : 0.000001f*(float)(currentTimeUs-_lastRenderingTimeUs);
     _lastRenderingTimeUs = currentTimeUs;
 
     // Compute the vertices
@@ -378,64 +380,64 @@ vwPlatform::configureStyle(void)
     ImGui::StyleColorsDark();
     // Customization
     ImVec4* colors = ImGui::GetStyle().Colors;
-    colors[ImGuiCol_Text]                   = ImVec4(1.00, 1.00, 1.00, 1.00);
-    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50, 0.50, 0.50, 1.00);
-    colors[ImGuiCol_WindowBg]               = ImVec4(0.113, 0.117, 0.10, 1.00); // Less blue = "warmer" dark
-    colors[ImGuiCol_ChildBg]                = ImVec4(1.00, 1.00, 1.00, 0.00);
-    colors[ImGuiCol_PopupBg]                = ImVec4(0.15, 0.15, 0.15, 0.90);
-    colors[ImGuiCol_Border]                 = ImVec4(0.43, 0.43, 0.50, 0.50);
-    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00, 0.00, 0.00, 0.00);
-    colors[ImGuiCol_FrameBg]                = ImVec4(0.30, 0.31, 0.32, 1.00);
-    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.20, 0.40, 0.40, 1.00);
-    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.25, 0.25, 0.25, 1.00);
-    colors[ImGuiCol_TitleBg]                = ImVec4(0.30, 0.30, 0.30, 1.00);
-    colors[ImGuiCol_TitleBgActive]          = ImVec4(0.40, 0.40, 0.40, 1.00);
-    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.00, 0.00, 0.00, 0.51);
-    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14, 0.14, 0.14, 1.00);
-    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02, 0.02, 0.02, 0.53);
-    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31, 0.31, 0.31, 1.00);
-    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41, 0.41, 0.41, 1.00);
-    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51, 0.51, 0.51, 1.00);
-    colors[ImGuiCol_CheckMark]              = ImVec4(0.94, 0.94, 0.94, 1.00);
-    colors[ImGuiCol_SliderGrab]             = ImVec4(0.51, 0.51, 0.51, 1.00);
-    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.86, 0.86, 0.86, 1.00);
-    colors[ImGuiCol_Button]                 = ImVec4(0.30, 0.30, 0.30, 1.00);
-    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.50, 0.50, 0.50, 1.00);
-    colors[ImGuiCol_ButtonActive]           = ImVec4(0.25, 0.25, 0.25, 1.00);
-    colors[ImGuiCol_Header]                 = ImVec4(1.00, 0.70, 0.70, 0.31);
-    colors[ImGuiCol_HeaderHovered]          = ImVec4(0.75, 0.70, 0.70, 0.80);
-    colors[ImGuiCol_HeaderActive]           = ImVec4(0.58, 0.50, 0.52, 1.00);
+    colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.113f, 0.117f, 0.10f, 1.00f); // Less blue = "warmer" dark
+    colors[ImGuiCol_ChildBg]                = ImVec4(1.00f, 1.00f, 1.00f, 0.00f);
+    colors[ImGuiCol_PopupBg]                = ImVec4(0.15f, 0.15f, 0.15f, 0.90f);
+    colors[ImGuiCol_Border]                 = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
+    colors[ImGuiCol_BorderShadow]           = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_FrameBg]                = ImVec4(0.30f, 0.31f, 0.32f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.20f, 0.40f, 0.40f, 1.00f);
+    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_TitleBg]                = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
+    colors[ImGuiCol_TitleBgActive]          = ImVec4(0.40f, 0.40f, 0.40f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed]       = ImVec4(0.00f, 0.00f, 0.00f, 0.51f);
+    colors[ImGuiCol_MenuBarBg]              = ImVec4(0.14f, 0.14f, 0.14f, 1.00f);
+    colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.02f, 0.02f, 0.02f, 0.53f);
+    colors[ImGuiCol_ScrollbarGrab]          = ImVec4(0.31f, 0.31f, 0.31f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered]   = ImVec4(0.41f, 0.41f, 0.41f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive]    = ImVec4(0.51f, 0.51f, 0.51f, 1.00f);
+    colors[ImGuiCol_CheckMark]              = ImVec4(0.94f, 0.94f, 0.94f, 1.00f);
+    colors[ImGuiCol_SliderGrab]             = ImVec4(0.51f, 0.51f, 0.51f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.86f, 0.86f, 0.86f, 1.00f);
+    colors[ImGuiCol_Button]                 = ImVec4(0.30f, 0.30f, 0.30f, 1.00f);
+    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_ButtonActive]           = ImVec4(0.25f, 0.25f, 0.25f, 1.00f);
+    colors[ImGuiCol_Header]                 = ImVec4(1.00f, 0.70f, 0.70f, 0.31f);
+    colors[ImGuiCol_HeaderHovered]          = ImVec4(0.75f, 0.70f, 0.70f, 0.80f);
+    colors[ImGuiCol_HeaderActive]           = ImVec4(0.58f, 0.50f, 0.52f, 1.00f);
 
-    colors[ImGuiCol_Tab]                    = ImVec4(0.13, 0.24, 0.41, 1.);
-    colors[ImGuiCol_TabHovered]             = ImVec4(0.26, 0.59, 0.98, 1.);
-    colors[ImGuiCol_TabActive]              = ImVec4(0.20, 0.41, 0.68, 1.);
-    colors[ImGuiCol_TabUnfocused]           = ImVec4(0.07, 0.10, 0.15, 1.);
-    colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.14, 0.26, 0.42, 1.);
+    colors[ImGuiCol_Tab]                    = ImVec4(0.13f, 0.24f, 0.41f, 1.f);
+    colors[ImGuiCol_TabHovered]             = ImVec4(0.26f, 0.59f, 0.98f, 1.f);
+    colors[ImGuiCol_TabActive]              = ImVec4(0.20f, 0.41f, 0.68f, 1.f);
+    colors[ImGuiCol_TabUnfocused]           = ImVec4(0.07f, 0.10f, 0.15f, 1.f);
+    colors[ImGuiCol_TabUnfocusedActive]     = ImVec4(0.14f, 0.26f, 0.42f, 1.f);
 
-    colors[ImGuiCol_Separator]              = ImVec4(0.43, 0.43, 0.50, 0.50);
-    colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.72, 0.72, 0.72, 0.78);
-    colors[ImGuiCol_SeparatorActive]        = ImVec4(0.51, 0.51, 0.51, 1.00);
-    colors[ImGuiCol_ResizeGrip]             = ImVec4(0.91, 0.91, 0.91, 0.25);
-    colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.81, 0.81, 0.81, 0.67);
-    colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.46, 0.46, 0.46, 0.95);
-    colors[ImGuiCol_PlotLines]              = ImVec4(0.61, 0.61, 0.61, 1.00);
-    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00, 0.43, 0.35, 1.00);
-    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.73, 0.60, 0.15, 1.00);
-    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00, 0.60, 0.00, 1.00);
-    colors[ImGuiCol_TableHeaderBg]          = ImVec4(1.00, 0.70, 0.70, 0.31);
+    colors[ImGuiCol_Separator]              = ImVec4(0.43f, 0.43f, 0.50f, 0.50f);
+    colors[ImGuiCol_SeparatorHovered]       = ImVec4(0.72f, 0.72f, 0.72f, 0.78f);
+    colors[ImGuiCol_SeparatorActive]        = ImVec4(0.51f, 0.51f, 0.51f, 1.00f);
+    colors[ImGuiCol_ResizeGrip]             = ImVec4(0.91f, 0.91f, 0.91f, 0.25f);
+    colors[ImGuiCol_ResizeGripHovered]      = ImVec4(0.81f, 0.81f, 0.81f, 0.67f);
+    colors[ImGuiCol_ResizeGripActive]       = ImVec4(0.46f, 0.46f, 0.46f, 0.95f);
+    colors[ImGuiCol_PlotLines]              = ImVec4(0.61f, 0.61f, 0.61f, 1.00f);
+    colors[ImGuiCol_PlotLinesHovered]       = ImVec4(1.00f, 0.43f, 0.35f, 1.00f);
+    colors[ImGuiCol_PlotHistogram]          = ImVec4(0.73f, 0.60f, 0.15f, 1.00f);
+    colors[ImGuiCol_PlotHistogramHovered]   = ImVec4(1.00f, 0.60f, 0.00f, 1.00f);
+    colors[ImGuiCol_TableHeaderBg]          = ImVec4(1.00f, 0.70f, 0.70f, 0.31f);
     colors[ImGuiCol_TableBorderStrong]      = ImVec4(0.41f, 0.41f, 0.45f, 1.00f);   // Prefer using Alpha=1.0 here
     colors[ImGuiCol_TableBorderLight]       = ImVec4(0.33f, 0.33f, 0.35f, 1.00f);   // Prefer using Alpha=1.0 here
-    colors[ImGuiCol_TableRowBg]             = ImVec4(0.00, 0.00, 0.00, 0.00);
-    colors[ImGuiCol_TableRowBgAlt]          = ImVec4(0.30, 0.30, 0.30, 0.30);
-    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.87, 0.87, 0.87, 0.35);
-    colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80, 0.80, 0.80, 0.35);
-    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00, 1.00, 0.00, 0.90);
-    colors[ImGuiCol_NavHighlight]           = ImVec4(0.60, 0.60, 0.60, 1.00);
-    colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00, 1.00, 1.00, 0.70);
+    colors[ImGuiCol_TableRowBg]             = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
+    colors[ImGuiCol_TableRowBgAlt]          = ImVec4(0.30f, 0.30f, 0.30f, 0.30f);
+    colors[ImGuiCol_TextSelectedBg]         = ImVec4(0.87f, 0.87f, 0.87f, 0.35f);
+    colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.80f, 0.80f, 0.80f, 0.35f);
+    colors[ImGuiCol_DragDropTarget]         = ImVec4(1.00f, 1.00f, 0.00f, 0.90f);
+    colors[ImGuiCol_NavHighlight]           = ImVec4(0.60f, 0.60f, 0.60f, 1.00f);
+    colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.00f, 1.00f, 1.00f, 0.70f);
 
-    ImGui::GetStyle().WindowRounding    = 2.0;
-    ImGui::GetStyle().TabRounding       = 2.0;
-    ImGui::GetStyle().ScrollbarRounding = 2.0;
+    ImGui::GetStyle().WindowRounding    = 2.0f;
+    ImGui::GetStyle().TabRounding       = 2.0f;
+    ImGui::GetStyle().ScrollbarRounding = 2.0f;
 }
 
 
@@ -469,12 +471,14 @@ void
 vwPlatform::notifyLeave(bsKeyModState kms)
 {
     // Nothing special to do
+    (void)kms;
 }
 
 
 void
 vwPlatform::eventKeyPressed(bsKeycode keycode, bsKeyModState kms)
 {
+    (void)kms;
     plAssert(keycode>=KC_A && keycode<KC_KeyCount, (int)keycode);
     ImGuiIO& io = ImGui::GetIO();
     io.KeysDown[keycode] = true;
@@ -497,6 +501,7 @@ vwPlatform::eventKeyPressed(bsKeycode keycode, bsKeyModState kms)
 void
 vwPlatform::eventKeyReleased(bsKeycode keycode, bsKeyModState kms)
 {
+    (void)kms;
     plAssert(keycode>=KC_A && keycode<KC_KeyCount, (int)keycode);
     ImGuiIO& io = ImGui::GetIO();
     io.KeysDown[keycode] = false;
@@ -511,6 +516,7 @@ vwPlatform::eventKeyReleased(bsKeycode keycode, bsKeyModState kms)
 void
 vwPlatform::eventWheelScrolled (int x, int y, int steps, bsKeyModState kms)
 {
+    (void)x; (void)y; (void)kms;
     ImGuiIO& io     = ImGui::GetIO();
     io.MouseWheel  -= (float)steps;
     _lastMouseMoveTimeUs = bsGetClockUs();
@@ -532,6 +538,7 @@ vwPlatform::eventChar(char16_t codepoint)
 void
 vwPlatform::eventButtonPressed (int buttonId, int x, int y, bsKeyModState kms)
 {
+    (void)kms;
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDown[buttonId-1] = true;
     io.MousePos = ImVec2((float)x, (float)y);
@@ -543,6 +550,7 @@ vwPlatform::eventButtonPressed (int buttonId, int x, int y, bsKeyModState kms)
 void
 vwPlatform::eventButtonReleased(int buttonId, int x, int y, bsKeyModState kms)
 {
+    (void)kms;
     ImGuiIO& io = ImGui::GetIO();
     io.MouseDown[buttonId-1] = false;
     io.MousePos = ImVec2((float)x, (float)y);

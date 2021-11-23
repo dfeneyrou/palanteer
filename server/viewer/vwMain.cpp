@@ -453,9 +453,9 @@ vwMain::drawMainMenuBar(void)
 void
 vwMain::drawSettings(void)
 {
-    constexpr float sliderWidth = 150.;
+    constexpr float sliderWidth = 150.f;
     static int draggedFontSize  = -1;
-    int titleWidth = ImGui::CalcTextSize("Horizontal wheel inversion").x+0.3*sliderWidth;
+    float titleWidth = ImGui::CalcTextSize("Horizontal wheel inversion").x+0.3f*sliderWidth;
 
     SettingsWindow& sw = _settingsWindow;
     if(!getConfig().getWindowSettingsVisibility() || (_uniqueIdFullScreen>=0 && sw.uniqueId!=_uniqueIdFullScreen)) return;
@@ -525,7 +525,7 @@ vwMain::drawSettings(void)
         if(ImGui::IsItemHovered()) ImGui::SetTooltip("Applicable at next record loading");
         ImGui::TableNextColumn();
         ImGui::SetNextItemWidth(sliderWidth);
-        float cacheMBytes = getConfig().getCacheMBytes();
+        float cacheMBytes = (float)getConfig().getCacheMBytes();
         if(ImGui::SliderFloat("##Cache size", &cacheMBytes, vwConst::CACHE_MB_MIN, vwConst::CACHE_MB_MAX, "%.0f",
                               ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_Logarithmic)) {
             getConfig().setCacheMBytes((int)cacheMBytes);
@@ -547,9 +547,9 @@ vwMain::drawSettings(void)
         ImGui::EndTable();
 
         // Some vertical spacing
-        ImGui::Dummy(ImVec2(1, 0.5*ImGui::GetTextLineHeight()));
+        ImGui::Dummy(ImVec2(1, 0.5f*ImGui::GetTextLineHeight()));
     }
-   else {
+    else {
         draggedFontSize = -1;
     }
 
@@ -580,8 +580,8 @@ vwMain::drawSettings(void)
             if(ImGui::IsItemHovered()) ImGui::SetTooltip("Defines what is a lock taken without waiting.\nThis impacts the highlight of waiting threads.");
             ImGui::TableNextColumn();
             ImGui::SetNextItemWidth(sliderWidth);
-            float lockLatencyUs = getConfig().getLockLatencyUs();
-            if(ImGui::SliderFloat("##LockLatency", &lockLatencyUs, 0., vwConst::LOCK_LATENCY_LIMIT_MAX_US, "%.0f",
+            float lockLatencyUs = (float)getConfig().getLockLatencyUs();
+            if(ImGui::SliderFloat("##LockLatency", &lockLatencyUs, 0.f, vwConst::LOCK_LATENCY_LIMIT_MAX_US, "%.0f",
                                   ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_Logarithmic)) {
                 getConfig().setLockLatencyUs((int)lockLatencyUs);
                 plMarker("menu", "Changed lock latency limit");
@@ -691,26 +691,26 @@ vwMain::drawAbout(void)
     static constexpr char const* textDescr = "Look into it and have an omniscient picture of your program...";
 
     if(!_showAbout) return;
-    double fontSize     = ImGui::GetFontSize();
-    double bigTextWidth = ImGui::CalcTextSize(textDescr).x+4.*fontSize;
-    ImGui::SetNextWindowSize(ImVec2(bigTextWidth, fontSize*16.));
+    float fontSize     = ImGui::GetFontSize();
+    float bigTextWidth = ImGui::CalcTextSize(textDescr).x+4.f*fontSize;
+    ImGui::SetNextWindowSize(ImVec2(bigTextWidth, fontSize*16.f));
     if(!ImGui::Begin("Palanteer - About", &_showAbout, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse |
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar)) {
         ImGui::End();
         return;
     }
-    double winX = ImGui::GetWindowPos().x;
-    double winY = ImGui::GetWindowPos().y;
-    double winWidth  = ImGui::GetWindowContentRegionMax().x;
+    float winX = ImGui::GetWindowPos().x;
+    float winY = ImGui::GetWindowPos().y;
+    float winWidth  = ImGui::GetWindowContentRegionMax().x;
 
     // Bold colored title
     ImU32 titleBg = IM_COL32(255, 200, 200, 255);
     ImU32 titleFg = IM_COL32(50, 150, 255, 255);
-    double textWidth = ImGui::CalcTextSize("Palanteer").x;
-    double x = winX+0.5*(winWidth-2.*textWidth), y = winY+2.*fontSize;
-    DRAWLIST->AddText(ImGui::GetFont(), 2.*fontSize, ImVec2(x-0.1*fontSize, y-0.1*fontSize), titleBg, "Palanteer");
-    DRAWLIST->AddText(ImGui::GetFont(), 2.*fontSize, ImVec2(x, y), titleFg, "Palanteer");
-    y += 2.*fontSize;
+    float textWidth = ImGui::CalcTextSize("Palanteer").x;
+    float x = winX+0.5f*(winWidth-2.f*textWidth), y = winY+2.f*fontSize;
+    DRAWLIST->AddText(ImGui::GetFont(), 2.f*fontSize, ImVec2(x-0.1f*fontSize, y-0.1f*fontSize), titleBg, "Palanteer");
+    DRAWLIST->AddText(ImGui::GetFont(), 2.f*fontSize, ImVec2(x, y), titleFg, "Palanteer");
+    y += 2.f*fontSize;
 
 #define TEXT_POSITION(text, lineSpan, coefScreenWidth, coefTextWidth)   \
     DRAWLIST->AddText(ImVec2(winX+coefScreenWidth*winWidth+coefTextWidth*ImGui::CalcTextSize(text).x, y), vwConst::uWhite, text); \
@@ -719,26 +719,26 @@ vwMain::drawAbout(void)
     // Version
     char tmpStr[128];
     snprintf(tmpStr, sizeof(tmpStr), "v%s", PALANTEER_VERSION);
-    TEXT_POSITION(tmpStr, 2, 0.5, -0.5);
+    TEXT_POSITION(tmpStr, 2, 0.5f, -0.5f);
 
     // Description
-    TEXT_POSITION(textDescr, 3, 0.5, -0.5);
-    TEXT_POSITION("Palanteer is efficient, light, free and open source", 2, 0.5, -0.5);
-    TEXT_POSITION("Copyright (c) 2021, Damien Feneyrou <dfeneyrou@gmail.com>", 3, 0.5, -0.5);
+    TEXT_POSITION(textDescr, 3, 0.5f, -0.5f);
+    TEXT_POSITION("Palanteer is efficient, light, free and open source", 2, 0.5f, -0.5f);
+    TEXT_POSITION("Copyright (c) 2021, Damien Feneyrou <dfeneyrou@gmail.com>", 3, 0.5f, -0.5f);
 
     // Buttons
-    ImGui::SetCursorPosY(fontSize*13.5);
+    ImGui::SetCursorPosY(fontSize*13.5f);
     ImGui::Separator();
     ImGui::Spacing();
-    ImGui::SetCursorPosX(0.2*winWidth);
+    ImGui::SetCursorPosX(0.2f*winWidth);
     if(ImGui::Button("License")) ImGui::OpenPopup("Viewer license");
-    ImGui::SameLine(0.7*winWidth);
+    ImGui::SameLine(0.7f*winWidth);
     if(ImGui::Button("Close")) _showAbout = false;
 
     // License popup
     static constexpr char const* noteTextDescr = "NOTE: the instrumentation libraries are under the MIT license.\nYou do not have to open the source code of your program\n\n";
     bool openPopupModal = true;
-    ImGui::SetNextWindowSize(ImVec2(ImGui::CalcTextSize(noteTextDescr).x*1.2+2.*fontSize, fontSize*25.));
+    ImGui::SetNextWindowSize(ImVec2(ImGui::CalcTextSize(noteTextDescr).x*1.2f+2.f*fontSize, fontSize*25.f));
     if(ImGui::BeginPopupModal("Viewer license", &openPopupModal, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize)) {
 
         static char licenseText[1024] = \
@@ -750,13 +750,13 @@ vwMain::drawAbout(void)
         ImGui::Text("The license below applies only to the viewer (this program):\n");
 
         ImGui::Spacing(); ImGui::Spacing();
-        ImGui::BeginChild("license text", ImVec2(0,fontSize*14.), true);
+        ImGui::BeginChild("license text", ImVec2(0,fontSize*14.f), true);
         ImGui::PushStyleColor(ImGuiCol_Text, vwConst::grey);
         ImGui::TextWrapped("%s", licenseText);
         ImGui::PopStyleColor();
         ImGui::EndChild();
 
-        ImGui::SetCursorPos(ImVec2(0.7*ImGui::GetWindowContentRegionMax().x, fontSize*22.5));
+        ImGui::SetCursorPos(ImVec2(0.7f*ImGui::GetWindowContentRegionMax().x, fontSize*22.5f));
         if(ImGui::Button("Close")) ImGui::CloseCurrentPopup();
 
         ImGui::EndPopup();
@@ -769,12 +769,12 @@ vwMain::drawAbout(void)
 void
 vwMain::drawErrorMsg(void)
 {
-#define DRAW_ERROR_DISPLAY_TEXT()                                \
-    ImGui::PushStyleColor(ImGuiCol_Text, vwConst::red);          \
-    ImGui::BulletText("%s", _safeErrorMsg.msg.toChar());         \
+#define DRAW_ERROR_DISPLAY_TEXT()                           \
+    ImGui::PushStyleColor(ImGuiCol_Text, vwConst::red);     \
+    ImGui::BulletText("%s", _safeErrorMsg.msg.toChar());    \
     ImGui::PopStyleColor()
 #define DRAW_ERROR_DISPLAY_END()                                        \
-    ImGui::SetCursorPosX(0.45*ImGui::GetWindowContentRegionMax().x);    \
+    ImGui::SetCursorPosX(0.45f*ImGui::GetWindowContentRegionMax().x);   \
     if(ImGui::Button("Close")) ImGui::CloseCurrentPopup();              \
     ImGui::EndPopup()
 
@@ -873,7 +873,7 @@ vwMain::drawLogConsole(void)
     std::lock_guard<std::mutex> lk(lc.logMx);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 1)); // Tighten spacing
     float fontHeight = ImGui::GetTextLineHeightWithSpacing();
-    int startIdx = ImGui::GetScrollY()/fontHeight;
+    int startIdx =  (int)(ImGui::GetScrollY()/fontHeight);
     int endIdx   = bsMin(lc.logs.size(), startIdx+1+ImGui::GetWindowSize().y/fontHeight);
 
     // Loop on logs
@@ -1165,7 +1165,7 @@ vwMain::draw(void)
 
 
 void
-vwMain::setScopeHighlight(int threadId, double startTimeNs, double endTimeNs, int eventFlags, int nestingLevel, u32 nameIdx, bool isMultiple)
+vwMain::setScopeHighlight(int threadId, s64 startTimeNs, s64 endTimeNs, int eventFlags, int nestingLevel, u32 nameIdx, bool isMultiple)
 {
     _hlHasBeenSet   = true;
     _hlThreadId     = threadId;
@@ -1179,7 +1179,7 @@ vwMain::setScopeHighlight(int threadId, double startTimeNs, double endTimeNs, in
 
 
 void
-vwMain::setScopeHighlight(int threadId, double punctualTimeNs, int eventFlags, int nestingLevel, u32 nameIdx)
+vwMain::setScopeHighlight(int threadId, s64 punctualTimeNs, int eventFlags, int nestingLevel, u32 nameIdx)
 {
     _hlHasBeenSet   = true;
     _hlThreadId     = threadId;
@@ -1209,6 +1209,7 @@ vwMain::notifyNewRemoteBuffer(int streamId, bsVec<u8>& buffer)
 void
 vwMain::notifyNewFrozenThreadState(int streamId, u64 frozenThreadBitmap)
 {
+    (void)streamId;
     _frozenThreadBitmap = frozenThreadBitmap;
 }
 
@@ -1217,6 +1218,7 @@ vwMain::notifyNewFrozenThreadState(int streamId, u64 frozenThreadBitmap)
 void
 vwMain::notifyCommandAnswer(int streamId, plPriv::plRemoteStatus status, const bsString& answer)
 {
+    (void)streamId; (void)status; (void)answer;
 }
 
 
@@ -1290,6 +1292,7 @@ void
 vwMain::notifyNewCollectionTick(int streamId)
 {
     // Used only in the dynamic library
+    (void)streamId;
 }
 
 
@@ -1305,6 +1308,7 @@ void
 vwMain::notifyNewThread(int threadId, u64 nameHash)
 {
     // Used only in the dynamic library
+    (void)threadId; (void)nameHash;
 }
 
 
@@ -1312,6 +1316,7 @@ void
 vwMain::notifyNewElem(u64 nameHash, int elemIdx, int prevElemIdx, int threadId, int flags)
 {
     // Used only in the dynamic library
+    (void)nameHash; (void)elemIdx; (void)prevElemIdx; (void)threadId; (void)flags;
 }
 
 
@@ -1319,6 +1324,7 @@ void
 vwMain::notifyFilteredEvent(int elemIdx, int flags, u64 nameHash, s64 dateNs, u64 value)
 {
     // Used only in the dynamic library
+    (void)elemIdx; (void)flags; (void)nameHash; (void)dateNs; (void)value;
 }
 
 
@@ -1326,12 +1332,14 @@ void
 vwMain::notifyInstrumentationError(cmRecord::RecErrorType type, int threadId, u32 filenameIdx, int lineNbr, u32 nameIdx)
 {
     // Used only in the dynamic library
+    (void)type; (void)threadId; (void)filenameIdx; (void)lineNbr; (void)nameIdx;
 }
 
 
 void
 vwMain::notifyNewCli(int streamId, u32 nameIdx, int paramSpecIdx, int descriptionIdx)
 {
+    (void)streamId; (void)nameIdx; (void)paramSpecIdx; (void)descriptionIdx;
 }
 
 
@@ -1631,15 +1639,15 @@ vwMain::selectBestDockLocation(bool bigWidth, bool bigHeight)
         if(node->IsLeafNode()) {
             // Categorize the node
             ImVec2& s = node->SizeRef;
-            float criterion;
+            float criterion = 0.f;
             for(int classKind=0; classKind<4; ++classKind) {
                 switch(classKind) {
                 case 0: criterion = s[0]*s[1]/sqrt(bsMax(s[0]/s[1], s[1]/s[0])); break; // Max area and favoring square shape
                 case 1: criterion = s[1]/sqrt(s[0]); break; // Max height and favoring thin shape
                 case 2: criterion = s[0]/sqrt(s[1]); break; // Max width and favoring thick shape
-                case 3: criterion = 1./(s[0]*s[1]);  break; // Smallest area
+                case 3: criterion = 1.f/(s[0]*s[1]);  break; // Smallest area
                 }
-                criterion *= 1.- ((node->TabBar)? 0.001*node->TabBar->Tabs.size() : 0.); // Slightly favorize node with least views inside
+                criterion *= 1.f- ((node->TabBar)? 0.001f*node->TabBar->Tabs.size() : 0.f); // Slightly favorize node with least views inside
                 if(cds[classKind].id==0 || cds[classKind].criterion<criterion) cds[classKind] = { node->ID, criterion };
             }
         } else {
@@ -1665,17 +1673,17 @@ vwMain::createLayoutViews(const vwConfig::ScreenLayout& layout)
         if(sscanf(view.descr.toChar()+kwLength+1, __VA_ARGS__)!=readQty) { printf("Unable to find the view '" #keywordName "'\n"); } \
         else isFound = true;                                            \
     }
-#define SET_VIEW_ATTRIBUTES(array)                                      \
-    plAssert(view.id<1000000);                                          \
-    while(idArray.size()<=view.id) idArray.push_back(0);                \
-    idArray[view.id]              = 1; /* in use */                     \
-    array.back().syncMode         = syncMode;                           \
-    array.back().isNew            = false;                              \
+#define SET_VIEW_ATTRIBUTES(array)                          \
+    plAssert(view.id<1000000);                              \
+    while(idArray.size()<=view.id) idArray.push_back(0);    \
+    idArray[view.id]              = 1; /* in use */         \
+    array.back().syncMode         = syncMode;               \
+    array.back().isNew            = false;                  \
     array.back().isWindowSelected = false;
 
     // Init (clear views)
-    u64 hash, hash2;
-    int syncMode, tmp2, tmp3, tmp4;
+    u64 hash=0, hash2=0;
+    int syncMode=0, tmp2=0, tmp3=0, tmp4=0;
     bool isFound = false;
     bsVec<u8> idArray; idArray.reserve(128); // For ID pool initial state
     clearViews();

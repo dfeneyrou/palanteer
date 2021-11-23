@@ -138,9 +138,9 @@ class vwConfig {
     void   setThreadColorIdx(int threadId, int colorIdx);
     int    getThreadColorIdx(int threadId) const { plAssert(threadId>=0); return _threads[threadId].colorIdx; }
     ImVec4 getThreadColor   (int threadId, bool isLight=false) const {
-        if      (threadId==vwConst::LOCKS_THREADID)      return ImVec4(0.,  0.,  0.,  1.);
-        else if (threadId==vwConst::CORE_USAGE_THREADID) return ImVec4(0.1, 0.1, 0.1, 1.);
-        else if (threadId<0)                             return ImVec4(0.9, 0.9, 0.9, 1.);
+        if      (threadId==vwConst::LOCKS_THREADID)      return ImVec4(0.f,  0.f,  0.f,  1.f);
+        else if (threadId==vwConst::CORE_USAGE_THREADID) return ImVec4(0.1f, 0.1f, 0.1f, 1.f);
+        else if (threadId<0)                             return ImVec4(0.9f, 0.9f, 0.9f, 1.f);
         else return (isLight? _colorPaletteLight:_colorPaletteDark)[_threads[threadId].colorIdx];
     }
 
@@ -221,7 +221,7 @@ class vwConfig {
     int _cacheMBytes     = 300;
     int _hWheelInversion = 0;
     int _vWheelInversion = 0;
-    float _vTimelineSpacing = 0.3;
+    float _vTimelineSpacing = 0.3f;
     int _winVisiCatalog  = true;
     int _winVisiRecord   = true;
     int _winVisiSearch   = false;

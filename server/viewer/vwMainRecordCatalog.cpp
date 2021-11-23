@@ -174,7 +174,7 @@ vwMain::drawRecord(void)
 
     } // Statistics collapsible header
 
-    ImGui::Dummy(ImVec2(1, 0.5*ImGui::GetTextLineHeight()));
+    ImGui::Dummy(ImVec2(1, 0.5f*ImGui::GetTextLineHeight()));
 
     if(_recordWindow.doForceShowLive) {
         _recordWindow.doForceShowLive = false;
@@ -210,7 +210,7 @@ vwMain::drawRecord(void)
             }
         }
     } // Live collapsible header
-    ImGui::Dummy(ImVec2(1, 0.5*ImGui::GetTextLineHeight()));
+    ImGui::Dummy(ImVec2(1, 0.5f*ImGui::GetTextLineHeight()));
 
     if(_record && _record->errorQty) {
 

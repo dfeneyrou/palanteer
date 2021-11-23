@@ -69,7 +69,7 @@ void
 vwMain::prepareText(Text& t)
 {
     // Check if the cache is still valid
-    const double winHeight = ImGui::GetWindowSize().y; // Approximated and bigger anyway
+    const float winHeight = ImGui::GetWindowSize().y; // Approximated and bigger anyway
     if(!t.isCacheDirty && winHeight<=t.lastWinHeight) return;
 
     // Worth working
@@ -112,7 +112,7 @@ vwMain::prepareText(Text& t)
     if(eType==PL_FLAG_TYPE_DATA_TIMESTAMP || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) {
         t.firstTimeNs = t.lastTimeNs = csp[0].evt.vS64;
     }
-    t.cachedScrollRatio = bsMinMax((double)t.firstTimeNs/bsMax((double)_record->durationNs, 1.), 0., 1.);
+    t.cachedScrollRatio = (float)bsMinMax((double)t.firstTimeNs/(double)bsMax(_record->durationNs, 1), 0., 1.);
 
     // Compute the hash chain to get the Elem and eventually the color
     u64 hashPathPerLevel[cmConst::MAX_LEVEL_QTY+1];
@@ -127,8 +127,8 @@ vwMain::prepareText(Text& t)
     }
 
     // Compute items to display
-    const double fontHeight = ImGui::GetTextLineHeightWithSpacing();
-    float y = 0.;
+    const float fontHeight = ImGui::GetTextLineHeightWithSpacing();
+    float y = 0.f;
     cmRecord::Evt nextEvt;
     while(y<winHeight) {
         // Get the next item
@@ -159,7 +159,7 @@ vwMain::prepareText(Text& t)
         }
 
         // Update the "last date", used to display the time footprint in the timelines
-        int eType = (flags&PL_FLAG_TYPE_MASK);
+        eType = (flags&PL_FLAG_TYPE_MASK);
         if((flags&PL_FLAG_SCOPE_MASK) || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) t.lastTimeNs = evt.vS64;
 
         // Next
@@ -196,13 +196,13 @@ vwMain::drawTexts(void)
         if(hasColoredTab) {
             const ImVec4 c = getConfig().getThreadColor(text.threadId);
             float a;
-            a = 1.1; ImGui::PushStyleColor(ImGuiCol_TabActive,          ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 1.4; ImGui::PushStyleColor(ImGuiCol_TabHovered,         ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 0.4; ImGui::PushStyleColor(ImGuiCol_Tab,                ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 0.4; ImGui::PushStyleColor(ImGuiCol_TabUnfocused,       ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 0.5; ImGui::PushStyleColor(ImGuiCol_TabUnfocusedActive, ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 0.4; ImGui::PushStyleColor(ImGuiCol_TitleBg,            ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 1.1; ImGui::PushStyleColor(ImGuiCol_TitleBgActive,      ImVec4(a*c.x, a*c.y, a*c.z, 1.));
+            a = 1.1f; ImGui::PushStyleColor(ImGuiCol_TabActive,          ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 1.4f; ImGui::PushStyleColor(ImGuiCol_TabHovered,         ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 0.4f; ImGui::PushStyleColor(ImGuiCol_Tab,                ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 0.4f; ImGui::PushStyleColor(ImGuiCol_TabUnfocused,       ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 0.5f; ImGui::PushStyleColor(ImGuiCol_TabUnfocusedActive, ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 0.4f; ImGui::PushStyleColor(ImGuiCol_TitleBg,            ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 1.1f; ImGui::PushStyleColor(ImGuiCol_TitleBgActive,      ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
         }
 
         if(text.isWindowSelected) {
@@ -239,11 +239,11 @@ vwMain::drawText(Text& t)
     plgScope(TEXT, "drawText");
 
     // Display the thread name
-    double  comboWidth   = ImGui::CalcTextSize("Isolated XXX").x;
+    float  comboWidth   = ImGui::CalcTextSize("Isolated XXX").x;
     float   textBgY      = ImGui::GetWindowPos().y+ImGui::GetCursorPos().y;
     float   textbgHeight = textBgY+ImGui::GetTextLineHeightWithSpacing()+ImGui::GetStyle().FramePadding.y;
     float   comboX       = ImGui::GetWindowContentRegionMax().x-comboWidth;
-    DRAWLIST->AddRectFilled(ImVec2(ImGui::GetWindowPos().x+ImGui::GetCursorPos().x-2., textBgY),
+    DRAWLIST->AddRectFilled(ImVec2(ImGui::GetWindowPos().x+ImGui::GetCursorPos().x-2.f, textBgY),
                             ImVec2(ImGui::GetWindowPos().x+comboX, textbgHeight), vwConst::uGrey48);
     ImGui::AlignTextToFramePadding();
     ImGui::Text(" [%s]", (t.threadId>=0)? getFullThreadName(t.threadId): "(Not present)");
@@ -258,16 +258,16 @@ vwMain::drawText(Text& t)
                       ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
     prepareText(t); // Ensure cache is up to date, even after window creation
     if(t.cachedStartParents.empty()) { ImGui::EndChild(); return; } // Sanity
-    const double winX = ImGui::GetWindowPos().x;
-    const double winY = ImGui::GetWindowPos().y;
-    const double winWidth      = ImGui::GetWindowContentRegionMax().x;
-    const double winHeight     = ImGui::GetWindowSize().y;
-    const double fontHeight    = ImGui::GetTextLineHeightWithSpacing();
-    const double textPixMargin = ImGui::GetStyle().ItemSpacing.x;
-    const double mouseX        = ImGui::GetMousePos().x;
-    const double mouseY        = ImGui::GetMousePos().y;
+    const float winX = ImGui::GetWindowPos().x;
+    const float winY = ImGui::GetWindowPos().y;
+    const float winWidth      = ImGui::GetWindowContentRegionMax().x;
+    const float winHeight     = ImGui::GetWindowSize().y;
+    const float fontHeight    = ImGui::GetTextLineHeightWithSpacing();
+    const float textPixMargin = ImGui::GetStyle().ItemSpacing.x;
+    const float mouseX        = ImGui::GetMousePos().x;
+    const float mouseY        = ImGui::GetMousePos().y;
     const double normalizedScrollHeight = 1000000.; // Value does not really matter, it just defines the granularity
-    const float  darkCoef = 0.7;
+    const float  darkCoef = 0.7f;
     const bool isWindowHovered = ImGui::IsWindowHovered();
 
     const float charWidth = ImGui::CalcTextSize("0").x;
@@ -296,9 +296,9 @@ vwMain::drawText(Text& t)
     if(isWindowHovered && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         // Check mouse input
         int textWheelCounter =  (ImGui::GetIO().KeyCtrl)? 0 :
-            (ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion()); // No Ctrl key: wheel is for the text
+            (int)(ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion()); // No Ctrl key: wheel is for the text
         tlWheelCounter       = (!ImGui::GetIO().KeyCtrl)? 0 :
-            (ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline (processed in highlighted text display)
+            (int)(ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline (processed in highlighted text display)
         const auto& startEvt = t.cachedStartParents[0].evt;
         bool isStartItemHidden = (startEvt.flags&PL_FLAG_SCOPE_MASK) && t.isHidden(t.startNLevel, _record->getString(startEvt.nameIdx).hash);
         cmRecord::Evt nextEvt;
@@ -306,12 +306,12 @@ vwMain::drawText(Text& t)
         if(ImGui::IsMouseDragging(2)) {
             t.isDragging = true;
             if(bsAbs(ImGui::GetMouseDragDelta(2).y)>1.) {
-                double tmp = (ImGui::GetMouseDragDelta(2).y+t.dragReminder);
+                float tmp = (ImGui::GetMouseDragDelta(2).y+t.dragReminder);
                 ImGui::ResetMouseDragDelta(2);
                 dragLineQty   = (int)(tmp/fontHeight);
                 t.dragReminder = tmp-fontHeight*dragLineQty;
             }
-        } else t.dragReminder = 0.;
+        } else t.dragReminder = 0.f;
 
         // Move start position depending on keys, wheel or drag
         if(ImGui::IsKeyPressed(KC_Down)) {
@@ -388,7 +388,7 @@ vwMain::drawText(Text& t)
     // Set the modified scroll position in ImGui, if not changed through imGui
     if(t.didUserChangedScrollPos) {
         plgData(TEXT, "Set new scroll pos from user", t.cachedScrollRatio*normalizedScrollHeight);
-        ImGui::SetScrollY(t.cachedScrollRatio*normalizedScrollHeight);
+        ImGui::SetScrollY((float)(t.cachedScrollRatio*normalizedScrollHeight));
     }
     // Mark the virtual total size
     t.lastScrollPos = ImGui::GetScrollY();
@@ -399,13 +399,13 @@ vwMain::drawText(Text& t)
     const bsVec<ImVec4>& palette = getConfig().getColorPalette(true);
 
     struct {
-        ImU32  color;
-        int    yScopeStart = -1;
-        int    nameIdx     = -1;
-        int    flags       =  0;
-        u32    lIdx        =  0;
-        double scopeStartTimeNs = -1.;
-        double scopeEndTimeNs   = -1.;
+        ImU32 color;
+        int   yScopeStart = -1;
+        int   nameIdx     = -1;
+        int   flags       =  0;
+        u32   lIdx        =  0;
+        s64   scopeStartTimeNs = -1;
+        s64   scopeEndTimeNs   = -1;
     } levelElems[cmConst::MAX_LEVEL_QTY];
 
     for(int i=0; i<t.cachedStartParents.size(); ++i) {
@@ -425,9 +425,9 @@ vwMain::drawText(Text& t)
     // =============
     float y = winY;
     int nestingLevel = 0;
-    double mouseTimeBestY = -1.;
-    double mouseTimeBestTimeNs = -1.;
-    double newMouseTimeNs = -1.;
+    float mouseTimeBestY = -1.;
+    s64 mouseTimeBestTimeNs = -1;
+    s64 newMouseTimeNs = -1;
     for(const auto& tci : t.cachedItems) {
         // Get the cached item
         const cmRecord::Evt& evt = tci.evt;
@@ -550,30 +550,30 @@ vwMain::drawText(Text& t)
 
             // Synchronized navigation
             if(t.syncMode>0) { // No synchronized navigation for isolated windows
-                double syncStartTimeNs, syncTimeRangeNs;
+                s64 syncStartTimeNs, syncTimeRangeNs;
                 getSynchronizedRange(t.syncMode, syncStartTimeNs, syncTimeRangeNs);
 
                 // Click: set timeline position at middle screen only if outside the center third of screen
-                double targetTimeNs = li.scopeStartTimeNs;
+                s64 targetTimeNs = li.scopeStartTimeNs;
                 if((flags&PL_FLAG_SCOPE_END) && li.scopeEndTimeNs>=0.) targetTimeNs = li.scopeEndTimeNs;
                 else if((flags&PL_FLAG_TYPE_MASK)>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && (flags&PL_FLAG_TYPE_MASK)<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST) {
                     targetTimeNs = evt.vS64;
                 }
                 if((ImGui::IsMouseReleased(0) && ImGui::GetMousePos().x<winX+winWidth) || tlWheelCounter) {
-                    synchronizeNewRange(t.syncMode, bsMax(0., targetTimeNs-0.5*syncTimeRangeNs), syncTimeRangeNs);
+                    synchronizeNewRange(t.syncMode, bsMax(targetTimeNs-(s64)(0.5*syncTimeRangeNs), 0LL), syncTimeRangeNs);
                     ensureThreadVisibility(t.syncMode, t.threadId);
                     synchronizeText(t.syncMode, t.threadId, hlLevel, li.lIdx, li.scopeStartTimeNs, t.uniqueId);
                 }
                 // Double click: adapt also the scale to have the scope at 10% of the screen
                 if(ImGui::IsMouseDoubleClicked(0) && li.scopeEndTimeNs>=0.) {
-                    double newTimeRangeNs =  vwConst::DCLICK_RANGE_FACTOR*(li.scopeEndTimeNs-li.scopeStartTimeNs);
-                    synchronizeNewRange(t.syncMode, syncStartTimeNs+(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
+                    s64 newTimeRangeNs =  vwConst::DCLICK_RANGE_FACTOR*(li.scopeEndTimeNs-li.scopeStartTimeNs);
+                    synchronizeNewRange(t.syncMode, syncStartTimeNs+(s64)((double)(targetTimeNs-syncStartTimeNs)/(double)syncTimeRangeNs*(double)(syncTimeRangeNs-newTimeRangeNs)),
                                         newTimeRangeNs);
                     ensureThreadVisibility(t.syncMode, t.threadId);
                 }
                 // Zoom the timeline
                 if(tlWheelCounter!=0) {
-                    double newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
+                    s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
                     synchronizeNewRange(t.syncMode, syncStartTimeNs+(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
                                         newTimeRangeNs);
                     ensureThreadVisibility(t.syncMode, t.threadId);
@@ -594,10 +594,10 @@ vwMain::drawText(Text& t)
 
             // Tooltip
             if(mouseX<winX+textPixMargin+charWidth*14) {
-                ImGui::SetTooltip("%s", getNiceTime((s64)_mouseTimeNs, 0));
+                ImGui::SetTooltip("%s", getNiceTime(_mouseTimeNs, 0));
             }
             else if((flags&PL_FLAG_SCOPE_BEGIN) && scopeEndTimeNs>=0) {
-                ImGui::SetTooltip("Duration: %s", getNiceDuration(scopeEndTimeNs-(s64)evt.vS64));
+                ImGui::SetTooltip("Duration: %s", getNiceDuration(scopeEndTimeNs-evt.vS64));
             }
         }
         bool doHighlight = (hlLevel>=0 && isScopeHighlighted(t.threadId, levelElems[hlLevel].scopeStartTimeNs,
@@ -626,21 +626,21 @@ vwMain::drawText(Text& t)
             DRAWLIST->AddText(ImVec2(winX+textPixMargin, y), vwConst::uWhite, timeStr);
         }
         // Display the name of the item
-        double offsetX = winX+textPixMargin+charWidth*(14+nestingLevel*2);
+        float offsetX = winX+textPixMargin+charWidth*(14+nestingLevel*2);
         DRAWLIST->AddText(ImVec2(offsetX, y), color1, nameStr);
         // Display the value
-        double offsetX2 = bsMax(ImGui::CalcTextSize(nameStr).x, 20.*charWidth)+2.*charWidth;
+        float offsetX2 = bsMax(ImGui::CalcTextSize(nameStr).x, 20.f*charWidth)+2.f*charWidth;
         DRAWLIST->AddText(ImVec2(offsetX+offsetX2, y), color1, valueStr);
 
         // Display the vertical marker for the scope
         if(flags&PL_FLAG_SCOPE_BEGIN) {
-            levelElems[nestingLevel].yScopeStart = y+heightPix; // Bottom of current text
+            levelElems[nestingLevel].yScopeStart = (int)(y+heightPix); // Bottom of current text
             ImVec4 tmp = ImColor(color1).Value;
             levelElems[nestingLevel].color = ImColor(darkCoef*tmp.x, darkCoef*tmp.y, darkCoef*tmp.z, 1.f);
             if(isHidden) levelElems[nestingLevel].yScopeStart = -1;
         }
         if((flags&PL_FLAG_SCOPE_END) && y-levelElems[nestingLevel].yScopeStart>0) {
-            DRAWLIST->AddLine(ImVec2(offsetX, y), ImVec2(offsetX, levelElems[nestingLevel].yScopeStart), color2);
+            DRAWLIST->AddLine(ImVec2(offsetX, y), ImVec2(offsetX, (float)levelElems[nestingLevel].yScopeStart), color2);
             levelElems[nestingLevel].yScopeStart = -1;
         }
 
@@ -652,8 +652,8 @@ vwMain::drawText(Text& t)
     // Finish the vertical marker for the scope, at the bottom
     for(int i=0; i<nestingLevel; ++i) {
         if(y-levelElems[i].yScopeStart>0) {
-            double offsetX = winX+textPixMargin+charWidth*(14+i*2);
-            DRAWLIST->AddLine(ImVec2(offsetX, y), ImVec2(offsetX, levelElems[i].yScopeStart), levelElems[i].color);
+            float offsetX = winX+textPixMargin+charWidth*(14+i*2);
+            DRAWLIST->AddLine(ImVec2(offsetX, y), ImVec2(offsetX, (float)levelElems[i].yScopeStart), levelElems[i].color);
         }
     }
 
@@ -666,7 +666,7 @@ vwMain::drawText(Text& t)
 
     // Contextual menu
     if(ImGui::BeginPopup("Text menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-        double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+        float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
         ImGui::TextColored(vwConst::grey, "%s", _record->getString(t.ctxNameIdx).value.toChar());
 
         ImGui::Separator();

@@ -127,7 +127,7 @@ vwMain::_computeChunkHistogram(Histogram& h)
         }
         _histoBuild.maxValuePerBin.resize(MAX_BIN_QTY);
         for(int i=0; i<MAX_BIN_QTY; ++i) {
-            frd[i] = {0, 0, -1, 0, (s64)-1};
+            frd[i] = {0, 0, -1, 0, -1LL};
             _histoBuild.maxValuePerBin[i] = -1e300;
         }
 
@@ -149,7 +149,7 @@ vwMain::_computeChunkHistogram(Histogram& h)
 
     bsUs_t endComputationTimeUs = bsGetClockUs() + vwConst::COMPUTATION_TIME_SLICE_US; // Time slice of computation
     double absMinValue = _histoBuild.absMinValue, absMaxValue = _histoBuild.absMaxValue;
-    double ptValue; s64 ptTimeNs; cmRecord::Evt evt; u32 lIdx = PL_INVALID;
+    double ptValue; s64 ptTimeNs = 0; cmRecord::Evt evt; u32 lIdx = PL_INVALID;
     bool   isCoarseScope;
     char   tmpStr[64];
 
@@ -189,7 +189,7 @@ vwMain::_computeChunkHistogram(Histogram& h)
             // Get the bin index, if time range matches
             if(evt.vS64<h.startTimeNs) continue;
             if(evt.vS64>h.startTimeNs+h.timeRangeNs) break; // Stop if time is past
-            double ptValue = evt.threadId;  // For the lock notification, the value is the thread id (what else?)
+            ptValue = evt.threadId;  // For the lock notification, the value is the thread id (what else?)
             int idx = bsMinMax((int)((ptValue-elem.absYMin)*yToBinIdx+0.5), 0, MAX_BIN_QTY-1);
 
             // Update the bin & global statistics
@@ -268,7 +268,7 @@ vwMain::_computeChunkHistogram(Histogram& h)
         }
     }
 
-     // Save bound updates in the persistent build structure
+    // Save bound updates in the persistent build structure
     _histoBuild.absMinValue = absMinValue;
     _histoBuild.absMaxValue = absMaxValue;
 
@@ -280,7 +280,7 @@ vwMain::_computeChunkHistogram(Histogram& h)
                               &openPopupModal, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextColored(vwConst::gold, "Histogram computation...");
         snprintf(tmpStr, sizeof(tmpStr), "%d %%", h.computationLevel);
-        ImGui::ProgressBar(0.01*h.computationLevel, ImVec2(-1,ImGui::GetTextLineHeight()), tmpStr);
+        ImGui::ProgressBar(0.01f*h.computationLevel, ImVec2(-1,ImGui::GetTextLineHeight()), tmpStr);
         if(h.computationLevel==100) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
@@ -354,7 +354,7 @@ void
 vwMain::prepareHistogram(Histogram& h)
 {
     // Worth working?
-    const double winWidth = ImGui::GetWindowSize().x;
+    const float winWidth = ImGui::GetWindowSize().x;
     if(!h.isCacheDirty && winWidth>=h.lastWinWidth) return;
     plgScope(HISTO, "prepareHistogram");
     h.lastWinWidth = winWidth;
@@ -448,18 +448,18 @@ vwMain::drawHistogram(int histogramIdx)
 
     ImGui::BeginChild("histoArea", ImVec2(0.,0.), false, ImGuiWindowFlags_NoScrollbar);
 
-    const double winX      = ImGui::GetWindowPos().x;
-    const double winY      = ImGui::GetWindowPos().y;
-    const double winWidth  = ImGui::GetWindowSize().x;
-    const double winHeight = bsMax(ImGui::GetWindowSize().y, 1.f);
-    const double mouseX    = ImGui::GetMousePos().x;
-    const double mouseY    = ImGui::GetMousePos().y;
+    const float winX      = ImGui::GetWindowPos().x;
+    const float winY      = ImGui::GetWindowPos().y;
+    const float winWidth  = ImGui::GetWindowSize().x;
+    const float winHeight = bsMax(ImGui::GetWindowSize().y, 1.f);
+    const float mouseX    = ImGui::GetMousePos().x;
+    const float mouseY    = ImGui::GetMousePos().y;
     const bool   isWindowHovered = ImGui::IsWindowHovered();
-    const double fontHeight   = ImGui::GetTextLineHeight();
-    const double topBarHeight = ImGui::GetTextLineHeightWithSpacing();
-    const double uMargin   = 5;
-    const double vMargin   = 10;
-    const double pointSize = 3;
+    const float fontHeight   = ImGui::GetTextLineHeight();
+    const float topBarHeight = ImGui::GetTextLineHeightWithSpacing();
+    const float uMargin   = 5.f;
+    const float vMargin   = 10.f;
+    const float pointSize = 3.f;
 
     Histogram& h = _histograms[histogramIdx];
     prepareHistogram(h); // Ensure cache is up to date, even at window creation
@@ -471,24 +471,24 @@ vwMain::drawHistogram(int histogramIdx)
     ImU32 colorLight        = getConfig().getCurveColor(h.elemIdx, true);
 
     // compute some drawing parameters (which may be altered by the navigation, so updated before drawing)
-    double scrollX        = h.viewStartX;
-    double barTotalWidth  = (h.viewZoom*winWidth-2.*uMargin)/h.data.size();
-    int    firstBarIdx    = bsMax((int)(scrollX/barTotalWidth), 0);
-    int    lastBarIdx     = bsMin((int)((scrollX+winWidth)/barTotalWidth), h.data.size()-1);
+    float scrollX       = (float)h.viewStartX;
+    float barTotalWidth = (float)(h.viewZoom*winWidth-2.f*uMargin)/h.data.size();
+    int    firstBarIdx  = bsMax((int)(scrollX/barTotalWidth), 0);
+    int    lastBarIdx   = bsMin((int)((scrollX+winWidth)/barTotalWidth), h.data.size()-1);
 
     // Draw the top horizontal bar with the synchronization groups
     DRAWLIST->AddRectFilled(ImVec2(winX, winY), ImVec2(winX+winWidth, winY+topBarHeight), vwConst::uGrey);
-    double comboWidth = ImGui::CalcTextSize("Isolated XXX").x;
+    float comboWidth = ImGui::CalcTextSize("Isolated XXX").x;
     ImGui::SetCursorPos(ImVec2(winWidth-comboWidth, 0.));
     drawSynchroGroupCombo(comboWidth, &h.syncMode);
 
     // Visible range bar
-    double rbBgStartPix = winX;
-    double rbWidth      = winWidth-comboWidth;
-    double rbStartPix   = rbBgStartPix+(rbWidth-3)*firstBarIdx/h.data.size();
-    double rbEndPix     = rbStartPix+bsMax(3., ((lastBarIdx+1-firstBarIdx)*rbWidth/h.data.size()));
-    DRAWLIST->AddRectFilled(ImVec2(rbStartPix, winY+4),
-                            ImVec2(rbEndPix,   winY+topBarHeight-4), vwConst::uGrey128);
+    float rbBgStartPix = winX;
+    float rbWidth      = winWidth-comboWidth;
+    float rbStartPix   = rbBgStartPix+(rbWidth-3.f)*firstBarIdx/h.data.size();
+    float rbEndPix     = rbStartPix+bsMax(3.f, ((lastBarIdx+1-firstBarIdx)*rbWidth/h.data.size()));
+    DRAWLIST->AddRectFilled(ImVec2(rbStartPix, winY+4.f),
+                            ImVec2(rbEndPix,   winY+topBarHeight-4.f), vwConst::uGrey128);
 
     // Navigation
     bool hasKeyboardFocus   = isWindowHovered && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -503,7 +503,7 @@ vwMain::drawHistogram(int histogramIdx)
             if(!io.KeyCtrl && ImGui::IsKeyPressed(KC_H)) openHelpTooltip(h.uniqueId, "Help Histogram");
         }
         if(deltaWheel!=0) {
-            const double scrollFactor = 1.25;
+            const float scrollFactor = 1.25f;
             deltaWheel *= getConfig().getHWheelInversion();
             // Ctrl: (Horizontal) range zoom
             if(io.KeyCtrl) {
@@ -550,7 +550,7 @@ vwMain::drawHistogram(int histogramIdx)
         }
 
         if(hasKeyboardFocus) {
-            float step = winWidth*(ImGui::GetIO().KeyCtrl? 1. : 0.25);
+            float step = winWidth*(ImGui::GetIO().KeyCtrl? 1.f : 0.25f);
             if(ImGui::IsKeyPressed(KC_Left))  h.viewStartX = bsMinMax(h.viewStartX-step, 0., (h.viewZoom-1.)*winWidth);
             if(ImGui::IsKeyPressed(KC_Right)) h.viewStartX = bsMinMax(h.viewStartX+step, 0., (h.viewZoom-1.)*winWidth);
         }
@@ -559,37 +559,37 @@ vwMain::drawHistogram(int histogramIdx)
     // Set the modified scroll position in ImGui, if not changed through imGui
     if(targetFsBinIndex>=0) {
         const double newBarTotalWidth  = (h.viewZoom*winWidth-2.*uMargin)/h.data.size();
-        h.viewStartX = targetFsBinIndex*(h.viewZoom*winWidth-2.*uMargin)/fullResBinQty+winX+uMargin-mouseX+0.5*newBarTotalWidth;
+        h.viewStartX = targetFsBinIndex*(h.viewZoom*winWidth-2.*uMargin)/fullResBinQty+winX+uMargin-mouseX+0.5f*newBarTotalWidth;
     }
     h.viewStartX = bsMinMax(h.viewStartX, 0., (h.viewZoom-1.)*winWidth);
 
 
     // Update the cache if needed
     prepareHistogram(h);
-    scrollX        = h.viewStartX;
-    barTotalWidth  = (h.viewZoom*winWidth-2.*uMargin)/h.data.size();
+    scrollX        = (float)h.viewStartX;
+    barTotalWidth  = (float)(h.viewZoom*winWidth-2.*uMargin)/h.data.size();
     firstBarIdx    = bsMax((int)(scrollX/barTotalWidth), 0);
     lastBarIdx     = bsMin((int)((scrollX+winWidth)/barTotalWidth), h.data.size()-1);
 
     // Compute drawing parameters
-    const double halfBarSpacing = bsMax(0.09*barTotalWidth, 1.);
-    const double yLowest        = winY+winHeight-fontHeight;
-    const double yHistFactor    = (yLowest-winY-topBarHeight-vMargin)/(double)h.maxQty;
-    const double yCumulFactor   = (yLowest-winY-topBarHeight-vMargin)/(double)h.totalQty;
-    const double yDelta         = bsMax((h.absMaxValue-h.absMinValue)/bsMax(1, h.data.size()-1), 1e-300);
-    const u32    doubleMedianQty = ((firstBarIdx==0)? 0: h.data[firstBarIdx-1].cumulQty) + h.data[lastBarIdx].cumulQty; // Double value to keep precision
+    const float halfBarSpacing = bsMax(0.09f*barTotalWidth, 1.f);
+    const float yLowest        = winY+winHeight-fontHeight;
+    const float yHistFactor    = (yLowest-winY-topBarHeight-vMargin)/(float)h.maxQty;
+    const float yCumulFactor   = (yLowest-winY-topBarHeight-vMargin)/(float)h.totalQty;
+    const float yDelta         = (float)bsMax((h.absMaxValue-h.absMinValue)/bsMax(1, h.data.size()-1), 1e-300);
+    const u32   doubleMedianQty = ((firstBarIdx==0)? 0: h.data[firstBarIdx-1].cumulQty) + h.data[lastBarIdx].cumulQty; // Double value to keep precision
 
     // Draw the grid
     double scaleMajorTick, scaleMinorTick;
-    computeTickScales(h.maxQty, bsMinMax(0.2*winHeight/getConfig().getFontSize(), 2., 12.),
+    computeTickScales((double)h.maxQty, bsMinMax((int)(0.2f*winHeight/getConfig().getFontSize()), 2, 12),
                       scaleMajorTick, scaleMinorTick);
     double valueTick = 0.;
-    double pixTick   = yLowest-yHistFactor*valueTick;
+    float pixTick   = (float)(yLowest-yHistFactor*valueTick);
     if(yHistFactor*scaleMajorTick>0.) {
         while(pixTick>=winY) {
             DRAWLIST->AddLine(ImVec2(winX, pixTick), ImVec2(winX+winWidth, pixTick),
                               vwConst::uGrey128&0x3FFFFFFF, 1.0); // Quarter transparency);
-            pixTick   -= yHistFactor*scaleMajorTick;
+            pixTick   -= (float)(yHistFactor*scaleMajorTick);
             valueTick += scaleMajorTick;
         }
     }
@@ -624,10 +624,10 @@ vwMain::drawHistogram(int histogramIdx)
             }
         }
         // Draw
-        double x = winX-scrollX+uMargin+barIdx*barTotalWidth+halfBarSpacing;
-        double y = yLowest-bsMax(yHistFactor*hd.qty, MIN_BAR_HEIGHT);
-        DRAWLIST->AddRect      (ImVec2(x+barTotalWidth-2*halfBarSpacing, yLowest), ImVec2(x, y), colorLight);
-        DRAWLIST->AddRectFilled(ImVec2(x+barTotalWidth-2*halfBarSpacing, yLowest), ImVec2(x, y),
+        float x = winX-scrollX+uMargin+barIdx*barTotalWidth+halfBarSpacing;
+        float y = yLowest-bsMax(yHistFactor*hd.qty, MIN_BAR_HEIGHT);
+        DRAWLIST->AddRect      (ImVec2(x+barTotalWidth-2.f*halfBarSpacing, yLowest), ImVec2(x, y), colorLight);
+        DRAWLIST->AddRectFilled(ImVec2(x+barTotalWidth-2.f*halfBarSpacing, yLowest), ImVec2(x, y),
                                 (barIdx==highlightedIdx)? vwConst::uWhite : colorDark);
         // Update median & average
         double value = (h.absMinValue+yDelta*barIdx);
@@ -636,10 +636,10 @@ vwMain::drawHistogram(int histogramIdx)
         if(medianIdx<0 && 2*hd.cumulQty>=doubleMedianQty) medianIdx = barIdx;
     }
     if(medianIdx<0) medianIdx = firstBarIdx; // Will not be used (empty bin), but valid index
-    DRAWLIST->AddLine(ImVec2(winX, yLowest-1.), ImVec2(winX+winWidth, yLowest-1.), vwConst::uGrey);
+    DRAWLIST->AddLine(ImVec2(winX, yLowest-1.f), ImVec2(winX+winWidth, yLowest-1.f), vwConst::uGrey);
 
     // Draw the cumulative probability
-    double lastX=-1., lastY=-1.;
+    float lastX=-1.f, lastY=-1.f;
     int firstCumulIdx = bsMax(firstBarIdx-1, 0);
     while(firstCumulIdx>0 && h.data[firstCumulIdx].qty==0) --firstCumulIdx;
     int lastCumulIdx  = bsMin(lastBarIdx+1, h.data.size()-1);
@@ -647,8 +647,8 @@ vwMain::drawHistogram(int histogramIdx)
     for(int barIdx=firstCumulIdx; barIdx<=lastCumulIdx; ++barIdx) {
         const HistoData& hd = h.data[barIdx];
         if(hd.qty==0) continue; // No point if no data
-        double x = winX-scrollX+uMargin+(0.5+barIdx)*barTotalWidth;
-        double y = yLowest-yCumulFactor*hd.cumulQty;
+        float x = winX-scrollX+uMargin+(0.5f+barIdx)*barTotalWidth;
+        float y = yLowest-yCumulFactor*hd.cumulQty;
         if(barIdx>firstCumulIdx) DRAWLIST->AddLine(ImVec2(lastX, lastY), ImVec2(x, y), vwConst::uGrey, 2.);
         DRAWLIST->AddRectFilled(ImVec2(x-pointSize, y-pointSize), ImVec2(x+pointSize, y+pointSize),
                                 (barIdx==highlightedIdx)? vwConst::uGrey128 : vwConst::uGrey);
@@ -661,8 +661,8 @@ vwMain::drawHistogram(int histogramIdx)
     if(isDiscrete) {
         for(int barIdx=firstBarIdx; barIdx<=lastBarIdx; ++barIdx) {
             snprintf(tmpStr, sizeof(tmpStr), "%s", getValueAsChar(elem.flags, (double)h.discreteLkup[barIdx], 0., h.isHexa));
-            double x = winX-scrollX+uMargin+(0.5+barIdx)*barTotalWidth-0.5*ImGui::CalcTextSize(tmpStr).x;
-            DRAWLIST->AddText(ImVec2(x+5, yLowest), vwConst::uYellow, tmpStr);
+            float x = winX-scrollX+uMargin+(0.5f+barIdx)*barTotalWidth-0.5f*ImGui::CalcTextSize(tmpStr).x;
+            DRAWLIST->AddText(ImVec2(x+5.f, yLowest), vwConst::uYellow, tmpStr);
         }
     }
     // Draw the horizontal extreme X-axis in other cases
@@ -670,31 +670,31 @@ vwMain::drawHistogram(int histogramIdx)
         const char* valueMinString = getValueAsChar(elem.flags, h.absMinValue+yDelta*firstBarIdx, 0., h.isHexa);
         DRAWLIST->AddText(ImVec2(winX+5, yLowest), vwConst::uYellow, valueMinString);
         const char* valueMaxString = getValueAsChar(elem.flags, h.absMinValue+yDelta*lastBarIdx, 0., h.isHexa);
-        DRAWLIST->AddText(ImVec2(winX+winWidth-ImGui::CalcTextSize(valueMaxString).x-2, yLowest), vwConst::uYellow, valueMaxString);
+        DRAWLIST->AddText(ImVec2(winX+winWidth-ImGui::CalcTextSize(valueMaxString).x-2.f, yLowest), vwConst::uYellow, valueMaxString);
     }
 
     // Draw average and median on the window
     if(!isDiscrete && averageCount>0) {
         double avgValue = averageValue/(double)averageCount;
         snprintf(tmpStr, sizeof(tmpStr), "Avg: %s", getValueAsChar(elem.flags, avgValue, 0., h.isHexa));
-        double sWidth = ImGui::CalcTextSize(tmpStr).x;
+        float sWidth = ImGui::CalcTextSize(tmpStr).x;
         double avgIdx = (avgValue-h.absMinValue)/yDelta;
-        double x = winX-scrollX+uMargin+avgIdx*barTotalWidth+0.5*barTotalWidth;
-        double y = winY+topBarHeight+4.*fontHeight;
-        DRAWLIST->AddLine(ImVec2(x, winY+topBarHeight), ImVec2(x, yLowest), vwConst::uCyan, 1.);
-        DRAWLIST->AddRectFilled(ImVec2(x+3, y), ImVec2(x+sWidth+8, y+fontHeight), textBg);
-        DRAWLIST->AddText(ImVec2(x+5, y), vwConst::uCyan, tmpStr);
+        float x = winX-scrollX+uMargin+(float)(avgIdx*barTotalWidth)+0.5f*barTotalWidth;
+        float y = winY+topBarHeight+4.f*fontHeight;
+        DRAWLIST->AddLine(ImVec2(x, winY+topBarHeight), ImVec2(x, yLowest), vwConst::uCyan, 1.f);
+        DRAWLIST->AddRectFilled(ImVec2(x+3.f, y), ImVec2(x+sWidth+8.f, y+fontHeight), textBg);
+        DRAWLIST->AddText(ImVec2(x+5.f, y), vwConst::uCyan, tmpStr);
     }
     if(h.data[medianIdx].qty>0) {
         snprintf(tmpStr, sizeof(tmpStr), "Median: %s", getValueAsChar(elem.flags, isDiscrete?
                                                                       (double)h.discreteLkup[medianIdx] : h.absMinValue+yDelta*medianIdx,
                                                                       0., h.isHexa));
-        double sWidth = ImGui::CalcTextSize(tmpStr).x;
-        double x = winX-scrollX+uMargin+medianIdx*barTotalWidth+0.5*barTotalWidth;
-        double y = winY+topBarHeight+6.*fontHeight;
-        DRAWLIST->AddLine(ImVec2(x, winY+topBarHeight), ImVec2(x, yLowest), vwConst::uRed, 1.);
-        DRAWLIST->AddRectFilled(ImVec2(x+3, y), ImVec2(x+sWidth+8, y+fontHeight), textBg);
-        DRAWLIST->AddText(ImVec2(x+5, y), vwConst::uRed, tmpStr);
+        float sWidth = ImGui::CalcTextSize(tmpStr).x;
+        float x = winX-scrollX+uMargin+medianIdx*barTotalWidth+0.5f*barTotalWidth;
+        float y = winY+topBarHeight+6.f*fontHeight;
+        DRAWLIST->AddLine(ImVec2(x, winY+topBarHeight), ImVec2(x, yLowest), vwConst::uRed, 1.f);
+        DRAWLIST->AddRectFilled(ImVec2(x+3.f, y), ImVec2(x+sWidth+8.f, y+fontHeight), textBg);
+        DRAWLIST->AddText(ImVec2(x+5.f, y), vwConst::uRed, tmpStr);
     }
 
     // Highlight
@@ -710,19 +710,19 @@ vwMain::drawHistogram(int histogramIdx)
         // Tooltip
         bsString deltaString;
         if(eType!=PL_FLAG_TYPE_DATA_STRING && eType!=PL_FLAG_TYPE_MARKER && eType!=PL_FLAG_TYPE_LOCK_NOTIFIED) {
-            deltaString = bsString(" +/-") + getValueAsChar(elem.flags, 0.5*yDelta, 0., h.isHexa); // 0.5 because "plus or minus"
+            deltaString = bsString(" +/-") + getValueAsChar(elem.flags, 0.5f*yDelta, 0., h.isHexa); // 0.5 because "plus or minus"
         }
         snprintf(tmpStr, sizeof(tmpStr),  "%s { %s%s }", h.name.toChar(),
                  getValueAsChar(elem.flags, isDiscrete? (double)h.discreteLkup[highlightedIdx] : h.absMinValue+yDelta*(0.5+highlightedIdx), 0., h.isHexa),
                  deltaString.toChar());
-        double ttWidth = bsMax(ImGui::CalcTextSize(tmpStr).x, 3.f*ImGui::CalcTextSize(" Cumulative: ").x);
-        ImGui::SetNextWindowSize(ImVec2(ttWidth+20., 0));
+        float ttWidth = bsMax(ImGui::CalcTextSize(tmpStr).x, 3.f*ImGui::CalcTextSize(" Cumulative: ").x);
+        ImGui::SetNextWindowSize(ImVec2(ttWidth+20.f, 0));
         ImGui::BeginTooltip();
 
         ImGui::TextColored(vwConst::gold, "%s", tmpStr);
         ImGui::Separator();
         ImGuiStyle& style = ImGui::GetStyle();
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3., style.CellPadding.y));
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3.f, style.CellPadding.y));
         if(ImGui::BeginTable("##tooltipHist", 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV)) {
             ImGui::TableNextColumn();
             ImGui::Text("Quantity:"); ImGui::TableNextColumn();
@@ -738,21 +738,21 @@ vwMain::drawHistogram(int histogramIdx)
 
         // Synchronized navigation
         if(h.syncMode>0 && (ImGui::IsMouseDoubleClicked(0) || (ImGui::IsMouseClicked(0) && h.dragMode==NONE))) { // No synchronized navigation for isolated windows
-            double syncStartTimeNs, newTimeRangeNs;
+            s64 syncStartTimeNs, newTimeRangeNs;
             getSynchronizedRange(h.syncMode, syncStartTimeNs, newTimeRangeNs);
 
             // Simple click: set timeline position at middle of the screen
             // Double click: adapt also the scale to have the scope at a fixed percentage of the size of the screen
-            double scopeDurationNs = 0;
+            s64 scopeDurationNs = 0;
             if     (hd.lIdx==PL_INVALID) { } // Marker case (we do not know the parent, so no duration)
-            else if(elem.nameIdx==elem.hlNameIdx) scopeDurationNs = h.absMinValue+yDelta*highlightedIdx; // For scopes, the value is the duration
+            else if(elem.nameIdx==elem.hlNameIdx) scopeDurationNs = (s64)(h.absMinValue+yDelta*highlightedIdx); // For scopes, the value is the duration
             else {
                 // For "flat" items, the duration is the one of the parent
                 cmRecordIteratorHierarchy it(_record,hd.threadId, elem.nestingLevel, hd.lIdx);
                 scopeDurationNs = it.getParentDurationNs();
             }
-            if(ImGui::IsMouseDoubleClicked(0) && scopeDurationNs>0.) newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*scopeDurationNs;
-            synchronizeNewRange(h.syncMode, bsMax(0., hd.timeNs-0.5*(newTimeRangeNs-scopeDurationNs)), newTimeRangeNs);
+            if(ImGui::IsMouseDoubleClicked(0) && scopeDurationNs>0) newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*scopeDurationNs;
+            synchronizeNewRange(h.syncMode, bsMax(hd.timeNs-(s64)(0.5*(newTimeRangeNs-scopeDurationNs)), 0LL), newTimeRangeNs);
 
             if(ImGui::IsMouseClicked(0) && h.dragMode==NONE) {
                 // Double click: view the thread. Single click: view the lock section (if it is a lock)
@@ -770,23 +770,23 @@ vwMain::drawHistogram(int histogramIdx)
 
     // Draw legend
     {
-        const double legendTextMargin = 5.;
+        const float legendTextMargin = 5.f;
         const bool   isFullRange      = (h.startTimeNs==0 && h.timeRangeNs==_record->durationNs);
-        const double legendCol1Width  = ImGui::CalcTextSize("Quantity").x+legendTextMargin;
-        const double legendCol2Width  = ImGui::CalcTextSize("<Lock notified>").x+legendTextMargin;
-        const double legendWidth      = bsMax(legendCol1Width+legendCol2Width, (double)ImGui::CalcTextSize(h.name.toChar()).x)+3*legendTextMargin;
-        const double lineHeight       = ImGui::GetTextLineHeightWithSpacing();
-        const double legendHeight     = 4.*lineHeight;
-        const double legendX          = winX+h.legendPosX*winWidth;
-        const double legendY          = winY+topBarHeight+h.legendPosY*(winHeight-topBarHeight-vMargin);
+        const float legendCol1Width  = ImGui::CalcTextSize("Quantity").x+legendTextMargin;
+        const float legendCol2Width  = ImGui::CalcTextSize("<Lock notified>").x+legendTextMargin;
+        const float legendWidth      = bsMax(legendCol1Width+legendCol2Width, (float)ImGui::CalcTextSize(h.name.toChar()).x)+3.f*legendTextMargin;
+        const float lineHeight       = ImGui::GetTextLineHeightWithSpacing();
+        const float legendHeight     = 4.f*lineHeight;
+        const float legendX          = winX+h.legendPosX*winWidth;
+        const float legendY          = winY+topBarHeight+h.legendPosY*(winHeight-topBarHeight-vMargin);
 
         // Box
         DRAWLIST->AddRectFilled(ImVec2(legendX, legendY), ImVec2(legendX+legendWidth, legendY+legendHeight), IM_COL32(0,0,0,160)); // Transparent black
         DRAWLIST->AddRect       (ImVec2(legendX, legendY),       ImVec2(legendX+legendWidth, legendY+legendHeight), vwConst::uWhite);
 
         // Title
-        DRAWLIST->AddText(ImVec2(legendX+0.5*(legendWidth-ImGui::CalcTextSize(h.name.toChar()).x), legendY), vwConst::uYellow, h.name.toChar());
-        DRAWLIST->AddLine(ImVec2(legendX, legendY+lineHeight-2), ImVec2(legendX+legendWidth, legendY+lineHeight-2), vwConst::uWhite);
+        DRAWLIST->AddText(ImVec2(legendX+0.5f*(legendWidth-ImGui::CalcTextSize(h.name.toChar()).x), legendY), vwConst::uYellow, h.name.toChar());
+        DRAWLIST->AddLine(ImVec2(legendX, legendY+lineHeight-2), ImVec2(legendX+legendWidth, legendY+lineHeight-2.f), vwConst::uWhite);
 
         // Elems
         const char* binSizeStr = 0;
@@ -794,15 +794,15 @@ vwMain::drawHistogram(int histogramIdx)
         else if(eType==PL_FLAG_TYPE_MARKER)        binSizeStr = "<Marker>";
         else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) binSizeStr = "<Lock notified>";
         else binSizeStr = getValueAsChar(elem.flags, yDelta, 0., h.isHexa);  // Persistent string until next call
-        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin,                 legendY+1.*lineHeight), vwConst::uWhite, "Bin size");
-        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin+legendCol1Width, legendY+1.*lineHeight), vwConst::uGrey, binSizeStr);
+        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin,                 legendY+1.f*lineHeight), vwConst::uWhite, "Bin size");
+        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin+legendCol1Width, legendY+1.f*lineHeight), vwConst::uGrey, binSizeStr);
 
         snprintf(tmpStr, sizeof(tmpStr), "%u", h.totalQty);
-        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin,                 legendY+2.*lineHeight), vwConst::uWhite, "Quantity");
-        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin+legendCol1Width, legendY+2.*lineHeight), vwConst::uGrey, tmpStr);
+        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin,                 legendY+2.f*lineHeight), vwConst::uWhite, "Quantity");
+        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin+legendCol1Width, legendY+2.f*lineHeight), vwConst::uGrey, tmpStr);
 
-        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin,                 legendY+3.*lineHeight), vwConst::uWhite, "Range");
-        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin+legendCol1Width, legendY+3.*lineHeight), vwConst::uGrey, isFullRange?"Full":"Partial");
+        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin,                 legendY+3.f*lineHeight), vwConst::uWhite, "Range");
+        DRAWLIST->AddText(ImVec2(legendX+legendTextMargin+legendCol1Width, legendY+3.f*lineHeight), vwConst::uGrey, isFullRange?"Full":"Partial");
 
         if(isWindowHovered) {
             bool isLegendHovered = (mouseX>=legendX && mouseX<=legendX+legendWidth && mouseY>=legendY && mouseY<=legendY+legendHeight);
@@ -819,11 +819,11 @@ vwMain::drawHistogram(int histogramIdx)
                     _rangeMenuSelection = 0;  // Activate the range menu
                 }
                 for(int i=2; i<4; ++i) {
-                    double dst, dtr;
+                    s64 dst, dtr;
                     getSynchronizedRange(i-1, dst, dtr); // Query group 1 & 2
-                    if((s64)dtr!=_record->durationNs && ((s64)dst!=h.startTimeNs || (s64)dtr!=h.timeRangeNs)) { // Not already seen range?
-                        _rangeMenuItems[i].startTimeNs = (s64)dst; _rangeMenuItems[i].timeRangeNs = (s64)dtr;
-                        _rangeMenuSelection = 0.; // Activate the range menu
+                    if(dtr!=_record->durationNs && (dst!=h.startTimeNs || dtr!=h.timeRangeNs)) { // Not already seen range?
+                        _rangeMenuItems[i].startTimeNs = dst; _rangeMenuItems[i].timeRangeNs = dtr;
+                        _rangeMenuSelection = 0; // Activate the range menu
                     }
                 }
             }
@@ -847,8 +847,8 @@ vwMain::drawHistogram(int histogramIdx)
             }
             if(h.legendDragMode==DATA) {
                 if(ImGui::IsMouseDragging(2)) {
-                    h.legendPosX = bsMinMax(h.legendPosX+ImGui::GetMouseDragDelta(2).x/winWidth, 0.05, 0.9);
-                    h.legendPosY = bsMinMax(h.legendPosY+ImGui::GetMouseDragDelta(2).y/(winHeight-topBarHeight-vMargin), 0., 0.85);
+                    h.legendPosX = bsMinMax(h.legendPosX+ImGui::GetMouseDragDelta(2).x/winWidth, 0.05f, 0.9f);
+                    h.legendPosY = bsMinMax(h.legendPosY+ImGui::GetMouseDragDelta(2).y/(winHeight-topBarHeight-vMargin), 0.f, 0.85f);
                     ImGui::ResetMouseDragDelta(2);
                 } else h.legendDragMode = NONE;
             }
@@ -857,31 +857,31 @@ vwMain::drawHistogram(int histogramIdx)
 
     // Middle click: Range drag selection
     if(isWindowHovered && ImGui::IsMouseDragging(1)) { // Button 1, no sensitivity threshold
-        h.rangeSelStartIdx = (int)((mouseX-winX-ImGui::GetMouseDragDelta(1).x+scrollX-uMargin-0.5*barTotalWidth)/barTotalWidth+0.5);
-        h.rangeSelEndIdx   = (int)((mouseX-winX                              +scrollX-uMargin-0.5*barTotalWidth)/barTotalWidth+0.5);
+        h.rangeSelStartIdx = (int)((mouseX-winX-ImGui::GetMouseDragDelta(1).x+scrollX-uMargin-0.5f*barTotalWidth)/barTotalWidth+0.5f);
+        h.rangeSelEndIdx   = (int)((mouseX-winX                              +scrollX-uMargin-0.5f*barTotalWidth)/barTotalWidth+0.5f);
         h.rangeSelEndIdx   = bsMin(h.rangeSelEndIdx, h.data.size()-1);
         if(h.rangeSelStartIdx>=h.rangeSelEndIdx) { h.rangeSelStartIdx = h.rangeSelEndIdx = 0; } // Cancel
         else { // Display the selection box with transparency
-            double x1 = winX-scrollX+uMargin+h.rangeSelStartIdx  *barTotalWidth;
-            double x2 = winX-scrollX+uMargin+(h.rangeSelEndIdx+1)*barTotalWidth;
-            constexpr double arrowSize = 4.;
+            float x1 = winX-scrollX+uMargin+h.rangeSelStartIdx  *barTotalWidth;
+            float x2 = winX-scrollX+uMargin+(h.rangeSelEndIdx+1)*barTotalWidth;
+            constexpr float arrowSize = 4.f;
             // White background
             DRAWLIST->AddRectFilled(ImVec2(x1, winY+topBarHeight), ImVec2(x2, winY+winHeight), IM_COL32(255,255,255,128));
             // Range line
             DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x2, mouseY), vwConst::uBlack, 2.);
             // Arrows
-            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.);
-            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.);
-            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.);
-            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.);
+            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.f);
             // Text
             snprintf(tmpStr, sizeof(tmpStr),  "{ %s -> %s }",
                      getValueAsChar(elem.flags, isDiscrete? (double)h.discreteLkup[h.rangeSelStartIdx] : h.absMinValue+yDelta*h.rangeSelStartIdx, 0., h.isHexa),
                      getValueAsChar(elem.flags, isDiscrete? (double)h.discreteLkup[h.rangeSelEndIdx  ] : h.absMinValue+yDelta*h.rangeSelEndIdx  , 0., h.isHexa, 1));
             ImVec2 tb = ImGui::CalcTextSize(tmpStr);
-            double x3 = 0.5*(x1+x2-tb.x);
-            if(x3<x1)      DRAWLIST->AddRectFilled(ImVec2(x3, mouseY-tb.y-5), ImVec2(x1,      mouseY-5), IM_COL32(255,255,255,128));
-            if(x3+tb.x>x2) DRAWLIST->AddRectFilled(ImVec2(x2, mouseY-tb.y-5), ImVec2(x3+tb.x, mouseY-5), IM_COL32(255,255,255,128));
+            float x3 = 0.5f*(x1+x2-tb.x);
+            if(x3<x1)      DRAWLIST->AddRectFilled(ImVec2(x3, mouseY-tb.y-5.f), ImVec2(x1,      mouseY-5.f), IM_COL32(255,255,255,128));
+            if(x3+tb.x>x2) DRAWLIST->AddRectFilled(ImVec2(x2, mouseY-tb.y-5.f), ImVec2(x3+tb.x, mouseY-5.f), IM_COL32(255,255,255,128));
             DRAWLIST->AddText(ImVec2(x3, mouseY-tb.y-5), vwConst::uBlack, tmpStr);
         }
     }
@@ -890,7 +890,7 @@ vwMain::drawHistogram(int histogramIdx)
         double zoomRatio = winWidth/(h.rangeSelEndIdx+1-h.rangeSelStartIdx)/barTotalWidth;
         h.viewZoom = bsMin(h.viewZoom*zoomRatio, (double)fullResBinQty/MIN_BAR_QTY);
         h.checkBounds();
-        h.viewStartX = (double)h.rangeSelStartIdx/h.data.size()*(h.viewZoom*winWidth-2.*uMargin);
+        h.viewStartX = (double)h.rangeSelStartIdx/h.data.size()*(h.viewZoom*winWidth-2.f*uMargin);
         // Reset the selection
         h.rangeSelStartIdx =  h.rangeSelEndIdx = 0;
         h.isCacheDirty = true;

@@ -12,7 +12,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(WIN32)
   # Windows: all libraries are built-in
-  add_compile_options(/DUNICODE) # Unicode app
   if(NOT ${CUSTOM_FLAGS} MATCHES ".*PL_IMPL_STACKTRACE=0.*")
     message("Palanteer feature 'stacktrace' enabled for viewer")
     add_definitions(-DPL_IMPL_STACKTRACE=1)
@@ -55,11 +54,19 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif(CMAKE_BUILD_TYPE STREQUAL "Release")
 
 if(MSVC)
-  # I gave up trying to have a nice way to force /W4 and /GR-
-  add_compile_options(/wd4244 /wd4267 /wd4305 /wd4308) # Disable all the type conversion warnings
+  add_compile_options(/DUNICODE) # Unicode app
+
+  add_compile_options(/W4 /permissive-)
+  add_compile_options(/wd4505) # Disable the "unreferenced function with internal linkage has been removed" (seen in stb library)
+  add_compile_options(/wd4706) # Disable the "assignment within conditional expression"
   add_compile_options(/wd4996) # Disable the "This function or variable may be unsafe", pushing for not well supported extensions
   add_compile_options(/wd6385) # Disable the "Reading invalid data from..." which generates mainly obvious false alarms
   add_compile_options(/wd6255) # Disable the "_alloca indicates failure by raising a stack overflow exception.  Consider using _malloca instead"
+  add_compile_options(/wd4996) # Disable the "This function or variable may be unsafe", pushing for not well supported extensions
+  add_compile_options(/wd4324) # Disable the "structure was padded due to alignment specifier". Yes, we use alignas(), no problem with that
+  add_compile_options(/wd4201) # Disable the "nonstandard extension used: nameless struct/union"
+  add_compile_options(/wd4127) # Disable the "conditional expression is constant" warning, applicable only from C++17
+
   add_compile_options(/EHsc)
   set(WIN_MAIN WIN32)
   file(GLOB ICON_RC CONFIGURE_DEPENDS *.rc)

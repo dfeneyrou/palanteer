@@ -119,7 +119,7 @@ vwMain::getNiceBigPositiveNumber(u64 number, int bank) const
     bool displayStarted = false;
     int offset = 0;
     while(1) {
-        int d = number/divider;
+        int d = (int)(number/divider);
         offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, displayStarted?" %03d":"%d", d);
         if(divider==1) break;
         number -= d*divider;
@@ -241,7 +241,7 @@ vwMain::precomputeRecordDisplay(void)
     }
 
     // Update the timeline header width
-    _timelineHeaderWidth = 100.; // Minimum value
+    _timelineHeaderWidth = 100.f; // Minimum value
     _timelineHeaderWidth = bsMax(_timelineHeaderWidth, ImGui::CalcTextSize("Locks & Resources").x);
     for(const auto& t : _record->threads) {
         if(t.groupNameIdx>=0) {
@@ -249,12 +249,12 @@ vwMain::precomputeRecordDisplay(void)
         }
         _timelineHeaderWidth = bsMax(_timelineHeaderWidth, ImGui::CalcTextSize(_record->getString(t.nameIdx).value.toChar()).x);
     }
-    _timelineHeaderWidth += 2.*ImGui::GetTextLineHeightWithSpacing(); // For the triangle and a margin
+    _timelineHeaderWidth += 2.f*ImGui::GetTextLineHeightWithSpacing(); // For the triangle and a margin
 
     // Animate the live record visible time range
     if(_liveRecordUpdated) {
-        constexpr s64 fixedRecordLengthBeforeMoveNs = 5000000000LL;
-        const double recordDurationNs = _record->durationNs;
+        constexpr s64 fixedRecordLengthBeforeMoveNs = 5000000000;
+        const s64 recordDurationNs = _record->durationNs;
 #define LOOP_LIVE_RANGE(array)                                          \
         for(auto& t : array) {                                          \
             if(recordDurationNs<=fixedRecordLengthBeforeMoveNs) {       \
@@ -262,7 +262,7 @@ vwMain::precomputeRecordDisplay(void)
                 t.checkTimeBounds(recordDurationNs);                    \
             }                                                           \
             else if(t.isTouchingEnd) {                                  \
-                s64 r = (t.timeRangeNs<=1.)? fixedRecordLengthBeforeMoveNs : t.timeRangeNs; \
+                s64 r = (t.timeRangeNs<=1)? fixedRecordLengthBeforeMoveNs : t.timeRangeNs; \
                 t.setView(recordDurationNs-r, r, true);                 \
                 t.checkTimeBounds(recordDurationNs);                    \
             }                                                           \
@@ -282,13 +282,13 @@ vwMain::precomputeRecordDisplay(void)
 // ===============================
 
 void
-vwMain::TimeRangeBase::setView(double newStartTimeNs, double newTimeRangeNs, bool noTransition)
+vwMain::TimeRangeBase::setView(s64 newStartTimeNs, s64 newTimeRangeNs, bool noTransition)
 {
     if(animTimeUs>0 && animStartTimeNs2==newStartTimeNs && animTimeRangeNs2==newTimeRangeNs) return; // Already set
     animStartTimeNs1 = startTimeNs; animStartTimeNs2 = newStartTimeNs;
     animTimeRangeNs1 = timeRangeNs; animTimeRangeNs2 = newTimeRangeNs;
     bsUs_t currentTime = bsGetClockUs();
-    animTimeUs = (animTimeUs==0)? currentTime: currentTime-bsMin((bsUs_t)(0.5*vwConst::ANIM_DURATION_US), currentTime-animTimeUs);
+    animTimeUs = (animTimeUs==0)? currentTime: currentTime-bsMin((bsUs_t)(0.5f*vwConst::ANIM_DURATION_US), currentTime-animTimeUs);
     if(noTransition) animTimeUs -= vwConst::ANIM_DURATION_US; // So the animation time is already over
     isCacheDirty  = true;
 }
@@ -302,11 +302,11 @@ vwMain::TimeRangeBase::ensureThreadVisibility(int threadId)
 
 
 void
-vwMain::TimeRangeBase::checkTimeBounds(double recordDurationNs)
+vwMain::TimeRangeBase::checkTimeBounds(s64 recordDurationNs)
 {
-    if(startTimeNs<0.)                           { startTimeNs = 0.; isCacheDirty = true; }
+    if(startTimeNs<0.)                           { startTimeNs = 0; isCacheDirty = true; }
     if(startTimeNs+timeRangeNs>recordDurationNs) { startTimeNs = recordDurationNs-timeRangeNs; isCacheDirty = true; }
-    if(startTimeNs<0.)                           { startTimeNs = 0.; timeRangeNs = recordDurationNs; isCacheDirty = true; }
+    if(startTimeNs<0.)                           { startTimeNs = 0; timeRangeNs = recordDurationNs; isCacheDirty = true; }
     isTouchingEnd = (startTimeNs+timeRangeNs>=recordDurationNs);
 }
 
@@ -317,8 +317,8 @@ vwMain::TimeRangeBase::updateAnimation(void)
     if(animTimeUs<=0) return;
     bsUs_t currentTimeUs = bsGetClockUs();
     double ratio = sqrt(bsMin((double)(currentTimeUs-animTimeUs)/vwConst::ANIM_DURATION_US, 1.)); // Sqrt for more reactive start
-    startTimeNs = ratio*animStartTimeNs2+(1.-ratio)*animStartTimeNs1;
-    timeRangeNs = ratio*animTimeRangeNs2+(1.-ratio)*animTimeRangeNs1;
+    startTimeNs = (s64)(ratio*animStartTimeNs2+(1.-ratio)*animStartTimeNs1);
+    timeRangeNs = (s64)(ratio*animTimeRangeNs2+(1.-ratio)*animTimeRangeNs1);
     if(ratio==1.) animTimeUs = 0;
     isCacheDirty = true;
 }
@@ -329,7 +329,7 @@ vwMain::TimeRangeBase::updateAnimation(void)
 // =======================
 
 void
-vwMain::getSynchronizedRange(int syncMode, double& startTimeNs, double& timeRangeNs)
+vwMain::getSynchronizedRange(int syncMode, s64& startTimeNs, s64& timeRangeNs)
 {
 #define LOOP_GET_RANGE(array)                   \
     for(auto& t : array) {                      \
@@ -340,7 +340,7 @@ vwMain::getSynchronizedRange(int syncMode, double& startTimeNs, double& timeRang
     }
 
     // Set default
-    startTimeNs = 0.;
+    startTimeNs = 0;
     timeRangeNs = _record->durationNs;
     // Find the first group matching range
     LOOP_GET_RANGE(_timelines);
@@ -350,7 +350,7 @@ vwMain::getSynchronizedRange(int syncMode, double& startTimeNs, double& timeRang
 
 
 void
-vwMain::synchronizeNewRange(int syncMode, double startTimeNs, double timeRangeNs)
+vwMain::synchronizeNewRange(int syncMode, s64 startTimeNs, s64 timeRangeNs)
 {
     if(syncMode<=0) return; // Source is not synchronized
 #define LOOP_SET_RANGE(array)                   \
@@ -518,7 +518,7 @@ vwMain::prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64
             }
             // Add
             _plotMenuItems.push_back( { name, unit, *elemIdx, e.nameIdx, e.flags, existingPlotWindowIndices, startTimeNs, timeRangeNs } );
-            _plotMenuNamesWidth = bsMax(_plotMenuNamesWidth, (double)ImGui::CalcTextSize(name).x);
+            _plotMenuNamesWidth = bsMax(_plotMenuNamesWidth, ImGui::CalcTextSize(name).x);
             return true;
         };
 
@@ -555,10 +555,10 @@ vwMain::prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64
 
 
 bool
-vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double headerWidth, double comboWidth)
+vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float headerWidth, float comboWidth)
 {
     if(comboWidth<=0.) comboWidth = ImGui::CalcTextSize("New plot #OOOOO").x;
-    const double spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
     char tmpStr[64];
     bool rootPlotSelected     = false;
     bool innerFieldsSelected  = false;
@@ -577,10 +577,10 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double hea
         // Display the item names
         if(i==0) {
             ImGui::Text("%s", rootText);
-            ImGui::SameLine((headerWidth>0.)? headerWidth : ImGui::GetWindowContentRegionMax().x-comboWidth-spacing);
+            ImGui::SameLine((headerWidth>0.f)? headerWidth : ImGui::GetWindowContentRegionMax().x-comboWidth-spacing);
         } else {
             ImGui::Text("%s", pmi.name.toChar());
-            ImGui::SameLine(2.*spacing+_plotMenuNamesWidth);
+            ImGui::SameLine(2.f*spacing+_plotMenuNamesWidth);
         }
 
         // Build the choices of the combo box for this plot, depending on its unit
@@ -676,7 +676,7 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double hea
     if(innerFieldsDisplayed) {
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize("Apply").x-2.*spacing);
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize("Apply").x-2.f*spacing);
         innerFieldsSelected = ImGui::Button("Apply##Plot");
         ImGui::EndMenu();
     }
@@ -702,8 +702,8 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double hea
             auto& pw       = _plots.back();
             pw.uniqueId    = getId();
             pw.unit        = _plotMenuNewPlotUnits[j];
-            pw.startTimeNs = (double)_plotMenuItems[0].startTimeNs;
-            pw.timeRangeNs = (double)_plotMenuItems[0].timeRangeNs;
+            pw.startTimeNs = _plotMenuItems[0].startTimeNs;
+            pw.timeRangeNs = _plotMenuItems[0].timeRangeNs;
             setFullScreenView(-1);
         }
 
@@ -757,11 +757,11 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, double hea
 
 
 bool
-vwMain::displayHistoContextualMenu(double headerWidth, double comboWidth)
+vwMain::displayHistoContextualMenu(float headerWidth, float comboWidth)
 {
     bool isFullRange = (!_plotMenuItems.empty() && _plotMenuItems[0].startTimeNs==0 && _plotMenuItems[0].timeRangeNs==_record->durationNs);
     if(comboWidth<=0.) comboWidth = ImGui::CalcTextSize("New plot #OOOOO").x;
-    const double spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float spacing = ImGui::GetStyle().ItemSpacing.x;
     bool rootHistoSelected    = false;
     bool innerFieldsSelected  = false;
     bool innerFieldsDisplayed = false;
@@ -784,7 +784,7 @@ vwMain::displayHistoContextualMenu(double headerWidth, double comboWidth)
             ImGui::SameLine((headerWidth>0.)? headerWidth : ImGui::GetWindowContentRegionMax().x-comboWidth-spacing);
         } else {
             ImGui::Text("%s", pmi.name.toChar());
-            ImGui::SameLine(2.*spacing+_plotMenuNamesWidth);
+            ImGui::SameLine(2.f*spacing+_plotMenuNamesWidth);
         }
 
         ImGui::SetNextItemWidth(comboWidth);
@@ -825,7 +825,7 @@ vwMain::displayHistoContextualMenu(double headerWidth, double comboWidth)
     if(innerFieldsDisplayed) {
         ImGui::Separator();
         ImGui::Spacing();
-        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize("Apply").x-2.*spacing);
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize("Apply").x-2.f*spacing);
         innerFieldsSelected = ImGui::Button("Apply##Histo");
         ImGui::EndMenu();
     }
@@ -954,7 +954,7 @@ vwMain::displayHelpText(const char* helpStr)
             ImGui::Spacing();
             if(isFirstLine) {
                 bsString title(s, endS);
-                float startX = 0.5*(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize(title.toChar()).x);
+                float startX = 0.5f*(ImGui::GetWindowContentRegionMax().x-ImGui::CalcTextSize(title.toChar()).x);
                 ImGui::SetCursorPosX(startX);
                 ImGui::TextColored(vwConst::gold, "%s", title.toChar());
             }
@@ -1123,7 +1123,7 @@ vwMain::displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& da
         ImGui::TextColored(vwConst::grey, "%s", getNiceBigPositiveNumber(childrenQty)); ImGui::SameLine();
         ImGui::Text("child%s", (childrenQty>1)? "ren" : "");
         ImGuiStyle& style = ImGui::GetStyle();
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3., style.CellPadding.y));
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3.f, style.CellPadding.y));
         if(ImGui::BeginTable("##table1", 2, ImGuiTableFlags_SizingFixedFit)) {
             float barWidth = ImGui::CalcTextSize("1000.00 ns (100.0 %%)").x;
             for(const ChildElems& ci : childrenElems) {
@@ -1134,8 +1134,8 @@ vwMain::displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& da
                     ImGui::TextColored(vwConst::grey, "(%dx)", ci.qty);
                 }
                 ImGui::TableNextColumn();
-                double ratio = (double)ci.timeSpentNs/(double)durationNs;
-                snprintf(tmpStr, sizeof(tmpStr), "%s (%.1f %%)", getNiceDuration(ci.timeSpentNs), 100.*ratio);
+                float ratio = (float)((double)ci.timeSpentNs/(double)durationNs);
+                snprintf(tmpStr, sizeof(tmpStr), "%s (%.1f %%)", getNiceDuration(ci.timeSpentNs), 100.f*ratio);
                 ImGui::ProgressBar(ratio, ImVec2(barWidth,ImGui::GetTextLineHeight()), tmpStr);
             }
             ImGui::EndTable();
@@ -1148,7 +1148,7 @@ vwMain::displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& da
         constexpr int maxDataQty = 25;
         ImGui::Separator();
         ImGuiStyle& style = ImGui::GetStyle();
-        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3., style.CellPadding.y));
+        ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3.f, style.CellPadding.y));
         if(ImGui::BeginTable("##table2", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
             int dataCount = 0;
             for(const auto& d : dataChildren) {
@@ -1180,7 +1180,7 @@ vwMain::computeTickScales(const double valueRange, const int targetTickQty, doub
     scaleMajorTick = pow(10., int(log10(valueRange))-1);
     scaleMinorTick = scaleMajorTick;
     for(int i=0; i<5; ++i) {
-        int tickQty = valueRange/scaleMajorTick;
+        int tickQty = (int)(valueRange/scaleMajorTick);
         if(tickQty<targetTickQty) break;
         scaleMinorTick = scaleMajorTick;
         scaleMajorTick *= (i&1)? 2. : 5.;
@@ -1189,7 +1189,7 @@ vwMain::computeTickScales(const double valueRange, const int targetTickQty, doub
 
 
 void
-vwMain::drawSynchroGroupCombo(double comboWidth, int* syncModePtr)
+vwMain::drawSynchroGroupCombo(float comboWidth, int* syncModePtr)
 {
     ImGui::PushItemWidth(comboWidth);
     if(ImGui::Combo("##Synchro", syncModePtr, "Isolated\0Group 1\0Group 2\0\0")) {
@@ -1204,66 +1204,66 @@ vwMain::drawSynchroGroupCombo(double comboWidth, int* syncModePtr)
 
 bool
 vwMain::manageVisorAndRangeSelectionAndBarDrag(TimeRangeBase& trb,
-                                                bool isWindowHovered, double mouseX, double mouseY, double winX, double winY, double winWidth, double winHeight,
-                                                bool isBarHovered, double rbWidth, double rbStartPix, double rbEndPix)
+                                                bool isWindowHovered, float mouseX, float mouseY, float winX, float winY, float winWidth, float winHeight,
+                                                bool isBarHovered, float rbWidth, float rbStartPix, float rbEndPix)
 {
     const double nsToPix = winWidth/trb.timeRangeNs;
     // Drag with middle button
     if(isWindowHovered && ImGui::IsMouseDragging(1)) {
         // Update the selected range
-        trb.rangeSelStartNs = trb.getStartTimeNs() + (mouseX-winX-ImGui::GetMouseDragDelta(1).x)/nsToPix;
-        trb.rangeSelEndNs   = trb.getStartTimeNs() + (mouseX-winX)/nsToPix;
+        trb.rangeSelStartNs = trb.getStartTimeNs() + (s64)((mouseX-winX-ImGui::GetMouseDragDelta(1).x)/nsToPix);
+        trb.rangeSelEndNs   = trb.getStartTimeNs() + (s64)((mouseX-winX)/nsToPix);
 
         // Cancel case
         if(trb.rangeSelStartNs>=trb.rangeSelEndNs) {
-            trb.rangeSelStartNs = 0.;
-            trb.rangeSelEndNs = 0.;
+            trb.rangeSelStartNs = 0;
+            trb.rangeSelEndNs = 0;
         }
 
         // Drag on-going: display the selection box with transparency and range
         else {
             char tmpStr[128];
-            double x1 = winX+nsToPix*(trb.rangeSelStartNs-trb.getStartTimeNs());
-            double x2 = winX+nsToPix*(trb.rangeSelEndNs-trb.getStartTimeNs());
-            constexpr double arrowSize = 4.;
+            float x1 = winX+(float)(nsToPix*(trb.rangeSelStartNs-trb.getStartTimeNs()));
+            float x2 = winX+(float)(nsToPix*(trb.rangeSelEndNs-trb.getStartTimeNs()));
+            constexpr float arrowSize = 4.f;
             // White background
             DRAWLIST->AddRectFilled(ImVec2(x1, winY), ImVec2(x2, winY+winHeight), IM_COL32(255,255,255,128));
             // Range line
-            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x2, mouseY), vwConst::uBlack, 2.);
+            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x2, mouseY), vwConst::uBlack, 2.f);
             // Arrows
-            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.);
-            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.);
-            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.);
-            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.);
+            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(x1, mouseY), ImVec2(x1+arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY-arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.f);
             // Text
             snprintf(tmpStr, sizeof(tmpStr), "{ %s }", getNiceDuration(trb.rangeSelEndNs-trb.rangeSelStartNs));
             ImVec2 tb = ImGui::CalcTextSize(tmpStr);
-            double x3 = 0.5*(x1+x2-tb.x);
-            if(x3<x1)      DRAWLIST->AddRectFilled(ImVec2(x3, mouseY-tb.y-5), ImVec2(x1,      mouseY-5), IM_COL32(255,255,255,128));
-            if(x3+tb.x>x2) DRAWLIST->AddRectFilled(ImVec2(x2, mouseY-tb.y-5), ImVec2(x3+tb.x, mouseY-5), IM_COL32(255,255,255,128));
-            DRAWLIST->AddText(ImVec2(x3, mouseY-tb.y-5), vwConst::uBlack, tmpStr);
+            float x3 = 0.5f*(x1+x2-tb.x);
+            if(x3<x1)      DRAWLIST->AddRectFilled(ImVec2(x3, mouseY-tb.y-5.f), ImVec2(x1,      mouseY-5), IM_COL32(255,255,255,128));
+            if(x3+tb.x>x2) DRAWLIST->AddRectFilled(ImVec2(x2, mouseY-tb.y-5.f), ImVec2(x3+tb.x, mouseY-5), IM_COL32(255,255,255,128));
+            DRAWLIST->AddText(ImVec2(x3, mouseY-tb.y-5.f), vwConst::uBlack, tmpStr);
         }
     }
 
     // Drag ended: set the selected range view
     else if(isWindowHovered && trb.rangeSelEndNs>0.) {
-        trb.rangeSelStartNs = bsMax(0., trb.rangeSelStartNs);
-        trb.setView(trb.rangeSelStartNs, bsMax(trb.rangeSelEndNs-trb.rangeSelStartNs, 1000.), true);
-        trb.rangeSelStartNs = trb.rangeSelEndNs = 0.;
+        trb.rangeSelStartNs = bsMax(trb.rangeSelStartNs, 0LL);
+        trb.setView(trb.rangeSelStartNs, bsMax(trb.rangeSelEndNs-trb.rangeSelStartNs, 1000LL), true);
+        trb.rangeSelStartNs = trb.rangeSelEndNs = 0;
         return  true;
     }
 
     // No range selection, then draw the vertical visor
     else {
-        double x = winX + (_mouseTimeNs-trb.startTimeNs)*nsToPix;
-        DRAWLIST->AddLine(ImVec2(x, winY), ImVec2(x, winY+winHeight), vwConst::uYellow, 1.0);
+        float x = winX + (float)((_mouseTimeNs-trb.startTimeNs)*nsToPix);
+        DRAWLIST->AddLine(ImVec2(x, winY), ImVec2(x, winY+winHeight), vwConst::uYellow, 1.0f);
     }
 
     // Manage the view navigation through the timeline top bar
     if(trb.dragMode==BAR || (isBarHovered && !ImGui::GetIO().KeyCtrl && trb.ctxDraggedId<0 && trb.dragMode==NONE)) {
         if(ImGui::IsMouseDragging(2)) {
             if(bsAbs(ImGui::GetMouseDragDelta(2).x)>1.) {
-                trb.setView(trb.getStartTimeNs()+_record->durationNs*ImGui::GetMouseDragDelta(2).x/winWidth, trb.getTimeRangeNs());
+                trb.setView(trb.getStartTimeNs()+(s64)(_record->durationNs*ImGui::GetMouseDragDelta(2).x/winWidth), trb.getTimeRangeNs());
                 ImGui::ResetMouseDragDelta(2);
                 trb.dragMode = BAR;
                 return true;
@@ -1271,7 +1271,7 @@ vwMain::manageVisorAndRangeSelectionAndBarDrag(TimeRangeBase& trb,
         }
         // Else just set the middle screen time if clicked outside of the bar
         else if(ImGui::IsMouseDown(0) && mouseX<winX+rbWidth && (mouseX<rbStartPix || mouseX>rbEndPix)) {
-            trb.setView(_record->durationNs*(mouseX-winX)/rbWidth-0.5*trb.getTimeRangeNs(), trb.getTimeRangeNs());
+            trb.setView((s64)(_record->durationNs*(mouseX-winX)/rbWidth-0.5*trb.getTimeRangeNs()), trb.getTimeRangeNs());
             trb.dragMode = BAR;
             return true;
         }
@@ -1284,84 +1284,85 @@ vwMain::manageVisorAndRangeSelectionAndBarDrag(TimeRangeBase& trb,
 
 
 void
-vwMain::drawTimeRuler(double winX, double winY, double winWidth, double rulerHeight, double startTimeNs, double timeRangeNs,
-                       int& syncMode, double& rbWidth, double& rbStartPix, double& rbEndPix)
+vwMain::drawTimeRuler(float winX, float winY, float winWidth, float rulerHeight, s64 startTimeNs, s64 timeRangeNs,
+                       int& syncMode, float& rbWidth, float& rbStartPix, float& rbEndPix)
 {
-    const double MIN_TICK_WIDTH_PIX    = 10.*getConfig().getFontSize(); // Correspond to a typical date display
-    constexpr double MIN_VIEWBAR_WIDTH_PIX = 10;
-    const double fontYSpacing     = 0.5*ImGui::GetStyle().ItemSpacing.y;
-    const double textPixMargin    = 3.*fontYSpacing;
-    const bool   isWindowHovered  = ImGui::IsWindowHovered();
-    const double rbHeight         = ImGui::GetTextLineHeightWithSpacing();
-    const double rbInnerBarOffset = 4.;
-    const double comboWidth       = ImGui::CalcTextSize("Isolated XXX").x;
-    const double recordDurationNs = _record->durationNs;
-    if(timeRangeNs<=0.) timeRangeNs = bsMax(recordDurationNs, 1.);
-    const double nsToPix          = winWidth/timeRangeNs;
+    const float MIN_TICK_WIDTH_PIX = 10.f*getConfig().getFontSize(); // Correspond to a typical date display
+    constexpr float MIN_VIEWBAR_WIDTH_PIX = 10.f;
+    const float fontYSpacing     = 0.5f*ImGui::GetStyle().ItemSpacing.y;
+    const float textPixMargin    = 3.f*fontYSpacing;
+    const bool   isWindowHovered = ImGui::IsWindowHovered();
+    const float rbHeight         = ImGui::GetTextLineHeightWithSpacing();
+    const float rbInnerBarOffset = 4.f;
+    const float comboWidth       = ImGui::CalcTextSize("Isolated XXX").x;
+    const s64   recordDurationNs = _record->durationNs;
+    if(timeRangeNs<=0) timeRangeNs = bsMax(recordDurationNs, 1LL);
+    const double nsToPix          = (double)winWidth/(double)timeRangeNs;
 
     // Visible range bar
     rbWidth      = winWidth-comboWidth;
-    double toPix = (rbWidth-3)/recordDurationNs;
-    double viewBarWidthPix = bsMax(MIN_VIEWBAR_WIDTH_PIX, toPix*timeRangeNs);
-    rbStartPix   = winX + bsMax(toPix*(startTimeNs+0.5*timeRangeNs) - 0.5*viewBarWidthPix, 0.);
-    rbEndPix     = winX + bsMin(toPix*(startTimeNs+0.5*timeRangeNs) + 0.5*viewBarWidthPix, rbWidth);
+    double toPix = (rbWidth-3.)/recordDurationNs;
+    float  viewBarWidthPix = bsMax(MIN_VIEWBAR_WIDTH_PIX, toPix*timeRangeNs);
+    rbStartPix   = winX + bsMax((float)(toPix*(startTimeNs+0.5*timeRangeNs)) - 0.5f*viewBarWidthPix, 0.f);
+    rbEndPix     = winX + bsMin((float)(toPix*(startTimeNs+0.5*timeRangeNs)) + 0.5f*viewBarWidthPix, rbWidth);
     DRAWLIST->AddRectFilled(ImVec2(winX, winY), ImVec2(winX+winWidth, winY+rbHeight), vwConst::uGrey);
     DRAWLIST->AddRectFilled(ImVec2(rbStartPix, winY+rbInnerBarOffset), ImVec2(rbEndPix  , winY+rbHeight-rbInnerBarOffset), vwConst::uGrey128);
 
     // Mark active ranges (text & memory)
     for(auto& tw: _texts) {
         ImColor colorThread = getConfig().getThreadColor(tw.threadId);
-        colorThread.Value.w = 0.5; // Make the bar slightly transparent to handle overlaps
-        double x1 = winX+rbWidth*tw.firstTimeNs/recordDurationNs;
-        double x2 = bsMax(x1+2., winX+rbWidth*tw.lastTimeNs/recordDurationNs);
-        DRAWLIST->AddRectFilled(ImVec2(x1, winY+6), ImVec2(x2, winY+rbHeight-6), colorThread);
+        colorThread.Value.w = 0.5f; // Make the bar slightly transparent to handle overlaps
+        float x1 = winX+rbWidth*(float)(tw.firstTimeNs/recordDurationNs);
+        float x2 = bsMax(x1+2.f, winX+rbWidth*(float)(tw.lastTimeNs/recordDurationNs));
+        DRAWLIST->AddRectFilled(ImVec2(x1, winY+6.f), ImVec2(x2, winY+rbHeight-6.f), colorThread);
     }
     for(auto& mw: _memTimelines) {
         if(mw.allocBlockThreadId<0) continue;
         ImColor colorThread = getConfig().getThreadColor(mw.allocBlockThreadId);
-        colorThread.Value.w = 0.5; // Make the bar slightly transparent to handle overlaps
-        double x1 = winX+rbWidth*mw.allocBlockStartTimeNs/recordDurationNs;
-        double x2 = bsMax(x1+2., winX+rbWidth*mw.allocBlockEndTimeNs/recordDurationNs);
-        DRAWLIST->AddRectFilled(ImVec2(x1, winY+6), ImVec2(x2, winY+rbHeight-6), colorThread);
+        colorThread.Value.w = 0.5f; // Make the bar slightly transparent to handle overlaps
+        float x1 = winX+rbWidth*(float)(mw.allocBlockStartTimeNs/recordDurationNs);
+        float x2 = bsMax(x1+2.f, winX+rbWidth*(float)(mw.allocBlockEndTimeNs/recordDurationNs));
+        DRAWLIST->AddRectFilled(ImVec2(x1, winY+6.f), ImVec2(x2, winY+rbHeight-6.f), colorThread);
     }
 
     // Draw background
-    double rulerY = winY+rbHeight;
+    float rulerY = winY+rbHeight;
     DRAWLIST->AddRectFilled(ImVec2(winX, rulerY), ImVec2(winX+winWidth, rulerY+rulerHeight), vwConst::uBlack);
 
     // Compute the tick period
     double scaleMajorTick, scaleMinorTick;
-    computeTickScales(timeRangeNs, bsMinMax(winWidth/MIN_TICK_WIDTH_PIX, 1., 10.), scaleMajorTick, scaleMinorTick);
+    computeTickScales((double)timeRangeNs, bsMinMax((int)(winWidth/MIN_TICK_WIDTH_PIX), 1, 10), scaleMajorTick, scaleMinorTick);
 
     // Draw the minor ticks
-    double pixTick = -nsToPix*fmod(startTimeNs, scaleMajorTick);
+    float pixTick = (float)(-nsToPix*fmod((double)startTimeNs, scaleMajorTick));
     while(pixTick<winWidth) {
         DRAWLIST->AddLine(ImVec2(winX+pixTick, rulerY+rulerHeight-7), ImVec2(winX+pixTick, rulerY+rulerHeight), vwConst::uWhite);
-        pixTick += nsToPix*scaleMinorTick;
+        pixTick += (float)(nsToPix*scaleMinorTick);
     }
 
     // Draw the major ticks
-    s64 timeTick = scaleMajorTick*floor(startTimeNs/scaleMajorTick);
-    pixTick = nsToPix*(timeTick-startTimeNs);
+    s64 timeTick = (s64)(scaleMajorTick*floor(startTimeNs/scaleMajorTick));
+    pixTick = (float)(nsToPix*(timeTick-startTimeNs));
     while(pixTick<winWidth) {
-        DRAWLIST->AddLine(ImVec2(winX+pixTick, rulerY), ImVec2(winX+pixTick, rulerY+rulerHeight), vwConst::uWhite, 2.0);
-        DRAWLIST->AddText(ImVec2(winX+pixTick+textPixMargin, rulerY+fontYSpacing), vwConst::uWhite, getNiceTime(timeTick, scaleMajorTick));
-        pixTick  += nsToPix*scaleMajorTick;
-        timeTick += scaleMajorTick;
+        DRAWLIST->AddLine(ImVec2(winX+pixTick, rulerY), ImVec2(winX+pixTick, rulerY+rulerHeight), vwConst::uWhite, 2.0f);
+        DRAWLIST->AddText(ImVec2(winX+pixTick+textPixMargin, rulerY+fontYSpacing), vwConst::uWhite, getNiceTime(timeTick, (s64)scaleMajorTick));
+        pixTick  += (float)(nsToPix*scaleMajorTick);
+        timeTick += (s64)scaleMajorTick;
     }
 
     // Draw the rule outside
-    DRAWLIST->AddRect(ImVec2(winX, winY), ImVec2(winX+winWidth, rulerY+rulerHeight), vwConst::uGrey64, 0., ImDrawCornerFlags_All, 2.);
+    DRAWLIST->AddRect(ImVec2(winX, winY), ImVec2(winX+winWidth, rulerY+rulerHeight), vwConst::uGrey64, 0.f, ImDrawCornerFlags_All, 2.f);
 
     // Draw the tooltip showing the range if hovered, else the current time
     if(isWindowHovered) {
         ImGui::SetTooltip("Range { %s } %s -> %s", getNiceDuration(timeRangeNs),
-                          getNiceTime(startTimeNs, timeRangeNs, 0), getNiceTime(startTimeNs+timeRangeNs, timeRangeNs, 1));
+                          getNiceTime(startTimeNs, timeRangeNs, 0),
+						  getNiceTime(startTimeNs+timeRangeNs, timeRangeNs, 1));
     } else {
         char tmpStr[128];
-        snprintf(tmpStr, sizeof(tmpStr),  "%s", getNiceTime(_mouseTimeNs, 0.02*scaleMajorTick)); // x50 precision for the time
-        DRAWLIST->AddText(ImVec2(winX+nsToPix*(_mouseTimeNs-startTimeNs)-0.5*ImGui::CalcTextSize(tmpStr).x,
-                                 winY+0.5*rbInnerBarOffset), vwConst::uBlack, tmpStr);
+        snprintf(tmpStr, sizeof(tmpStr),  "%s", getNiceTime(_mouseTimeNs, (s64)(0.02f*scaleMajorTick))); // x50 precision for the time
+        DRAWLIST->AddText(ImVec2(winX+(float)(nsToPix*(_mouseTimeNs-startTimeNs))-0.5f*ImGui::CalcTextSize(tmpStr).x,
+                                 winY+0.5f*rbInnerBarOffset), vwConst::uBlack, tmpStr);
     }
 
     // Synchronization groups
@@ -1370,36 +1371,36 @@ vwMain::drawTimeRuler(double winX, double winY, double winWidth, double rulerHei
 }
 
 
-double
+float
 vwMain::getTimelineHeaderHeight(bool withGroupHeader, bool withThreadHeader)
 {
-    return ((withGroupHeader? 1.6 : 0.)+(withThreadHeader? 1.3 : 0.))*ImGui::GetTextLineHeightWithSpacing();
+    return ((withGroupHeader? 1.6f : 0.f)+(withThreadHeader? 1.3f : 0.f))*ImGui::GetTextLineHeightWithSpacing();
 }
 
 
 bool
-vwMain::displayTimelineHeader(double yHeader, double yThreadAfterTimeline, int threadId, bool doDrawGroup, bool isDrag,
-                               bool& isThreadHovered, bool& isGroupHovered)
+vwMain::displayTimelineHeader(float yHeader, float yThreadAfterTimeline, int threadId, bool doDrawGroup, bool isDrag,
+                              bool& isThreadHovered, bool& isGroupHovered)
 {
     // Constants
-    constexpr double vBandWidth   = 10;
+    constexpr float vBandWidth   = 10.f;
     constexpr ImU32  groupColor   = IM_COL32(30, 64, 96, 255);
     constexpr ImU32  groupHColor  = IM_COL32(30, 64, 96, 128);
     constexpr ImU32  threadColor  = IM_COL32(30, 64, 64, 255);
     constexpr ImU32  threadHColor = IM_COL32(30, 64, 64, 128);
     constexpr ImU32  whiteHColor = IM_COL32(255, 255, 255, 128);
-    const double fontHeight = ImGui::GetTextLineHeightWithSpacing();
-    const double tgSide = 0.8*fontHeight;
-    const double ttSide = 0.6*fontHeight;
-    const double groupTitleHeight  = 1.6*fontHeight;
-    const double threadTitleHeight = 1.3*fontHeight;
+    const float fontHeight = ImGui::GetTextLineHeightWithSpacing();
+    const float tgSide = 0.8f*fontHeight;
+    const float ttSide = 0.6f*fontHeight;
+    const float groupTitleHeight  = 1.6f*fontHeight;
+    const float threadTitleHeight = 1.3f*fontHeight;
     const bool   isWindowHovered   = ImGui::IsWindowHovered();
-    const double mouseX = ImGui::GetMousePos().x;
-    const double mouseY = ImGui::GetMousePos().y;
-    const double winX   = ImGui::GetWindowPos().x;
-    const double fontSpacing       = 0.5*ImGui::GetStyle().ItemSpacing.y;
-    const double threadTitleMargin = 1.*fontSpacing;
-    const double textPixMargin     = 2.*fontSpacing;
+    const float mouseX = ImGui::GetMousePos().x;
+    const float mouseY = ImGui::GetMousePos().y;
+    const float winX   = ImGui::GetWindowPos().x;
+    const float fontSpacing       = 0.5f*ImGui::GetStyle().ItemSpacing.y;
+    const float threadTitleMargin = 1.f*fontSpacing;
+    const float textPixMargin     = 2.f*fontSpacing;
     bool isConfigChanged = false;
 
     // Get elems from the threadId
@@ -1429,27 +1430,27 @@ vwMain::displayTimelineHeader(double yHeader, double yThreadAfterTimeline, int t
     // =====================
     if(doDrawGroup) {
         // Background bar
-        DRAWLIST->AddRectFilled(ImVec2(winX+threadTitleMargin, yHeader+2.*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+groupTitleHeight),
+        DRAWLIST->AddRectFilled(ImVec2(winX+threadTitleMargin, yHeader+2.f*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+groupTitleHeight),
                                 isDrag? groupHColor:groupColor);
         if(isDrag) { // Highlight the dragging with a white border
-            DRAWLIST->AddRect(ImVec2(winX+threadTitleMargin, yHeader+2.*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+groupTitleHeight),
-                              vwConst::uWhite, 0., ImDrawCornerFlags_All, 2.);
+            DRAWLIST->AddRect(ImVec2(winX+threadTitleMargin, yHeader+2.f*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+groupTitleHeight),
+                              vwConst::uWhite, 0.f, ImDrawCornerFlags_All, 2.f);
         }
 
         // Expansion state triangle
-        double tX = winX+2*threadTitleMargin, tY = yHeader+0.5*(groupTitleHeight-0.8*fontHeight)+fontSpacing;
+        float tX = winX+2.f*threadTitleMargin, tY = yHeader+0.5f*(groupTitleHeight-0.8f*fontHeight)+fontSpacing;
         if(isGroupExpanded) {
-            DRAWLIST->AddTriangleFilled(ImVec2(tX, tY), ImVec2(tX+tgSide, tY), ImVec2(tX+0.5*tgSide, tY+0.707*tgSide),
+            DRAWLIST->AddTriangleFilled(ImVec2(tX, tY), ImVec2(tX+tgSide, tY), ImVec2(tX+0.5f*tgSide, tY+0.707f*tgSide),
                                         isDrag? whiteHColor:vwConst::uWhite);
         }  else {
-            double tdX = 0.293*tgSide, tdY = 0.2*tgSide;
-            DRAWLIST->AddTriangleFilled(ImVec2(tX+tdX, tY-tdY), ImVec2(tX+tgSide, tY+0.5*tgSide-tdY), ImVec2(tX+tdX, tY+tgSide-tdY),
+            float tdX = 0.293f*tgSide, tdY = 0.2f*tgSide;
+            DRAWLIST->AddTriangleFilled(ImVec2(tX+tdX, tY-tdY), ImVec2(tX+tgSide, tY+0.5f*tgSide-tdY), ImVec2(tX+tdX, tY+tgSide-tdY),
                                         isDrag? whiteHColor:vwConst::uWhite);
         }
 
         // Text
         plAssert(groupName);
-        DRAWLIST->AddText(ImVec2(tX+tgSide+2.*textPixMargin, yHeader+0.5*(groupTitleHeight-fontHeight)+fontSpacing),
+        DRAWLIST->AddText(ImVec2(tX+tgSide+2.f*textPixMargin, yHeader+0.5f*(groupTitleHeight-fontHeight)+fontSpacing),
                           isDrag? whiteHColor:vwConst::uWhite, groupName);
 
         // Triangle interaction
@@ -1464,35 +1465,35 @@ vwMain::displayTimelineHeader(double yHeader, double yThreadAfterTimeline, int t
 
     // Draw the thread header
     // ======================
-    bool   isThreadVisible = getConfig().getThreadExpanded(threadId);
-    double tX = winX+_timelineHeaderWidth-ttSide-threadTitleMargin, tY = yHeader+0.5*(groupTitleHeight-fontHeight)+fontSpacing;
+    bool  isThreadVisible = getConfig().getThreadExpanded(threadId);
+    float tX = winX+_timelineHeaderWidth-ttSide-threadTitleMargin, tY = yHeader+0.5f*(groupTitleHeight-fontHeight)+fontSpacing;
     if(!isThreadTransparent) {
         // Background bar
-        double xStart = winX+threadTitleMargin+(groupName? 4*threadTitleMargin+vBandWidth : 0);
-        DRAWLIST->AddRectFilled(ImVec2(xStart, yHeader+2.*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+threadTitleHeight),
+        float xStart = winX+threadTitleMargin+(groupName? 4.0f*threadTitleMargin+vBandWidth : 0);
+        DRAWLIST->AddRectFilled(ImVec2(xStart, yHeader+2.f*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+threadTitleHeight),
                                 isThreadHovered? threadHColor : threadColor);
         if(isDrag) { // Highlight the dragging
-            DRAWLIST->AddRect(ImVec2(xStart, yHeader+2.*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+threadTitleHeight),
-                              vwConst::uWhite, 0., ImDrawCornerFlags_All, 2.);
+            DRAWLIST->AddRect(ImVec2(xStart, yHeader+2.f*threadTitleMargin), ImVec2(winX+_timelineHeaderWidth, yHeader+threadTitleHeight),
+                              vwConst::uWhite, 0.f, ImDrawCornerFlags_All, 2.f);
         }
 
         // Expansion state triangle
         if(isThreadVisible) {
-            DRAWLIST->AddTriangleFilled(ImVec2(tX, tY), ImVec2(tX+ttSide, tY), ImVec2(tX+0.5*ttSide, tY+0.707*ttSide),
+            DRAWLIST->AddTriangleFilled(ImVec2(tX, tY), ImVec2(tX+ttSide, tY), ImVec2(tX+0.5f*ttSide, tY+0.707f*ttSide),
                                         isThreadHovered? whiteHColor:vwConst::uWhite);
         } else {
-            double tdX = 0.293*ttSide, tdY = 0.2*ttSide;
-            DRAWLIST->AddTriangleFilled(ImVec2(tX+tdX, tY-tdY), ImVec2(tX+ttSide, tY+0.5*ttSide-tdY), ImVec2(tX+tdX, tY+ttSide-tdY),
+            float tdX = 0.293f*ttSide, tdY = 0.2f*ttSide;
+            DRAWLIST->AddTriangleFilled(ImVec2(tX+tdX, tY-tdY), ImVec2(tX+ttSide, tY+0.5f*ttSide-tdY), ImVec2(tX+tdX, tY+ttSide-tdY),
                                         isThreadHovered? whiteHColor:vwConst::uWhite);
         }
 
         // Text
-        DRAWLIST->AddText(ImVec2(tX-threadNameWidth-10, yHeader+0.5*(threadTitleHeight-fontHeight)+fontSpacing),
+        DRAWLIST->AddText(ImVec2(tX-threadNameWidth-10.f, yHeader+0.5f*(threadTitleHeight-fontHeight)+fontSpacing),
                           isThreadHovered? whiteHColor:vwConst::uWhite, threadName);
 
         // Draw the vertical bar
         if(!isDrag && groupName) {
-            DRAWLIST->AddRectFilled(ImVec2(winX+3*threadTitleMargin, yHeader), ImVec2(winX+3*threadTitleMargin+vBandWidth, yThreadAfterTimeline),
+            DRAWLIST->AddRectFilled(ImVec2(winX+3.f*threadTitleMargin, yHeader), ImVec2(winX+3.f*threadTitleMargin+vBandWidth, yThreadAfterTimeline),
                                     isThreadHovered? groupHColor:groupColor);
         }
     }
@@ -1538,7 +1539,7 @@ vwMain::displayTimelineHeaderPopup(TimeRangeBase& trb, int tId, bool openAsGroup
         if(ImGui::MenuItem("View as text")) { addText(getId(), tId); ImGui::CloseCurrentPopup(); }
 
         // Profiling menu
-#define ADD_PROFILE(kind, startNs_, durationNs_) { addProfileRange(getId(), vwMain::kind, tId, 0, (s64)startNs_, (s64)durationNs_); ImGui::CloseCurrentPopup(); }
+#define ADD_PROFILE(kind, startNs_, durationNs_) { addProfileRange(getId(), vwMain::kind, tId, 0, startNs_, durationNs_); ImGui::CloseCurrentPopup(); }
         bool isFullRange = (trb.startTimeNs==0 && trb.timeRangeNs==_record->durationNs);
         if(isFullRange) {
             if(ImGui::MenuItem("Profile timings")) ADD_PROFILE(TIMINGS, 0, _record->durationNs);

@@ -33,7 +33,7 @@
 #endif
 
 // Some constants
-static const double MIN_BAR_WIDTH = 3.; // Ensure all item are visible
+static const float MIN_BAR_WIDTH = 3.; // Ensure all item are visible
 
 
 bsString
@@ -148,7 +148,7 @@ vwMain::_computeChunkProfileStack(Profile& prof)
                 for(int startNestingLevel=0; startNestingLevel<_record->threads[threadId].levels.size(); ++startNestingLevel) {
                     // Try this level, until we find scopes which are fully contained in the desired range
                     u32 scopeLIdx;
-                    cmRecordIteratorScope it(_record, threadId, startNestingLevel, (s64)prof.startTimeNs, 0);
+                    cmRecordIteratorScope it(_record, threadId, startNestingLevel, prof.startTimeNs, 0);
                     while((scopeLIdx=it.getNextScope(isCoarseScope, dummyScopeStartTimeNs, dummyScopeEndTimeNs, evt, durationNs))!=PL_INVALID) {
                         plAssert(!isCoarseScope); // By design
                         if(evt.vS64<prof.startTimeNs) continue;
@@ -222,7 +222,7 @@ vwMain::_computeChunkProfileStack(Profile& prof)
         (void)scopeLIdx2;
         plAssert(!isCoarseScope);                                      // By design
         plAssert(scopeLIdx2==item.scopeLIdx, scopeLIdx2, item.scopeLIdx); // By design
-        prof.computationLevel = bsMinMax(100LL*(evt.vS64-prof.startTimeNs)/prof.timeRangeNs, 1LL, 99LL); // 0 means just started, 100 means finished
+        prof.computationLevel = bsMinMax((int)(100LL*(evt.vS64-prof.startTimeNs)/prof.timeRangeNs), 1, 99); // 0 means just started, 100 means finished
 
         // Get infos on its children
         u64 childrenValue = 0; // Unit depends on the profiling kind. Nanosecond for TIMINGS, bytes for MEMORY, and quantity for MEMORY_CALLS
@@ -287,7 +287,7 @@ vwMain::_computeChunkProfileStack(Profile& prof)
                 if(evt.nameIdx!=brother.nameIdx) continue;
                 // Update the existing node
                 currentDataIdx = brotherIdx;
-                brother.callQty       += callQty;
+                brother.callQty       += (int)callQty;
                 brother.value         += value;
                 brother.childrenValue += childrenValue;
                 if(evt.vS64<brother.firstStartTimeNs) { // We want the canonical first one
@@ -331,7 +331,7 @@ vwMain::_computeChunkProfileStack(Profile& prof)
         if(bsGetClockUs()>endComputationTimeUs) break;
     } // End of loop on the stack
 
-     // Computations are finished?
+    // Computations are finished?
     if(stack.empty()) prof.computationLevel = 100;
 
     bool openPopupModal = true;
@@ -339,7 +339,7 @@ vwMain::_computeChunkProfileStack(Profile& prof)
                               &openPopupModal, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextColored(vwConst::gold, "Profile computation...");
         snprintf(extraStr, sizeof(extraStr), "%d %%", prof.computationLevel);
-        ImGui::ProgressBar(0.01*prof.computationLevel, ImVec2(-1,ImGui::GetTextLineHeight()), extraStr);
+        ImGui::ProgressBar(0.01f*prof.computationLevel, ImVec2(-1,ImGui::GetTextLineHeight()), extraStr);
         if(prof.computationLevel==100) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
@@ -378,7 +378,7 @@ vwMain::_computeChunkProfileStack(Profile& prof)
     // Base fields
     prof.callName = (prof.kind==MEMORY)? "alloc" : "scope";
     if(prof.kind==MEMORY_CALLS) prof.minRange = 100.; // Minor tuning
-    prof.endValue   = prof.data[0].value;
+    prof.endValue   = (double)prof.data[0].value;
     // Compute colors
     for(ProfileData& d : prof.data) {
         const char* s = d.name.toChar();
@@ -386,7 +386,7 @@ vwMain::_computeChunkProfileStack(Profile& prof)
         while(*s) h = (h^((u32)(*s++)))*16777619; // FNV-1A 32 bits
         double h1   = (double)h/(double)0xFFFFFFFFL;
         double h2   = (double)((h^31415926)*16777619)/(double)0xFFFFFFFFL;
-        d.color  = ImColor((int)(155+55*h1), (int)(180*h2), (int)45*h2, 255); // Red-ish color
+        d.color     = ImColor((int)(155+55*h1), (int)(180*h2), (int)(45*h2), 255); // Red-ish color
     }
     // Compute max depth (recursively)
     prof.workStack.clear();
@@ -410,7 +410,7 @@ vwMain::drawProfiles(void)
     if(!_record) return;
 
     int itemToRemoveIdx = -1;
-    const double fontHeight = ImGui::GetTextLineHeightWithSpacing();
+    const float fontHeight = ImGui::GetTextLineHeightWithSpacing();
     for(int profIdx=0; profIdx<_profiles.size(); ++profIdx) {
         // Display complete tabs
         auto& prof = _profiles[profIdx];
@@ -428,13 +428,13 @@ vwMain::drawProfiles(void)
         if(hasColoredTab) {
             const ImVec4 c = getConfig().getThreadColor(prof.threadId);
             float a;
-            a = 1.1; ImGui::PushStyleColor(ImGuiCol_TabActive,          ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 1.4; ImGui::PushStyleColor(ImGuiCol_TabHovered,         ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 0.4; ImGui::PushStyleColor(ImGuiCol_Tab,                ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 0.4; ImGui::PushStyleColor(ImGuiCol_TabUnfocused,       ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 0.5; ImGui::PushStyleColor(ImGuiCol_TabUnfocusedActive, ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 0.4; ImGui::PushStyleColor(ImGuiCol_TitleBg,            ImVec4(a*c.x, a*c.y, a*c.z, 1.));
-            a = 1.1; ImGui::PushStyleColor(ImGuiCol_TitleBgActive,      ImVec4(a*c.x, a*c.y, a*c.z, 1.));
+            a = 1.1f; ImGui::PushStyleColor(ImGuiCol_TabActive,          ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 1.4f; ImGui::PushStyleColor(ImGuiCol_TabHovered,         ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 0.4f; ImGui::PushStyleColor(ImGuiCol_Tab,                ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 0.4f; ImGui::PushStyleColor(ImGuiCol_TabUnfocused,       ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 0.5f; ImGui::PushStyleColor(ImGuiCol_TabUnfocusedActive, ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 0.4f; ImGui::PushStyleColor(ImGuiCol_TitleBg,            ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
+            a = 1.1f; ImGui::PushStyleColor(ImGuiCol_TitleBgActive,      ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
         }
 
         if(prof.isWindowSelected) {
@@ -462,12 +462,12 @@ vwMain::drawProfiles(void)
         // Header
         // ======
         const bool isFullRange = (prof.startTimeNs==0 && prof.timeRangeNs==_record->durationNs);
-        double comboWidth = ImGui::CalcTextSize("Isolated XXX").x;
+        float comboWidth = ImGui::CalcTextSize("Isolated XXX").x;
 
         // Display the thread name
         float   textBgY     = ImGui::GetWindowPos().y+ImGui::GetCursorPos().y;
-        float   baseHeaderX = ImGui::GetWindowContentRegionMax().x-2.*comboWidth;
-        DRAWLIST->AddRectFilled(ImVec2(ImGui::GetWindowPos().x+ImGui::GetCursorPos().x-2., textBgY),
+        float   baseHeaderX = ImGui::GetWindowContentRegionMax().x-2.f*comboWidth;
+        DRAWLIST->AddRectFilled(ImVec2(ImGui::GetWindowPos().x+ImGui::GetCursorPos().x-2.f, textBgY),
                                 ImVec2(ImGui::GetWindowPos().x+baseHeaderX, textBgY+ImGui::GetStyle().FramePadding.y+fontHeight), vwConst::uGrey48);
         ImGui::AlignTextToFramePadding();
         ImGui::Text(" [%s] %s", getFullThreadName(prof.threadId), (prof.kind==TIMINGS)?"Timings" : ((prof.kind==MEMORY)? "Allocated memory" : "Allocation calls"));
@@ -479,9 +479,9 @@ vwMain::drawProfiles(void)
         }
 
         // Drawing kind selection
-        ImGui::SameLine(baseHeaderX+1.); // Let 1 pixel spacing
-        if     ( prof.isFlameGraph && ImGui::Button("To list",  ImVec2(comboWidth-2., 0))) prof.isFlameGraph = false;
-        else if(!prof.isFlameGraph && ImGui::Button("To flame", ImVec2(comboWidth-2., 0))) prof.isFlameGraph = true;
+        ImGui::SameLine(baseHeaderX+1.f); // Let 1 pixel spacing
+        if     ( prof.isFlameGraph && ImGui::Button("To list",  ImVec2(comboWidth-2.f, 0))) prof.isFlameGraph = false;
+        else if(!prof.isFlameGraph && ImGui::Button("To flame", ImVec2(comboWidth-2.f, 0))) prof.isFlameGraph = true;
 
         // Sync combo
         ImGui::SameLine(baseHeaderX+comboWidth);
@@ -523,7 +523,7 @@ vwMain::drawProfiles(void)
             if(prof.cmDataIdx<0) { // Not on a scope
                 ImGui::Checkbox("Downward", &prof.isFlameGraphDownward);
             } else {               // On a scope
-                double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+                float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
                 const ProfileData& d = prof.data[prof.cmDataIdx];
                 ImGui::TextColored(vwConst::grey, "%s", _record->getString(d.nameIdx).value.toChar());
                 ImGui::Separator();
@@ -583,7 +583,7 @@ vwMain::_drawTextProfile(Profile& prof)
     // Some init
     bsVec<ProfileData>& data = prof.data;
     bsVec<int>& lkup         = prof.listDisplayIdx;
-    const double fontHeight  = ImGui::GetTextLineHeightWithSpacing();
+    const float fontHeight   = ImGui::GetTextLineHeightWithSpacing();
     const char* tooltipSelf  = "'Self' means the contribution of the function itself, without all inner called functions";
     const char* tooltipIncl  = "'Inclusive' means the total contribution of the function itself and of the inner called functions";
 
@@ -592,7 +592,7 @@ vwMain::_drawTextProfile(Profile& prof)
     int  cmDataIdx = -1;
 
     ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3., style.CellPadding.y));
+    ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x*3.f, style.CellPadding.y));
     if(ImGui::BeginTable("##table profile", 6, ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollX |
                          ImGuiTableFlags_ScrollY | ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
         ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
@@ -645,7 +645,7 @@ vwMain::_drawTextProfile(Profile& prof)
             const ProfileData& d = data[dataIdx];
 
             // Display the line
-            bool doHighlight = isScopeHighlighted(prof.threadId, -1., d.flags, d.nestingLevel, d.nameIdx);
+            bool doHighlight = isScopeHighlighted(prof.threadId, -1, d.flags, d.nestingLevel, d.nameIdx);
             if(doHighlight) ImGui::PushStyleColor(ImGuiCol_Text, vwConst::uYellow);
 
             // Name
@@ -659,20 +659,20 @@ vwMain::_drawTextProfile(Profile& prof)
                 if(prof.syncMode>0) {
                     // Navigation: double click to show the first occurence (N/A on top node)
                     if(dataIdx>0 && ImGui::IsMouseDoubleClicked(0)) {
-                        synchronizeNewRange(prof.syncMode, d.firstStartTimeNs-0.1*d.firstRangeNs, 1.2*d.firstRangeNs);
+                        synchronizeNewRange(prof.syncMode, d.firstStartTimeNs-(s64)(0.1*d.firstRangeNs), (s64)(1.2*d.firstRangeNs));
                         ensureThreadVisibility(prof.syncMode, prof.threadId);
                     }
 
                     // Zoom the timeline
-                    int deltaWheel = ImGui::GetIO().MouseWheel;
+                    int deltaWheel = (int)ImGui::GetIO().MouseWheel;
                     if(deltaWheel!=0) {
                         // Ctrl: (Horizontal) range zoom
                         if(ImGui::GetIO().KeyCtrl) {
                             deltaWheel *= getConfig().getHWheelInversion();
-                            double syncStartTimeNs, syncTimeRangeNs;
+                            s64 syncStartTimeNs, syncTimeRangeNs;
                             getSynchronizedRange(prof.syncMode, syncStartTimeNs, syncTimeRangeNs);
-                            double targetTimeNs   = syncStartTimeNs + 0.5*syncTimeRangeNs; // Middle of screen is the invariant
-                            double newTimeRangeNs = getUpdatedRange(deltaWheel, syncTimeRangeNs);
+                            s64 targetTimeNs   = syncStartTimeNs + (s64)(0.5*syncTimeRangeNs); // Middle of screen is the invariant
+                            s64 newTimeRangeNs = getUpdatedRange(deltaWheel, syncTimeRangeNs);
                             synchronizeNewRange(prof.syncMode,
                                                 syncStartTimeNs+(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
                                                 newTimeRangeNs);
@@ -680,7 +680,7 @@ vwMain::_drawTextProfile(Profile& prof)
                         }
                         // No Ctrl: standard vertical scrolling
                         else {
-                            ImGui::SetScrollY(ImGui::GetScrollY()-3.*fontHeight*deltaWheel*getConfig().getVWheelInversion());
+                            ImGui::SetScrollY(ImGui::GetScrollY()-3.f*fontHeight*deltaWheel*getConfig().getVWheelInversion());
                         }
                     }
                 }
@@ -730,20 +730,20 @@ vwMain::_drawTextProfile(Profile& prof)
 void
 vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
 {
-    const double fontHeight    = ImGui::GetTextLineHeightWithSpacing();
-    const double topBarHeight  = ImGui::GetTextLineHeightWithSpacing();
-    const double topBarVMargin = 10.;
-    const double fontSpacing   = 0.5*ImGui::GetStyle().ItemSpacing.y;
-    const double textPixMargin = 3.*fontSpacing;
-    const double winPosX    = ImGui::GetWindowPos().x;
-    const double winPosY    = ImGui::GetWindowPos().y+ImGui::GetCursorPosY()-ImGui::GetScrollY();
-    const double winWidth   = ImGui::GetWindowContentRegionMax().x;
-    const double winHeight  = ImGui::GetWindowSize().y;
+    const float fontHeight    = ImGui::GetTextLineHeightWithSpacing();
+    const float topBarHeight  = ImGui::GetTextLineHeightWithSpacing();
+    const float topBarVMargin = 10.f;
+    const float fontSpacing   = 0.5f*ImGui::GetStyle().ItemSpacing.y;
+    const float textPixMargin = 3.f*fontSpacing;
+    const float winPosX    = ImGui::GetWindowPos().x;
+    const float winPosY    = ImGui::GetWindowPos().y+ImGui::GetCursorPosY()-ImGui::GetScrollY();
+    const float winWidth   = ImGui::GetWindowContentRegionMax().x;
+    const float winHeight  = ImGui::GetWindowSize().y;
     const bool isWindowHovered = ImGui::IsWindowHovered();
-    const double mouseX     = ImGui::GetMousePos().x;
-    const double mouseY     = ImGui::GetMousePos().y;
-    const double dataColMargin  = 40.;
-    const double eps        = 1e-6;
+    const float mouseX     = ImGui::GetMousePos().x;
+    const float mouseY     = ImGui::GetMousePos().y;
+    const float dataColMargin  = 40.f;
+    const float eps        = 1e-6f;
     ImFont* font         = ImGui::GetFont();
     ImU32 colorOutline   = vwConst::uGrey48;
     ImU32 colorText1     = vwConst::uWhite;
@@ -770,15 +770,15 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
 
     // Loop on stack
     bool  isToolTipAlreadyDisplayed = false;
-    const double c = winWidth/(prof.endValue-prof.startValue);
+    const float c = (float)(winWidth/(prof.endValue-prof.startValue));
     while(!stack.empty()) {
         // Pop the next element to draw
         ProfileStackItem si = stack.back(); stack.pop_back();
         const ProfileData& item = prof.data[si.idx];
-        double x1 = winPosX+c*(si.startValue-prof.startValue);
-        double x2 = winPosX+c*(si.startValue+item.value-prof.startValue);
+        float x1 = winPosX+(float)(c*(si.startValue-prof.startValue));
+        float x2 = winPosX+(float)(c*(si.startValue+item.value-prof.startValue));
         if(x2<winPosX || x1>winPosX+winWidth) continue; // Outside of visible scope
-        double y  = winPosY+(doDrawDownward? topBarHeight+topBarVMargin+fontHeight*si.nestingLevel : winHeight-fontHeight*(si.nestingLevel+1));
+        float y  = winPosY+(doDrawDownward? topBarHeight+topBarVMargin+fontHeight*si.nestingLevel : winHeight-fontHeight*(si.nestingLevel+1));
         bool isTruncated = false;
         if(x1<winPosX-eps)          { x1 = winPosX;          isTruncated = true; }
         if(x2>winPosX+winWidth+eps) { x2 = winPosX+winWidth; isTruncated = true; }
@@ -816,11 +816,11 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
         if(isHovered) {
             // Hover callback
             setScopeHighlight(prof.threadId, prof.startTimeNs, prof.startTimeNs+prof.timeRangeNs,
-                             item.flags, item.nestingLevel, item.nameIdx, true);
+                              item.flags, item.nestingLevel, item.nameIdx, true);
 
             // Double click callback
             if(ImGui::IsMouseDoubleClicked(0)) {
-                synchronizeNewRange(prof.syncMode, item.firstStartTimeNs-0.1*item.firstRangeNs, 1.2*item.firstRangeNs);
+                synchronizeNewRange(prof.syncMode, item.firstStartTimeNs-(s64)(0.1*item.firstRangeNs), (s64)(1.2*item.firstRangeNs));
                 ensureThreadVisibility(prof.syncMode, prof.threadId);
                 synchronizeText(prof.syncMode, prof.threadId, item.nestingLevel, item.scopeLIdx, prof.startTimeNs, prof.uniqueId);
             }
@@ -828,14 +828,14 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
             // Tooltip
             if(!isToolTipAlreadyDisplayed) {
                 isToolTipAlreadyDisplayed = true;
-                double dataCol1Width = 0., dataCol2Width = 0.;
+                float dataCol1Width = 0.f, dataCol2Width = 0.f;
                 // Analyse children
-                double timeInChildrenNs = 0.;
+                float timeInChildrenNs = 0.f;
                 bsVec<int> oci; oci.reserve(1+item.childrenIndices.size());
                 for(int cIdx : item.childrenIndices) {
                     const ProfileData& cpd = prof.data[cIdx];
-                    dataCol1Width = bsMax(dataCol1Width, (double)ImGui::CalcTextSize(cpd.name.toChar()).x);
-                    dataCol2Width = bsMax(dataCol2Width, (double)ImGui::CalcTextSize((getValueString(prof, cpd.value)+" (100.0%% parent)").toChar()).x);
+                    dataCol1Width = bsMax(dataCol1Width, ImGui::CalcTextSize(cpd.name.toChar()).x);
+                    dataCol2Width = bsMax(dataCol2Width, ImGui::CalcTextSize((getValueString(prof, (double)cpd.value)+" (100.0%% parent)").toChar()).x);
                     timeInChildrenNs += cpd.value;
                     oci.push_back(cIdx);
                 }
@@ -844,11 +844,11 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
                 char tmpStr[256];
                 snprintf(tmpStr, sizeof(tmpStr), "%.1f%% in %d child%s", 100.*timeInChildrenNs/item.value,
                          oci.size(), (oci.size()>1)? "ren" : "");
-                double headerWidth = bsMax((double)ImGui::CalcTextSize(tmpStr).x, dataCol1Width+dataCol2Width+2*dataColMargin);
+                float headerWidth = bsMax(ImGui::CalcTextSize(tmpStr).x, dataCol1Width+dataCol2Width+2*dataColMargin);
                 if(!oci.empty()) ImGui::SetNextWindowSize(ImVec2(headerWidth,
                                                                  ImGui::GetTextLineHeightWithSpacing()*(oci.size()+4+(item.extraInfos.empty()?0:1))));
                 ImGui::BeginTooltip();
-                ImGui::TextColored(vwConst::gold, "%s { %s }", item.name.toChar(), getValueString(prof, item.value).toChar());
+                ImGui::TextColored(vwConst::gold, "%s { %s }", item.name.toChar(), getValueString(prof, (double)item.value).toChar());
                 if(!item.extraInfos.empty()) ImGui::Text("%s", item.extraInfos.toChar());
                 ImGui::Text("%.1f%% total in %d %s%s", 100.*item.value/prof.data[0].value, item.callQty,
                             prof.callName.toChar(), (item.callQty>1)?"s":"");
@@ -863,8 +863,8 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
                         const ProfileData& cpd = prof.data[cIdx];
                         ImGui::Text("%s",cpd.name.toChar()); ImGui::NextColumn();
                         double ratio = (double)cpd.value/(double)item.value;
-                        snprintf(tmpStr, sizeof(tmpStr), "%s (%.1f%% parent)", getValueString(prof, cpd.value).toChar(), 100.*ratio);
-                        ImGui::ProgressBar(ratio, ImVec2(-1,ImGui::GetTextLineHeight()), tmpStr);
+                        snprintf(tmpStr, sizeof(tmpStr), "%s (%.1f%% parent)", getValueString(prof, (double)cpd.value).toChar(), 100.*ratio);
+                        ImGui::ProgressBar((float)ratio, ImVec2(-1,ImGui::GetTextLineHeight()), tmpStr);
                         ImGui::NextColumn();
                     }
                     ImGui::Columns(1);
@@ -890,8 +890,8 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
     } // End of loop on stack
 
     // Visible range bar
-    const double vrbStartPix = winPosX+winWidth*prof.startValue/prof.data[0].value;
-    const double vrbEndPix   = vrbStartPix+bsMax(3., winWidth*(prof.endValue-prof.startValue)/prof.data[0].value);
+    const float vrbStartPix = winPosX+(float)(winWidth*prof.startValue/prof.data[0].value);
+    const float vrbEndPix   = vrbStartPix+bsMax(3.f, winWidth*(prof.endValue-prof.startValue)/prof.data[0].value);
     DRAWLIST->AddRectFilled(ImVec2(winPosX, winPosY), ImVec2(winPosX+winWidth, winPosY+topBarHeight),  vwConst::uGrey);
     DRAWLIST->AddRectFilled(ImVec2(vrbStartPix, winPosY+4), ImVec2(vrbEndPix, winPosY+topBarHeight-4), vwConst::uGrey128);
 
@@ -903,7 +903,7 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
     bool hasKeyboardFocus = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
     // Range zoom with scroll wheel
-    constexpr double vScrollPixPerTick = 50.;
+    constexpr float vScrollPixPerTick = 50.;
     ImGuiIO& io    = ImGui::GetIO();
     int deltaWheel = (int)io.MouseWheel;
     if(hasKeyboardFocus) {      // Up/Down keys are equivalent to the wheel
@@ -921,7 +921,7 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
             while(deltaWheel<0) { newRange *= scrollFactor; ++deltaWheel; }
             if(newRange<prof.minRange) newRange = prof.minRange;
             double newStartValue = prof.getStartValue()+(mouseX-winPosX)/winWidth*(oldRange-newRange);
-            prof.setView(bsMax(0., newStartValue), bsMin(prof.data[0].value, newStartValue+newRange));
+            prof.setView(bsMax(newStartValue, 0.), bsMin((double)prof.data[0].value, newStartValue+newRange));
         }
         // No Ctrl: standard vertical scrolling
         else ImGui::SetScrollY(ImGui::GetScrollY()-deltaWheel*getConfig().getVWheelInversion()*vScrollPixPerTick);
@@ -937,7 +937,7 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
                 double newEndValue = newStartValue+range;
                 if(newEndValue>prof.data[0].value) {
                     newStartValue -= bsMax(0., newEndValue-prof.data[0].value);
-                    newEndValue    = prof.data[0].value;
+                    newEndValue    = (double)prof.data[0].value;
                 }
                 prof.setView(newStartValue, newEndValue);
                 ImGui::SetScrollY(ImGui::GetScrollY()-ImGui::GetMouseDragDelta(2).y);
@@ -956,7 +956,7 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
                 double newEndValue = newStartValue+range;
                 if(newEndValue>prof.data[0].value) {
                     newStartValue -= bsMax(0., newEndValue-prof.data[0].value);
-                    newEndValue    = prof.data[0].value;
+                    newEndValue    = (double)prof.data[0].value;
                 }
                 prof.setView(newStartValue, newEndValue);
                 ImGui::ResetMouseDragDelta(2);
@@ -971,7 +971,7 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
             double newEndValue = newStartValue+range;
             if(newEndValue>prof.data[0].value) {
                 newStartValue -= bsMax(0., newEndValue-prof.data[0].value);
-                newEndValue    = prof.data[0].value;
+                newEndValue    = (double)prof.data[0].value;
             }
             prof.setView(newStartValue, newEndValue);
             prof.dragMode = BAR;
@@ -983,30 +983,30 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
     // Arrow keys navigation
     if(hasKeyboardFocus) {
         float step = 0.;
-        if(ImGui::IsKeyPressed(KC_Left )) step = -1.;
-        if(ImGui::IsKeyPressed(KC_Right)) step = +1.;
-        if(step!=0.) {
-            if(!ImGui::GetIO().KeyCtrl) step *= 0.25;
+        if(ImGui::IsKeyPressed(KC_Left )) step = -1.f;
+        if(ImGui::IsKeyPressed(KC_Right)) step = +1.f;
+        if(step!=0.f) {
+            if(!ImGui::GetIO().KeyCtrl) step *= 0.25f;
             double range         = prof.getEndValue()-prof.getStartValue();
             double newStartValue = bsMax(0., prof.getStartValue()+step*range);
             double newEndValue   = newStartValue+range;
             if(newEndValue>prof.data[0].value) {
                 newStartValue -= bsMax(0., newEndValue-prof.data[0].value);
-                newEndValue    = prof.data[0].value;
+                newEndValue    = (double)prof.data[0].value;
             }
             prof.setView(newStartValue, newEndValue);
         }
     }
 
     // Middle click: Range drag selection
-    if(isWindowHovered && ImGui::IsMouseDragging(1, 0.)) { // Button 1, no sensitivity threshold
+    if(isWindowHovered && ImGui::IsMouseDragging(1, 0.f)) { // Button 1, no sensitivity threshold
         prof.selStartValue = prof.startValue + (mouseX-winPosX-ImGui::GetMouseDragDelta(1).x)/c;
         prof.selEndValue   = prof.startValue + (mouseX-winPosX)/c;
         if(prof.selStartValue>=prof.selEndValue) { prof.selStartValue = prof.selEndValue = 0.; } // Cancel
         else { // Display the selection box with transparency
             float scrolledPosY = winPosY + ImGui::GetScrollY();
-            DRAWLIST->AddRectFilled(ImVec2(winPosX+c*(prof.selStartValue-prof.startValue), scrolledPosY),
-                                    ImVec2(winPosX+c*(prof.selEndValue-prof.startValue), scrolledPosY+winHeight), IM_COL32(255,255,255,128));
+            DRAWLIST->AddRectFilled(ImVec2(winPosX+(float)(c*(prof.selStartValue-prof.startValue)), scrolledPosY),
+                                    ImVec2(winPosX+(float)(c*(prof.selEndValue-prof.startValue)), scrolledPosY+winHeight), IM_COL32(255,255,255,128));
         }
     }
     else if(prof.selEndValue>0.) {
@@ -1020,7 +1020,7 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
 
     // Sanity
     if(prof.startValue<0.)               prof.startValue = 0;
-    if(prof.endValue>prof.data[0].value) prof.endValue   = prof.data[0].value;
+    if(prof.endValue>prof.data[0].value) prof.endValue   = (double)prof.data[0].value;
 }
 
 
@@ -1062,10 +1062,10 @@ vwMain::Profile::notifySearch(u32 searchedNameIdx)
         }
 
         // Propagate to the children
-        double startValue = si.startValue;
+        double startValueChildren = si.startValue;
         for(int idx : item.childrenIndices) {
-            workStack.push_back( { idx, si.nestingLevel+1, startValue } );
-            startValue += data[idx].value;
+            workStack.push_back( { idx, si.nestingLevel+1, startValueChildren } );
+            startValueChildren += data[idx].value;
         }
     }
 

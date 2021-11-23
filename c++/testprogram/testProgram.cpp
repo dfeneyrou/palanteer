@@ -238,7 +238,7 @@ asyncAssertThread(int condValue)
 void
 cliHandlerAsyncAssert(plCliIo& cio)
 {
-    int condValue = cio.getParamInt(0);
+    int condValue = (int)cio.getParamInt(0);
     std::thread t(asyncAssertThread, condValue);
     t.detach();
 }
@@ -266,7 +266,7 @@ void
 cliHandlerWithParameters(plCliIo& cio)
 {
     // Get the params
-    int    param1      = cio.getParamInt(0);
+    int    param1      = (int)cio.getParamInt(0);
     double param2      = cio.getParamFloat(1);
     const char* param3 = cio.getParamString(2);
 

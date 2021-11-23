@@ -1204,7 +1204,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
                         if(streamCoreIdLkup[evtx.newCoreId]==0xFF) {
                             int startCoreId = evtx.newCoreId;
                             while(startCoreId>0 && streamCoreIdLkup[startCoreId-1]==0xFF) --startCoreId;  // Assign all previous coreID also, to try to have them in order
-                            while(startCoreId<=evtx.newCoreId) streamCoreIdLkup[startCoreId++] = _recMStreamCoreQty++;
+                            while(startCoreId<=evtx.newCoreId) streamCoreIdLkup[startCoreId++] = (u8)(_recMStreamCoreQty++);
                         }
                         evtx.newCoreId = streamCoreIdLkup[evtx.newCoreId];
                     }
@@ -1212,7 +1212,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
                         if(streamCoreIdLkup[evtx.prevCoreId]==0xFF) {
                             int startCoreId = evtx.prevCoreId;
                             while(startCoreId>0 && streamCoreIdLkup[startCoreId-1]==0xFF) --startCoreId;  // Assign all previous coreID also, to try to have them in order
-                            while(startCoreId<=evtx.prevCoreId) streamCoreIdLkup[startCoreId++] = _recMStreamCoreQty++;
+                            while(startCoreId<=evtx.prevCoreId) streamCoreIdLkup[startCoreId++] = (u8)(_recMStreamCoreQty++);
                         }
                         evtx.prevCoreId = streamCoreIdLkup[evtx.prevCoreId];
                     }
@@ -1254,7 +1254,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
         if(_isMultiStream) {
             // Thread conversion
             if(streamThreadIdLkup[evtx.threadId]==0xFF) {
-                streamThreadIdLkup[evtx.threadId] = _recThreads.size();
+                streamThreadIdLkup[evtx.threadId] = (u8)(_recThreads.size());
             }
             evtx.threadId = streamThreadIdLkup[evtx.threadId];
         }
@@ -1399,7 +1399,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
         // Optional insertion of a second event, copy of the first one but with flag changed
         // Typically for the lock use case which requires closing the lock wait scope
         if(secondEventFlags!=PL_FLAG_TYPE_DATA_NONE) {
-            evtx.flags = secondEventFlags;
+            evtx.flags = (u8)secondEventFlags;
             processScopeEvent(evtx, tc, level);
         }
 
@@ -1726,13 +1726,13 @@ cmRecording::endRecord(void)
     endEvtx.vS64 = _recDurationNs;
     for(int threadId=0; threadId<_recThreads.size(); ++threadId) {
         ThreadBuild& tc  = _recThreads[threadId];
-        endEvtx.threadId = threadId;
+        endEvtx.threadId = (u8)threadId;
         // Scopes
         for(int level=tc.levels.size()-1; level>=0; --level) {
             NestingLevelBuild& lc = tc.levels[level];
             if(!lc.isScopeOpen) continue;
             if(level==cmConst::MAX_LEVEL_QTY-1) continue; // End event is offset by 1
-            endEvtx.threadId = threadId;
+            endEvtx.threadId = (u8)threadId;
             processScopeEvent(endEvtx, tc, level);
             endEvtx.nameIdx = emptyIdx; // Re-set it as it was "corrected" during the processing
         }

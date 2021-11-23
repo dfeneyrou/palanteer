@@ -95,7 +95,7 @@ vwBackendInit(void)
     GL_CHECK();
 
     // Base GL setup
-    glClearColor(0.3, 0.3, 0.3, 1.0);
+    glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
 }
 
 
@@ -202,7 +202,7 @@ vwBackendInstallFont(const void* fontData, int fontDataSize, int fontSize)
     // Some config
     ImGuiIO& io = ImGui::GetIO();
     io.Fonts->Clear();
-    io.Fonts->AddFontFromMemoryCompressedTTF(fontData, fontDataSize, fontSize);
+    io.Fonts->AddFontFromMemoryCompressedTTF(fontData, fontDataSize, (float)fontSize);
 
     // Build texture atlas
     unsigned char* pixels;

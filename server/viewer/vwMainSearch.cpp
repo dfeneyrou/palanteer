@@ -114,7 +114,7 @@ vwMain::prepareSearch(void)
 {
     // Check if the cache is still valid
     vwMain::Search& s = _search;
-    const double winHeight = ImGui::GetWindowSize().y; // Approximated and bigger anyway
+    const float winHeight = ImGui::GetWindowSize().y; // Approximated and bigger anyway
     if(!s.isCacheDirty && winHeight<=s.lastWinHeight) return;
 
     // Worth working?
@@ -144,7 +144,7 @@ vwMain::prepareSearch(void)
     s.aggregatedIt.init(_record, s.selectedNameIdx, threadBitmap, s.startTimeNs, maxLineQty, s.cachedItems);
 
     // Compute the scroll ratio (for the scroll bar indication) from the dates
-    s.cachedScrollRatio = bsMinMax(s.startTimeNs/bsMax((double)_record->durationNs, 1.), 0., 1.);
+    s.cachedScrollRatio = (float)bsMinMax((double)s.startTimeNs/(double)bsMax(_record->durationNs, 1), 0., 1.);
 }
 
 
@@ -190,7 +190,7 @@ vwMain::drawSearch(void)
     // User clicked to dismiss the search window?
     if(!isOpenWindow) {
         getConfig().setWindowSearchVisibility(false);
-        for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(-1);
+        for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(PL_INVALID);
         setFullScreenView(-1);
     }
     plgScope(SEARCH, "drawSearch");
@@ -207,7 +207,7 @@ vwMain::drawSearch(void)
     ImU32 filterBg    = ImColor(ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
     while(s.threadSelection.size()<_record->threads.size()) s.threadSelection.push_back(true);
     DRAWLIST->AddRectFilled(ImVec2(ImGui::GetWindowPos().x+textPixMargin, textBgY),
-                            ImVec2(ImGui::GetWindowPos().x+widthMenu+2.*textPixMargin, textBgY+ImGui::GetTextLineHeightWithSpacing()), filterBg);
+                            ImVec2(ImGui::GetWindowPos().x+widthMenu+2.f*textPixMargin, textBgY+ImGui::GetTextLineHeightWithSpacing()), filterBg);
     if(s.isFilteredOnThread) ImGui::PushStyleColor(ImGuiCol_Text, vwConst::gold);
     ImGui::SetCursorPosX(textPixMargin+padMenuX);
     ImGui::AlignTextToFramePadding();
@@ -239,12 +239,12 @@ vwMain::drawSearch(void)
     }
 
     // Case sensitivity
-    ImGui::SameLine(0, 3.*textPixMargin);
+    ImGui::SameLine(0, 3.f*textPixMargin);
     ImGui::Checkbox("Case sensitive", &s.isInputCaseSensitive);
 
     // Sync combo
-    double  comboWidth  = ImGui::CalcTextSize("Isolated XXX").x;
-    float   comboX      = ImGui::GetWindowContentRegionMax().x-comboWidth;
+    float  comboWidth = ImGui::CalcTextSize("Isolated XXX").x;
+    float   comboX    = ImGui::GetWindowContentRegionMax().x-comboWidth;
     ImGui::SameLine(comboX);
     drawSynchroGroupCombo(comboWidth, &s.syncMode);
     ImGui::Separator();
@@ -274,7 +274,7 @@ vwMain::drawSearch(void)
     if(isCtrlFHit && !s.isWindowSelected) {
         if(ImGui::IsItemActive()) { // Already under focus => hide
             getConfig().setWindowSearchVisibility(false);
-            for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(-1);
+            for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(PL_INVALID);
             setFullScreenView(-1);
         }
         else {
@@ -368,12 +368,12 @@ vwMain::drawSearch(void)
     ImGui::BeginChild("Search", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar |
                       ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
     prepareSearch(); // Ensure cache is up to date, even after window creation
-    const double winX = ImGui::GetWindowPos().x;
-    const double winY = ImGui::GetWindowPos().y;
-    const double winWidth      = ImGui::GetWindowContentRegionMax().x;
-    const double winHeight     = ImGui::GetWindowSize().y;
-    const double fontHeight    = ImGui::GetTextLineHeightWithSpacing();
-    const double mouseY        = ImGui::GetMousePos().y;
+    const float winX = ImGui::GetWindowPos().x;
+    const float winY = ImGui::GetWindowPos().y;
+    const float winWidth      = ImGui::GetWindowContentRegionMax().x;
+    const float winHeight     = ImGui::GetWindowSize().y;
+    const float fontHeight    = ImGui::GetTextLineHeightWithSpacing();
+    const float mouseY        = ImGui::GetMousePos().y;
     const bool   isWindowHovered = ImGui::IsWindowHovered();
 
     const float charWidth = ImGui::CalcTextSize("0").x;
@@ -390,8 +390,8 @@ vwMain::drawSearch(void)
         plgScope(SEARCH, "New user scroll position from ImGui");
         plgData(SEARCH, "expected pos", s.lastScrollPos);
         plgData(SEARCH, "new pos", curScrollPos);
-        s.cachedScrollRatio = curScrollPos/normalizedScrollHeight;
-        s.setStartPosition(s.cachedScrollRatio*_record->durationNs);
+        s.cachedScrollRatio = (float)(curScrollPos/normalizedScrollHeight);
+        s.setStartPosition((s64)(s.cachedScrollRatio*_record->durationNs));
         s.didUserChangedScrollPos = false;
     }
 
@@ -403,14 +403,14 @@ vwMain::drawSearch(void)
     if(isWindowHovered) {
         // Check mouse input
         int textWheelCounter =  (ImGui::GetIO().KeyCtrl)? 0 :
-            (ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion()); // No Ctrl key: wheel is for the text
+            (int)(ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion()); // No Ctrl key: wheel is for the text
         tlWheelCounter       = (!ImGui::GetIO().KeyCtrl)? 0 :
-            (ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline (processed in highlighted text display)
+            (int)(ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline (processed in highlighted text display)
         int dragLineQty = 0;
         if(ImGui::IsMouseDragging(2)) {
             s.isDragging = true;
             if(bsAbs(ImGui::GetMouseDragDelta(2).y)>1.) {
-                double tmp = (ImGui::GetMouseDragDelta(2).y+s.dragReminder);
+                float tmp = (ImGui::GetMouseDragDelta(2).y+s.dragReminder);
                 ImGui::ResetMouseDragDelta(2);
                 dragLineQty   = (int)(tmp/fontHeight);
                 s.dragReminder = tmp-fontHeight*dragLineQty;
@@ -466,7 +466,7 @@ vwMain::drawSearch(void)
     // Set the modified scroll position in ImGui, if not changed through imGui
     if(s.didUserChangedScrollPos) {
         plgData(SEARCH, "Set new scroll pos from user", s.cachedScrollRatio*normalizedScrollHeight);
-        ImGui::SetScrollY(s.cachedScrollRatio*normalizedScrollHeight);
+        ImGui::SetScrollY((float)(s.cachedScrollRatio*normalizedScrollHeight));
     }
     // Mark the virtual total size
     s.lastScrollPos = ImGui::GetScrollY();
@@ -478,9 +478,9 @@ vwMain::drawSearch(void)
     // Draw the text
     // =============
     float y = winY;
-    double mouseTimeBestY = -1.;
-    double mouseTimeBestTimeNs = -1.;
-    double newMouseTimeNs = -1.;
+    float mouseTimeBestY = -1.;
+    s64 mouseTimeBestTimeNs = -1;
+    s64 newMouseTimeNs = -1;
     for(const auto& sci : s.cachedItems) {
         // Get the cached item
         const cmRecord::Elem& elem = _record->elems[sci.elemIdx];
@@ -542,25 +542,25 @@ vwMain::drawSearch(void)
 
             // Synchronized navigation
             if(s.syncMode>0) { // No synchronized navigation for isolated windows
-                double syncStartTimeNs, syncTimeRangeNs;
+                s64 syncStartTimeNs, syncTimeRangeNs;
                 getSynchronizedRange(s.syncMode, syncStartTimeNs, syncTimeRangeNs);
 
                 // Click: set timeline position at middle screen only if outside the center third of screen
                 if((ImGui::IsMouseReleased(0) && ImGui::GetMousePos().x<winX+winWidth) || tlWheelCounter) {
-                    synchronizeNewRange(s.syncMode, bsMax(0., sci.timeNs-0.5*syncTimeRangeNs), syncTimeRangeNs);
+                    synchronizeNewRange(s.syncMode, bsMax(sci.timeNs-(s64)(0.5*syncTimeRangeNs), 0LL), syncTimeRangeNs);
                     ensureThreadVisibility(s.syncMode, evt.threadId);
                     synchronizeText(s.syncMode, evt.threadId, elem.nestingLevel, sci.lIdx, sci.timeNs, s.uniqueId);
                 }
                 // Double click: adapt also the scale to have the scope at 10% of the screen
                 if(ImGui::IsMouseDoubleClicked(0) && (evt.flags&PL_FLAG_SCOPE_BEGIN)) {
-                    double newTimeRangeNs =  vwConst::DCLICK_RANGE_FACTOR*sci.value;
+                    s64 newTimeRangeNs =  (s64)(vwConst::DCLICK_RANGE_FACTOR*sci.value);
                     synchronizeNewRange(s.syncMode, syncStartTimeNs+(sci.timeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
                                         newTimeRangeNs);
                     ensureThreadVisibility(s.syncMode, evt.threadId);
                 }
                 // Zoom the timeline
                 if(tlWheelCounter!=0) {
-                    double newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
+                    s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
                     synchronizeNewRange(s.syncMode, syncStartTimeNs+(sci.timeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
                                         newTimeRangeNs);
                     ensureThreadVisibility(s.syncMode, evt.threadId);
@@ -623,7 +623,7 @@ vwMain::drawSearch(void)
 
         // Display the name of the item
         DRAWLIST->AddText(ImVec2(offsetX, y), color1, nameStr);
-        offsetX += bsMax(ImGui::CalcTextSize(nameStr).x, 20.*charWidth)+2.*charWidth;
+        offsetX += bsMax(ImGui::CalcTextSize(nameStr).x, 20.f*charWidth)+2.f*charWidth;
 
         // Display the value
         DRAWLIST->AddText(ImVec2(offsetX, y), color1, valueStr);
@@ -642,7 +642,7 @@ vwMain::drawSearch(void)
 
     // Contextual menu
     if(ImGui::BeginPopup("Search menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-        double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+        float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
         ImGui::TextColored(vwConst::grey, "%s", _record->getString(s.ctxNameIdx).value.toChar());
         ImGui::Separator();
 

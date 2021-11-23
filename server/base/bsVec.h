@@ -131,7 +131,7 @@ public:
         plgAssert(BSVEC, itBegin<=itEnd);
         T* src = (T*)itEnd; T* dst = (T*)itBegin;
         while(src!=_array+_size) *dst++ = std::move(*src++);
-        _size -= itEnd-itBegin;
+        _size -= (int)(itEnd-itBegin);
     }
     void erase(const T* it) { erase(it, it+1); }
 

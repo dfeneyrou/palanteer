@@ -146,15 +146,15 @@ private:
     int    getDisplayWidth(void);
     int    getDisplayHeight(void);
     bsUs_t getLastMouseMoveDurationUs(void) const { return _lastMouseMoveDurationUs; }
-    void   setScopeHighlight(int threadId, double startTimeNs, double endTimeNs, int eventFlags, int nestingLevel, u32 nameIdx, bool isMultiple=false);
-    void   setScopeHighlight(int threadId, double punctualTimeNs, int eventFlags, int nestingLevel, u32 nameIdx);
-    bool   isScopeHighlighted(int threadId, double punctualTimeNs, int eventFlags, int nestingLevel, u32 nameIdx, bool acceptMultiple=true) {
+    void   setScopeHighlight(int threadId, s64 startTimeNs, s64 endTimeNs, int eventFlags, int nestingLevel, u32 nameIdx, bool isMultiple=false);
+    void   setScopeHighlight(int threadId, s64 punctualTimeNs, int eventFlags, int nestingLevel, u32 nameIdx);
+    bool   isScopeHighlighted(int threadId, s64 punctualTimeNs, int eventFlags, int nestingLevel, u32 nameIdx, bool acceptMultiple=true) {
         return (acceptMultiple || !_hlIsMultiple) && _hlThreadId!=cmConst::MAX_THREAD_QTY &&
             (_hlNameIdx==PL_INVALID || nameIdx==PL_INVALID || _hlNameIdx==nameIdx) && (_hlEventFlags<0 || eventFlags<0 || _hlEventFlags==eventFlags) &&
             (_hlNestingLevel<0 || nestingLevel<0 || _hlNestingLevel==nestingLevel) && (_hlThreadId<0 || threadId<0 || _hlThreadId==threadId) &&
             (punctualTimeNs<0. || (_hlStartTimeNs<=punctualTimeNs && punctualTimeNs<=_hlEndTimeNs));
     }
-    bool   isScopeHighlighted(int threadId, double startTimeNs, double endTimeNs, int eventFlags, int nestingLevel, u32 nameIdx, bool acceptMultiple=true) {
+    bool   isScopeHighlighted(int threadId, s64 startTimeNs, s64 endTimeNs, int eventFlags, int nestingLevel, u32 nameIdx, bool acceptMultiple=true) {
         return (acceptMultiple || !_hlIsMultiple) && _hlThreadId!=cmConst::MAX_THREAD_QTY &&
             (_hlNameIdx==PL_INVALID || nameIdx==PL_INVALID || _hlNameIdx==nameIdx) && (_hlEventFlags<0 || eventFlags<0 || _hlEventFlags==eventFlags) &&
             (_hlNestingLevel<0 || nestingLevel<0 || _hlNestingLevel==nestingLevel) && (_hlThreadId<0 || threadId<0 || _hlThreadId==threadId) &&
@@ -164,22 +164,22 @@ private:
     void displayHelpText(const char* helpStr);
     void displayHelpTooltip(int uniqueId, const char* tooltipId, const char* helpStr);
     void computeTickScales(const double valueRange, const int targetTickQty, double& scaleMajorTick, double& scaleMinorTick);
-    void drawSynchroGroupCombo(double comboWidth, int* syncModePtr);
-    void drawTimeRuler(double winX, double winY, double winWidth, double rulerHeight, double startTimeNs, double timeRangeNs,
-                       int& syncMode, double& rbWidth, double& rbStartPix, double& rbEndPix);
-    bool displayPlotContextualMenu(int threadId, const char* rootText, double headerWidth=-1., double comboWidth=-1.);
-    bool displayHistoContextualMenu(double headerWidth=-1., double comboWidth=-1.);
+    void drawSynchroGroupCombo(float comboWidth, int* syncModePtr);
+    void drawTimeRuler(float winX, float winY, float winWidth, float rulerHeight, s64 startTimeNs, s64 timeRangeNs,
+                       int& syncMode, float& rbWidth, float& rbStartPix, float& rbEndPix);
+    bool displayPlotContextualMenu(int threadId, const char* rootText, float headerWidth=-1.f, float comboWidth=-1.f);
+    bool displayHistoContextualMenu(float headerWidth=-1.f, float comboWidth=-1.f);
     void displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& dataChildren, const cmRecord::Evt& evt, s64 durationNs);
-    void getSynchronizedRange(int syncMode, double& startTimeNs, double& timeRangeNs);
-    void synchronizeNewRange(int syncMode, double startTimeNs, double timeRangeNs);
+    void getSynchronizedRange(int syncMode, s64& startTimeNs, s64& timeRangeNs);
+    void synchronizeNewRange(int syncMode, s64 startTimeNs, s64 timeRangeNs);
     void synchronizeText(int syncMode, int threadId, int level, int lIdx, s64 timeNs, u32 idToIgnore=(u32)-1);
     void synchronizeThreadLayout(void);
     void ensureThreadVisibility(int syncMode, int threadId);
-    inline double getUpdatedRange(int deltaWheel, double newRangeNs) {
-        const double scrollFactor = 1.25;
-        while(deltaWheel>0) { newRangeNs /= scrollFactor; --deltaWheel; }
-        while(deltaWheel<0) { newRangeNs *= scrollFactor; ++deltaWheel; }
-        if(newRangeNs<1000.) newRangeNs = 1000.; // No point zooming more than this
+    inline s64 getUpdatedRange(int deltaWheel, s64 newRangeNs) {
+        // Scroll factor of 25%
+        while(deltaWheel>0) { newRangeNs -= newRangeNs/4; --deltaWheel; }
+        while(deltaWheel<0) { newRangeNs += newRangeNs/4; ++deltaWheel; }
+        if(newRangeNs<1000) newRangeNs = 1000; // Limit on zooming
         return newRangeNs;
     }
     void displayColorSelectMenu(const char* title, const int initialColorIdx, std::function<void(int)>& setter);
@@ -209,22 +209,22 @@ private:
 
     // Draw common
     enum DragMode { NONE, DATA, BAR };
-    double _mouseTimeNs = -1.;
+    s64    _mouseTimeNs = -1;
     bool   _liveRecordUpdated = false;
-    float  _lastFontSize = -1.;
-    float  _timelineHeaderWidth = 200.;
+    float  _lastFontSize = -1.f;
+    float  _timelineHeaderWidth = 200.f;
     bsVec<bsString> _fullThreadNames;
     void precomputeRecordDisplay(void);
 
     // Highlight fields
-    bool   _hlHasBeenSet   = false;
-    int    _hlThreadId     = cmConst::MAX_THREAD_QTY;     // No highlight with such default value
-    double _hlStartTimeNs  = 0.;
-    double _hlEndTimeNs    = 0.;
-    int    _hlEventFlags   = 0;
-    int    _hlNestingLevel = 0;
-    u32    _hlNameIdx      = 0;
-    bool   _hlIsMultiple   = false;
+    bool _hlHasBeenSet   = false;
+    int  _hlThreadId     = cmConst::MAX_THREAD_QTY;     // No highlight with such default value
+    s64  _hlStartTimeNs  = 0;
+    s64  _hlEndTimeNs    = 0;
+    int  _hlEventFlags   = 0;
+    int  _hlNestingLevel = 0;
+    u32  _hlNameIdx      = 0;
+    bool _hlIsMultiple   = false;
 
     // Work structures (to avoid reallocation)
     bsVec<cmRecord::Evt> _workDataChildren;
@@ -240,11 +240,11 @@ private:
     // Component to handle time range automatas (animation, scrolling, etc...). Used by timeline, memory and plot
     struct TimeRangeBase {
         // Fields
-        int    uniqueId;
-        double startTimeNs     = 0.;
-        double timeRangeNs     = -1.;
-        double rangeSelStartNs = 0.;
-        double rangeSelEndNs   = 0.;
+        int uniqueId;
+        s64 startTimeNs     = 0;
+        s64 timeRangeNs     = -1;
+        s64 rangeSelStartNs = 0;
+        s64 rangeSelEndNs   = 0;
         DragMode dragMode      = NONE;
         int      syncMode      = 1;   // 0: isolated, 1+: group
         ImGuiID newDockId      = 0xFFFFFFFF;    // 0xFFFFFFFF: use the automatic one
@@ -257,78 +257,78 @@ private:
         bool   ctxDraggedIsGroup    = false;
         bool   ctxDoOpenContextMenu = false;
         u32    ctxScopeLIdx          = PL_INVALID;
-        double lastWinWidth    = 0.;  // Width Change invalidates the cache (min scope resolution change)
+        float  lastWinWidth    = 0.f;  // Width Change invalidates the cache (min scope resolution change)
         int    viewThreadId    = -1;  // Used in conjunction with valuePerThread
         double valuePerThread[vwConst::QUANTITY_THREADID]; // In order to control the thread visibility with the scrollbar
         // Animation
         bsUs_t animTimeUs = 0;
-        double animStartTimeNs1, animStartTimeNs2;
-        double animTimeRangeNs1, animTimeRangeNs2;
+        s64 animStartTimeNs1, animStartTimeNs2;
+        s64 animTimeRangeNs1, animTimeRangeNs2;
         // Helpers
-        double getStartTimeNs(void) const { return (animTimeUs>0)? animStartTimeNs2 : startTimeNs; }
-        double getTimeRangeNs(void) const { return (animTimeUs>0)? animTimeRangeNs2 : timeRangeNs; }
+        s64 getStartTimeNs(void) const { return (animTimeUs>0)? animStartTimeNs2 : startTimeNs; }
+        s64 getTimeRangeNs(void) const { return (animTimeUs>0)? animTimeRangeNs2 : timeRangeNs; }
         bool   isAnimating(void)    const { return (animTimeUs>0); }
-        void   setView(double newStartTimeNs, double newTimeRangeNs, bool noTransition=false);
+        void   setView(s64 newStartTimeNs, s64 newTimeRangeNs, bool noTransition=false);
         void   ensureThreadVisibility(int threadId);
-        void   checkTimeBounds(double recordDurationNs);
+        void   checkTimeBounds(s64 recordDurationNs);
         void   updateAnimation(void);
     };
-    bool   manageVisorAndRangeSelectionAndBarDrag(TimeRangeBase& trb, bool isWindowHovered, double mouseX, double mouseY,
-                                                  double winX, double winY, double winWidth, double winHeight,
-                                                  bool isBarHovered, double rbWidth, double rbStartPix, double rbEndPix);
-    bool   displayTimelineHeader(double yHeader, double yThreadAfterTimeline, int threadId, bool doDrawGroup, bool isDrag,
+    bool   manageVisorAndRangeSelectionAndBarDrag(TimeRangeBase& trb, bool isWindowHovered, float mouseX, float mouseY,
+                                                  float winX, float winY, float winWidth, float winHeight,
+                                                  bool isBarHovered, float rbWidth, float rbStartPix, float rbEndPix);
+    bool   displayTimelineHeader(float yHeader, float yThreadAfterTimeline, int threadId, bool doDrawGroup, bool isDrag,
                                  bool& isThreadHovered, bool& isGroupHovered);
     void   displayTimelineHeaderPopup(TimeRangeBase& trb, int tId, bool openAsGroup);
-    double getTimelineHeaderHeight(bool withGroupHeader, bool withThreadHeader);
+    float  getTimelineHeaderHeight(bool withGroupHeader, bool withThreadHeader);
 
     // Timeline
     // ========
-    struct InfTlCachedScope { // 64 bytes (1 cache line)
+    struct InfTlCachedScope {
         bool isCoarseScope;
         u32  scopeLIdx;
         s64  scopeEndTimeNs;
         s64  durationNs;
         cmRecord::Evt evt;
-        double startTimePix = 0.;
-        double endTimePix   = 0.;
+        float startTimePix = 0.;
+        float endTimePix   = 0.;
     };
     struct TlCachedCpuPoint {
-        double timePix;
-        double cpuUsageRatio;
+        float timePix;
+        float cpuUsageRatio;
     };
-    struct TlCachedCore { // 32 bytes
+    struct TlCachedCore {
         bool   isCoarse;
         u16    threadId;
         u32    nameIdx;
-        double startTimePix;
-        double endTimePix;
+        float startTimePix;
+        float endTimePix;
         s64    durationNs;
     };
-    struct TlCachedSwitch { // 32 bytes
+    struct TlCachedSwitch {
         bool   isCoarse;
         int    coreId;
-        double startTimePix;
-        double endTimePix;
+        float startTimePix;
+        float endTimePix;
         s64    durationNs;
     };
-    struct TlCachedSoftIrq { // 32 bytes
+    struct TlCachedSoftIrq {
         bool   isCoarse;
         u32    nameIdx;
-        double startTimePix;
-        double endTimePix;
+        float startTimePix;
+        float endTimePix;
         s64    durationNs;
     };
-    struct TlCachedLockScope { // 52+8 bytes
+    struct TlCachedLockScope {
         bool   isCoarse;
         u8     overlappedThreadIds[vwConst::MAX_OVERLAPPED_THREAD];
-        double startTimePix;
-        double endTimePix;
+        float startTimePix;
+        float endTimePix;
         s64    durationNs;
         cmRecord::Evt e;
     };
-    struct TlCachedLockNtf { // 36 bytes
+    struct TlCachedLockNtf {
         bool   isCoarse;
-        double timePix;
+        float timePix;
         cmRecord::Evt e;
     };
     struct TlCachedLockUse {
@@ -338,7 +338,7 @@ private:
     struct TlCachedMarker {
         bool   isCoarse;
         int    elemIdx;
-        double timePix;
+        float timePix;
         cmRecord::Evt e;
     };
     struct Timeline : TimeRangeBase {
@@ -358,7 +358,7 @@ private:
         bsVec<TlCachedCpuPoint>        cachedCpuCurve;
         bsVec<bsVec<bsVec<InfTlCachedScope>>> cachedScopesPerThreadPerNLevel;
         void reset(void) {
-            startTimeNs  = timeRangeNs = rangeSelStartNs = rangeSelEndNs = 0.;
+            startTimeNs  = timeRangeNs = rangeSelStartNs = rangeSelEndNs = 0;
             dragMode     = NONE;
             syncMode     = 1;
             ctxScopeLIdx   = PL_INVALID;
@@ -398,8 +398,8 @@ private:
     struct MemDetailListWindow {
         int      threadId;
         int      uniqueId;
-        double   startTimeNs;
-        double   endTimeNs;
+        s64      startTimeNs;
+        s64      endTimeNs;
         bsString allocScopeName;
         int      syncMode;
         bsVec<MemAlloc> allocBlocks;
@@ -420,12 +420,12 @@ private:
         double viewByteMin = +1e300;
         double viewByteMax = -1e300;
         int    allocBlockThreadId    = -1;
-        double allocBlockStartTimeNs = -1.;
-        double allocBlockEndTimeNs   = -1.;
+        s64    allocBlockStartTimeNs = -1;
+        s64    allocBlockEndTimeNs   = -1;
         bsString allocScopeName;
         // Screen management
-        float  lastScrollPos   = 0.;
-        double lastWinHeight   = 0.;
+        float  lastScrollPos   = 0.f;
+        float  lastWinHeight   = 0.f;
         bool   doAdaptViewValueRange = false;
         bool   isPreviousRangeEmpty  = true;;
         bool   isDragging      = false;
@@ -444,8 +444,8 @@ private:
         // Cache for curves (rebuilt if dirty)
         bsVec<MemCachedThread> cachedThreadData;
         bsVec<int> cachedCallBins[2]; // Alloc, Dealloc
-        double binTimeOffset = 0.;
-        double maxCallQty = 0.;
+        s64 binTimeOffsetNs = 0;
+        s64 maxCallQty = 0;
     };
     bsVec<MemoryTimeline>      _memTimelines;
     bsVec<MemDetailListWindow> _memDetails;
@@ -577,8 +577,8 @@ private:
         u64 threadUniqueHash;
         int startNLevel;
         u32 startLIdx;
-        float  lastScrollPos = 0.;
-        double lastWinHeight = 0.; // Any growth dirties the cache (need more lines...)
+        float  lastScrollPos = 0.f;
+        float  lastWinHeight = 0.f; // Any growth dirties the cache (need more lines...)
         int  syncMode        = 1;  // 0 = isolated, 1+ = group
         ImGuiID newDockId    = 0xFFFFFFFF;       // 0xFFFFFFFF: use the automatic one
         bool didUserChangedScrollPos    = false; // When changed internally (arrow keys, drag...)
@@ -588,9 +588,9 @@ private:
         bool isNew          = true;
         bool isFirstRun     = true;
         bool isDragging     = false;
-        double firstTimeNs  = 0.;
-        double lastTimeNs   = 0.;
-        double dragReminder = 0.;
+        s64  firstTimeNs  = 0;
+        s64  lastTimeNs   = 0;
+        float dragReminder = 0.f;
         bsHashSet hiddenSet;
         // Contextual menu
         int ctxNestingLevel = 0;
@@ -598,7 +598,7 @@ private:
         u32 ctxNameIdx      = 0;
         int ctxFlags        = 0;
         // Cache (rebuilt if dirty)
-        double cachedScrollRatio = 0.;
+        float cachedScrollRatio = 0.f;
         bsVec<TextCacheItem> cachedItems;
         bsVec<cmRecordIteratorHierarchy::Parent> cachedStartParents;
         // Helpers
@@ -642,8 +642,8 @@ private:
         int uniqueId;
         int maxCategoryLength   = 1;
         int maxThreadNameLength = 1;
-        float  lastScrollPos = 0.;
-        double lastWinHeight = 0.; // Any growth dirties the cache (need more lines...)
+        float  lastScrollPos = 0.f;
+        float  lastWinHeight = 0.f; // Any growth dirties the cache (need more lines...)
         int    syncMode      = 1;  // 0 = isolated, 1+ = group
         ImGuiID newDockId    = 0xFFFFFFFF;         // 0xFFFFFFFF: use the automatic one
         bool   didUserChangedScrollPos = false;
@@ -651,7 +651,7 @@ private:
         bool   isCacheDirty = true;
         bool   isWindowSelected = true;
         bool   isDragging     = false;
-        double dragReminder   = 0.;
+        float  dragReminder   = 0.f;
         s64    forceTimeNs    = -1;
         s64    startTimeNs    = 0;
         bsVec<bool> threadSelection;
@@ -662,7 +662,7 @@ private:
         int  ctxThreadId     = 0;
         u32  ctxNameIdx      = 0;
         // Cache (rebuilt if dirty)
-        double cachedScrollRatio = 0.;
+        float cachedScrollRatio = 0.f;
         bsVec<MarkerCacheItem> cachedItems;
         MarkerAggregatedIterator aggregatedIt;
         // Helpers
@@ -708,8 +708,8 @@ private:
         bsVec<bool> threadSelection;
         bool isFilteredOnThread  = false;
         int  maxThreadNameLength = 1;
-        float  lastScrollPos = 0.;
-        double lastWinHeight = 0.; // Any growth dirties the cache (need more lines...)
+        float  lastScrollPos = 0.f;
+        float  lastWinHeight = 0.f; // Any growth dirties the cache (need more lines...)
         int    syncMode      = 1;  // 0 = isolated, 1+ = group
         ImGuiID newDockId    = 0xFFFFFFFF;         // 0xFFFFFFFF: use the automatic one
         bool   didUserChangedScrollPos = false; // When changed externally (timeline synchro...)
@@ -717,8 +717,8 @@ private:
         bool   isCacheDirty = true;
         bool   isWindowSelected = true;
         bool   isDragging   = false;
-        double dragReminder = 0.;
-        double lastMouseY   = 0.;
+        float  dragReminder = 0.f;
+        float  lastMouseY   = 0.f;
         s64    forceTimeNs  = -1;
         s64    startTimeNs  = 0;
         // Contextual menu
@@ -727,7 +727,7 @@ private:
         int  ctxScopeLIdx     = 0;
         u32  ctxNameIdx      = 0;
         // Cache (rebuilt if dirty)
-        double cachedScrollRatio = 0.;
+        float cachedScrollRatio = 0.f;
         bsVec<SearchCacheItem> cachedItems;
         SearchAggregatedIterator aggregatedIt;
         // Helpers
@@ -773,7 +773,7 @@ private:
     bsVec<int>          _plotMenuNewPlotCount;
     bool                _plotMenuWithRemoval;
     int                 _plotMenuSpecificCurveIdx;
-    double              _plotMenuNamesWidth  = 0.;
+    float               _plotMenuNamesWidth  = 0.f;
     bool                _plotMenuAddAllNames = true;
     bool                _plotMenuHasScopeChildren = false;
     bool                _plotMenuIsPartOfHStruct = false;
@@ -803,11 +803,11 @@ private:
         bsString unit = "";
         double   valueMin   = +1e300;
         double   valueMax   = -1e300;
-        float    legendPosX = 0.8; // Window ratio coordinates of the center
-        float    legendPosY = 0.05;
+        float    legendPosX = 0.8f; // Window ratio coordinates of the center
+        float    legendPosY = 0.05f;
         DragMode legendDragMode = NONE;
-        float    lastScrollPos  = 0.;
-        float    lastWinHeight  = 0.;
+        float    lastScrollPos  = 0.f;
+        float    lastWinHeight  = 0.f;
         bool     doShowPointTooltip = false;
         bool     isUnitSet  = false;
         bool     isFirstRun = true;
@@ -816,8 +816,8 @@ private:
         bsVec<bsVec<PlotCachedPoint>> cachedItems;
         bsVec<bsString> curveNames;
         bsVec<bsString> curveThreadNames;
-        double maxWidthCurveName;
-        double maxWidthThreadName;
+        float maxWidthCurveName;
+        float maxWidthThreadName;
     };
     bsVec<PlotWindow> _plots;
     void preparePlot(PlotWindow& t);
@@ -863,11 +863,11 @@ private:
         int      rangeSelStartIdx = 0;
         int      rangeSelEndIdx   = 0;
         DragMode dragMode      = NONE;
-        double   lastWinWidth  = 0.;
+        float    lastWinWidth  = 0.f;
         int      syncMode      = 1; // 0: isolated, 1+: group
         ImGuiID  newDockId     = 0xFFFFFFFF; // 0xFFFFFFFF: use the automatic one
-        float    legendPosX = 0.8; // Window ratio coordinates of the center
-        float    legendPosY = 0.05;
+        float    legendPosX = 0.8f; // Window ratio coordinates of the center
+        float    legendPosY = 0.05f;
         DragMode legendDragMode = NONE;
         bool     isCacheDirty   = true;
         bool     isFirstRun     = true;

@@ -48,15 +48,15 @@ vwMain::Timeline::getDescr(void) const
 // Helpers
 // =======
 
-static constexpr double MIN_SCOPE_PIX = 3.;
+static constexpr float MIN_SCOPE_PIX = 3.f;
 
 struct SmallItem {
     bool   isInit   = false;
     bool   hasEvt   = false;
     u32    scopeLIdx = PL_INVALID;
-    double startPix = -1.;
-    double endPix   = -1.;
-    double endPixExact = -1.; // endPix may be altered for visual reasons
+    float startPix = -1.f;
+    float endPix   = -1.f;
+    float endPixExact = -1.f; // endPix may be altered for visual reasons
     cmRecord::Evt evt;
     s64    evtDurationNs = 0;
 };
@@ -68,20 +68,20 @@ struct TimelineDrawHelper {
     cmRecord* record;
     vwMain::Timeline* tl;
     ImFont*    font;
-    double winX;
-    double winY;
-    double winWidth;
-    double winHeight;
-    double fontHeight;
-    double fontSpacing;
-    double textPixMargin;
-    double threadTitleHeight;
-    bool   isWindowHovered;
-    double startTimeNs;
-    double timeRangeNs;
+    float winX;
+    float winY;
+    float winWidth;
+    float winHeight;
+    float fontHeight;
+    float fontSpacing;
+    float textPixMargin;
+    float threadTitleHeight;
+    bool  isWindowHovered;
+    s64   startTimeNs;
+    s64   timeRangeNs;
     double nsToPix;
-    double mouseX;
-    double mouseY;
+    float mouseX;
+    float mouseY;
 
     ImU32 colorText;
     ImU32 colorTextH;
@@ -92,46 +92,46 @@ struct TimelineDrawHelper {
     ImU32 colorOutline;
     ImU32 colorGap;
 
-    double forceRangeNs = 0.;
-    double forceStartNs = 0.;
+    s64 forceRangeNs = 0;
+    s64 forceStartNs = 0;
 
     // Functions
-    void highlightGapIfHovered(double lastScopeEndTimeNs, double pixStartRect, double y);
-    void displaySmallScope(const SmallItem& si, int level, int levelQty, double y, double lastScopeEndTimeNs);
+    void highlightGapIfHovered(s64 lastScopeEndTimeNs, float pixStartRect, float y);
+    void displaySmallScope(const SmallItem& si, int level, int levelQty, float y, s64 lastScopeEndTimeNs);
     void displayScope(int threadId, int nestingLevel, u32 scopeLIdx, const cmRecord::Evt& evt,
-                     double pixStartRect, double pixEndRect, double y, s64 durationNs, double lastScopeEndTimeNs, double yThread);
-    void drawCoreTimeline(double& yThread);
-    void drawLocks       (double& yThread);
-    void drawScopes      (double& yThread, int threadId);
+                      float pixStartRect, float pixEndRect, float y, s64 durationNs, s64 lastScopeEndTimeNs, float yThread);
+    void drawCoreTimeline(float& yThread);
+    void drawLocks       (float& yThread);
+    void drawScopes      (float& yThread, int threadId);
 };
 
 
 void
-TimelineDrawHelper::highlightGapIfHovered(double lastScopeEndTimeNs, double pixStartRect, double y)
+TimelineDrawHelper::highlightGapIfHovered(s64 lastScopeEndTimeNs, float pixStartRect, float y)
 {
-    double lastPixEndTime = nsToPix*(lastScopeEndTimeNs-startTimeNs);
+    float lastPixEndTime = (float)(nsToPix*(lastScopeEndTimeNs-startTimeNs));
     // Is previous gap hovered?
-    if(isWindowHovered && lastScopeEndTimeNs!=0. && (mouseX-winX)>lastPixEndTime &&
+    if(isWindowHovered && lastScopeEndTimeNs!=0 && (mouseX-winX)>lastPixEndTime &&
        (mouseX-winX)<pixStartRect && mouseY>bsMax(y,winY+threadTitleHeight) && mouseY<bsMin(y+fontHeight,winY+winHeight)) {
         // Yes: Highlight the gap
         DRAWLIST->AddRectFilled(ImVec2(lastPixEndTime+winX, y), ImVec2(pixStartRect+winX, y+fontHeight), colorGap);
         DRAWLIST->AddRect      (ImVec2(lastPixEndTime+winX, y), ImVec2(pixStartRect+winX, y+fontHeight), colorOutline);
 
         // Add a tooltip
-        s64 durationNs = (pixStartRect-lastPixEndTime)/nsToPix;
+        s64 durationNs = (s64)((pixStartRect-lastPixEndTime)/nsToPix);
         ImGui::SetTooltip("Gap duration: %s", main->getNiceDuration(durationNs));
 
         // Double click adjusts the view to it
         if(ImGui::IsMouseDoubleClicked(0) && !tl->isAnimating()) {
             forceRangeNs = vwConst::DCLICK_RANGE_FACTOR*durationNs;
-            forceStartNs = bsMax(0., startTimeNs+(lastScopeEndTimeNs-startTimeNs)/timeRangeNs*(timeRangeNs-forceRangeNs));
+            forceStartNs = bsMax(startTimeNs+(s64)((lastScopeEndTimeNs-startTimeNs)/timeRangeNs*(timeRangeNs-forceRangeNs)), 0LL);
         }
     }
 };
 
 
 void
-TimelineDrawHelper::displaySmallScope(const SmallItem& si, int level, int levelQty, double y, double lastScopeEndTimeNs)
+TimelineDrawHelper::displaySmallScope(const SmallItem& si, int level, int levelQty, float y, s64 lastScopeEndTimeNs)
 {
     highlightGapIfHovered(lastScopeEndTimeNs, si.startPix, y);
     DRAWLIST->AddRectFilled(ImVec2(winX+si.startPix, y), ImVec2(winX+si.endPix, y+fontHeight), colorFillS);
@@ -144,8 +144,8 @@ TimelineDrawHelper::displaySmallScope(const SmallItem& si, int level, int levelQ
 
 void
 TimelineDrawHelper::displayScope(int threadId, int nestingLevel, u32 scopeLIdx,
-                                const cmRecord::Evt& evt, double pixStartRect, double pixEndRect,
-                                double y, s64 durationNs, double lastScopeEndTimeNs, double yThread)
+                                const cmRecord::Evt& evt, float pixStartRect, float pixEndRect,
+                                float y, s64 durationNs, s64 lastScopeEndTimeNs, float yThread)
 {
     highlightGapIfHovered(lastScopeEndTimeNs, pixStartRect, y);
     ImGui::PushID( (void*)((u64)threadId | (((u64)nestingLevel)<<8) | (((u64)scopeLIdx)<<16)) );
@@ -186,7 +186,7 @@ TimelineDrawHelper::displayScope(int threadId, int nestingLevel, u32 scopeLIdx,
         if(ImGui::IsMouseDoubleClicked(0) && !tl->isAnimating()) {
             // Force the time range (will be processed later, as we are in the middle of current display)
             forceRangeNs = vwConst::DCLICK_RANGE_FACTOR*durationNs;
-            forceStartNs = bsMax(0., startTimeNs+(evt.vS64-startTimeNs)/timeRangeNs*(timeRangeNs-forceRangeNs));
+            forceStartNs = bsMax(startTimeNs+(s64)((evt.vS64-startTimeNs)/timeRangeNs*(timeRangeNs-forceRangeNs)), 0LL);
             // Synchronize thread visibility
             main->ensureThreadVisibility(tl->syncMode, threadId);
             // Show memory details
@@ -212,8 +212,8 @@ TimelineDrawHelper::displayScope(int threadId, int nestingLevel, u32 scopeLIdx,
     }
 
     // Draw the text which fits in the space
-    constexpr double minCharWidth = 8.;
-    double pixTextStart = bsMax(0., pixStartRect);
+    constexpr float minCharWidth = 8.;
+    float pixTextStart = bsMax(0.f, pixStartRect);
     if(pixEndRect-pixTextStart-textPixMargin*2.f>=minCharWidth) { // Else no need to work...
         const char* remaining = 0;
         font->CalcTextSizeA(ImGui::GetFontSize(), pixEndRect-pixTextStart-textPixMargin*2.f, 0.0f, titleStr, NULL, &remaining);
@@ -228,14 +228,14 @@ TimelineDrawHelper::displayScope(int threadId, int nestingLevel, u32 scopeLIdx,
 
 
 void
-TimelineDrawHelper::drawCoreTimeline(double& yThread)
+TimelineDrawHelper::drawCoreTimeline(float& yThread)
 {
-    constexpr double coreNamePosX = 50.;
-    constexpr double heightMargin = 2.;
-    constexpr double minCharWidth = 8.;
-    constexpr double coarseFactor = 0.08;
+    constexpr float coreNamePosX = 50.f;
+    constexpr float heightMargin = 2.f;
+    constexpr float minCharWidth = 8.f;
+    constexpr float coarseFactor = 0.08f;
     char   tmpStr[128];
-    double widthCoreXX = ImGui::CalcTextSize("CoreXX").x;
+    float widthCoreXX = ImGui::CalcTextSize("CoreXX").x;
 
     // Skip the drawing if not visible
     plgScope (TML, "Display cores timeline");
@@ -247,11 +247,11 @@ TimelineDrawHelper::drawCoreTimeline(double& yThread)
 
     // Draw the filled CPU curve (step)
     vwMain::TlCachedCpuPoint prevPt = { -1., 0. };
-    constexpr float thres0 = 0.2, thres1=0.33, thres2=0.66, thres3=0.8, alphaCpu=0.6;
+    constexpr float thres0 = 0.2f, thres1=0.33f, thres2=0.66f, thres3=0.8f, alphaCpu=0.6f;
     for(const vwMain::TlCachedCpuPoint& cl : tl->cachedCpuCurve) {
-        float x1    = winX+prevPt.timePix, x2 = winX+bsMax(prevPt.timePix+1., cl.timePix);
+        float x1    = winX+prevPt.timePix, x2 = winX+bsMax(prevPt.timePix+1.f, cl.timePix);
         float prevY = yThread;
-        float value = prevPt.cpuUsageRatio;
+        float value = (float)prevPt.cpuUsageRatio;
         ImU32 prevColor = ImColor(thres0, 0.f, 0.f, alphaCpu);
         ImU32 colorUp;
 
@@ -264,9 +264,9 @@ TimelineDrawHelper::drawCoreTimeline(double& yThread)
             prevColor = colorUp;                                        \
             prevY     = tY;                                             \
         }
-        DRAW_LAYERED_CURVE(0.,     thres1, ImColor(bsMax(tValue, thres0)/thres1, 0.f, 0.f, alphaCpu));             // black (0,0,0) -> red   (1,0,0)
+        DRAW_LAYERED_CURVE(0.f,     thres1, ImColor(bsMax(tValue, thres0)/thres1, 0.f, 0.f, alphaCpu));             // black (0,0,0) -> red   (1,0,0)
         DRAW_LAYERED_CURVE(thres1, thres2, ImColor(1.0f, (tValue-thres1)/(thres2-thres1), 0.f,  alphaCpu));        // red   (1,0,0) -> yellow(1,1,0)
-        DRAW_LAYERED_CURVE(thres2,    1.0, ImColor(1.0f, 1.0f, bsMin(1.f, (tValue-thres2)/(thres3-thres2)), 1.f)); // yellow(1,1,0) -> white (1,1,1)
+        DRAW_LAYERED_CURVE(thres2,    1.0f, ImColor(1.0f, 1.0f, bsMin(1.f, (tValue-thres2)/(thres3-thres2)), 1.f)); // yellow(1,1,0) -> white (1,1,1)
         prevPt = cl;
 
         // Tooltip
@@ -285,25 +285,25 @@ TimelineDrawHelper::drawCoreTimeline(double& yThread)
         // Timeline
         for(const vwMain::TlCachedCore& cl : tl->cachedUsagePerCore[coreId]) {
             if(cl.startTimePix>winWidth) continue;
-            double x2 = winX+bsMax(cl.startTimePix+3., cl.endTimePix);
+            float x2 = winX+bsMax(cl.startTimePix+3.f, cl.endTimePix);
             bool  isHovered = (!cl.isCoarse && isWindowHovered && mouseX>winX+cl.startTimePix && mouseX<x2 &&
                                mouseY>yThread && mouseY<yThread+fontHeight);
-            double cHeightMargin = heightMargin + (cl.isCoarse? coarseFactor*fontHeight : 0.);
+            float cHeightMargin = heightMargin + (cl.isCoarse? coarseFactor*fontHeight : 0.f);
 
             // Draw the box
             ImU32 color        = cl.isCoarse? vwConst::uGrey64 : vwConst::uGrey96;
-            ImU32 colorOutline = cl.isCoarse? vwConst::uGrey48 : vwConst::uGrey64;
+            ImU32 colorBoxOutline = cl.isCoarse? vwConst::uGrey48 : vwConst::uGrey64;
             if(cl.threadId!=cmConst::MAX_THREAD_QTY && !cl.isCoarse) {
-                const float  dimO      = 0.5;
+                const float  dimO      = 0.5f;
                 const ImVec4 colorBase = main->getConfig().getThreadColor(cl.threadId);
                 color        = ImColor(colorBase);
-                colorOutline = ImColor(dimO*colorBase.x, dimO*colorBase.y, dimO*colorBase.z);
+                colorBoxOutline = ImColor(dimO*colorBase.x, dimO*colorBase.y, dimO*colorBase.z);
             }
             DRAWLIST->AddRectFilled(ImVec2(winX+cl.startTimePix, yThread+cHeightMargin), ImVec2(x2, yThread+fontHeight-cHeightMargin), color);
-            DRAWLIST->AddRect      (ImVec2(winX+cl.startTimePix, yThread+cHeightMargin), ImVec2(x2, yThread+fontHeight-cHeightMargin), colorOutline);
+            DRAWLIST->AddRect      (ImVec2(winX+cl.startTimePix, yThread+cHeightMargin), ImVec2(x2, yThread+fontHeight-cHeightMargin), colorBoxOutline);
 
             // Add the text
-            double clWidth = cl.endTimePix-cl.startTimePix;
+            float clWidth = cl.endTimePix-cl.startTimePix;
             if(!cl.isCoarse && clWidth>=minCharWidth) {
                 plAssert(cl.threadId!=cmConst::MAX_THREAD_QTY || cl.nameIdx!=PL_INVALID, cl.threadId, cl.nameIdx);
                 if(cl.threadId<cmConst::MAX_THREAD_QTY)
@@ -340,20 +340,20 @@ TimelineDrawHelper::drawCoreTimeline(double& yThread)
 
 
 void
-TimelineDrawHelper::drawLocks(double& yThread)
+TimelineDrawHelper::drawLocks(float& yThread)
 {
-    constexpr double threadNamePosX = 50.;
-    constexpr double minCharWidth   = 8.;
-    constexpr float  dim2 = 0.8;
+    constexpr float threadNamePosX = 50.f;
+    constexpr float minCharWidth   = 8.f;
+    constexpr float  dim2 = 0.8f;
     plAssert(tl->cachedLockUse.size()<=record->locks.size());
 
     // Skip the drawing if not visible
     plgScope (TML, "Display locks timeline");
-    double yThreadEnd = yThread; // Compute the end of the lock section (depends on content)
+    float yThreadEnd = yThread; // Compute the end of the lock section (depends on content)
     for(int lockIdx=0; lockIdx<tl->cachedLockUse.size(); ++lockIdx) {
         bsVec<int>& waitingThreadIds = record->locks[lockIdx].waitingThreadIds;
-        double threadBarHeight = bsMinMax(fontHeight/bsMax(1,waitingThreadIds.size()), 3., 0.5*fontHeight);
-        yThreadEnd += waitingThreadIds.size()*threadBarHeight + 1.5*fontHeight;
+        float threadBarHeight = bsMinMax(fontHeight/bsMax(1,waitingThreadIds.size()), 3.f, 0.5f*fontHeight);
+        yThreadEnd += waitingThreadIds.size()*threadBarHeight + 1.5f*fontHeight;
     }
     if(yThread>winY+ImGui::GetWindowHeight() || yThreadEnd<=winY) {
         plgText(TML, "State", "Skipped because hidden");
@@ -361,7 +361,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
         return;
     }
 
-    double maxLockNameWidth = 1.;
+    float maxLockNameWidth = 1.;
     for(int lockIdx=0; lockIdx<tl->cachedLockUse.size(); ++lockIdx) {
         maxLockNameWidth = bsMax(maxLockNameWidth, ImGui::CalcTextSize(record->getString(record->locks[lockIdx].nameIdx).value.toChar()).x);
     }
@@ -370,8 +370,8 @@ TimelineDrawHelper::drawLocks(double& yThread)
     for(int lockIdx : tl->cachedLockOrderedIdx) {
         const vwMain::TlCachedLockUse&  clu  = tl->cachedLockUse[lockIdx];
         bsVec<int>& waitingThreadIds = record->locks[lockIdx].waitingThreadIds;
-        double      threadBarHeight  = bsMinMax(fontHeight/bsMax(1,waitingThreadIds.size()), 3., 0.5*fontHeight);
-        const double yUsed = yThread+waitingThreadIds.size()*threadBarHeight;
+        float      threadBarHeight  = bsMinMax(fontHeight/bsMax(1,waitingThreadIds.size()), 3.f, 0.5f*fontHeight);
+        const float yUsed = yThread+waitingThreadIds.size()*threadBarHeight;
 
         // Darker background
         DRAWLIST->AddRectFilled(ImVec2(winX, yThread), ImVec2(winX+winWidth, yUsed+fontHeight), vwConst::uGreyDark);
@@ -386,12 +386,12 @@ TimelineDrawHelper::drawLocks(double& yThread)
             for(const vwMain::TlCachedLockScope& cl : clu.waitingThreadScopes[wti]) {
                 ImGui::PushID(&cl);
                 // Draw the horizontal bar for the lock wait duration
-                float thickness = bsMax(bsMin(threadBarHeight, cl.endTimePix-cl.startTimePix), 2.);
-                double x2 = winX+bsMax(cl.startTimePix+2., cl.endTimePix-thickness);
+                float thickness = bsMax(bsMin(threadBarHeight, cl.endTimePix-cl.startTimePix), 2.f);
+                float x2 = winX+bsMax(cl.startTimePix+2.f, cl.endTimePix-thickness);
                 bool isHighlighted = main->isScopeHighlighted(cl.e.threadId, cl.e.vS64, cl.e.vS64+cl.durationNs, PL_FLAG_TYPE_LOCK_WAIT|PL_FLAG_SCOPE_BEGIN, -1, cl.e.nameIdx);
                 DRAWLIST->AddRectFilled(ImVec2(winX+cl.startTimePix, yBar), ImVec2(x2, yBar+threadBarHeight), isHighlighted? vwConst::uYellow : colorThread);
                 // Draw the vertical-slightly-diagonal line toward the lock use scope
-                DRAWLIST->AddQuadFilled(ImVec2(x2, yBar), ImVec2(x2, yBar+threadBarHeight-0.5), ImVec2(x2+thickness, yUsed), ImVec2(x2+0.5*thickness, yBar),
+                DRAWLIST->AddQuadFilled(ImVec2(x2, yBar), ImVec2(x2, yBar+threadBarHeight-0.5f), ImVec2(x2+thickness, yUsed), ImVec2(x2+0.5f*thickness, yBar),
                                         isHighlighted? vwConst::uYellow : colorThread);
 
                 // Hovered
@@ -442,7 +442,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
 
                 // Popup
                 if(ImGui::BeginPopup("lock wait menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-                    double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+                    float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
                     ImGui::TextColored(vwConst::grey, "<lock wait> [%s]", record->getString(cl.e.nameIdx).value.toChar());
                     // Plot & histogram
                     if(!main->_plotMenuItems.empty()) {
@@ -465,23 +465,23 @@ TimelineDrawHelper::drawLocks(double& yThread)
             if(cl.e.nameIdx==PL_INVALID && !cl.isCoarse) continue;
             if(cl.startTimePix>winWidth) continue;
             ImGui::PushID(&cl);
-            double x2 = winX+bsMax(cl.startTimePix+2., cl.endTimePix);
+            float x2 = winX+bsMax(cl.startTimePix+2.f, cl.endTimePix);
             bool  isHovered = (!cl.isCoarse && isWindowHovered && mouseX>winX+cl.startTimePix && mouseX<x2 &&
                                mouseY>yThread && mouseY<yThread+fontHeight);
             bool isHighlighted = !cl.isCoarse &&  main->isScopeHighlighted(cl.e.threadId, cl.e.vS64, cl.e.vS64+cl.durationNs, PL_FLAG_TYPE_LOCK_ACQUIRED, -1, cl.e.nameIdx);
 
             // Draw the box
             ImU32 color        = cl.isCoarse? vwConst::uGrey64 : vwConst::uGrey96;
-            ImU32 colorOutline = cl.isCoarse? vwConst::uGrey48 : vwConst::uGrey64;
+            ImU32 colorBoxOutline = cl.isCoarse? vwConst::uGrey48 : vwConst::uGrey64;
             if(cl.e.threadId!=cmConst::MAX_THREAD_QTY && !cl.isCoarse) {
-                constexpr float  dimO  = 0.5;
+                constexpr float  dimO  = 0.5f;
                 const ImVec4 colorBase = main->getConfig().getThreadColor(cl.e.threadId);
                 color        = ImColor(colorBase);
-                colorOutline = ImColor(dimO*colorBase.x, dimO*colorBase.y, dimO*colorBase.z);
+                colorBoxOutline = ImColor(dimO*colorBase.x, dimO*colorBase.y, dimO*colorBase.z);
             }
             if(isHighlighted) color = vwConst::uWhite;
             DRAWLIST->AddRectFilled(ImVec2(winX+cl.startTimePix, yThread), ImVec2(x2, yThread+fontHeight), color);
-            DRAWLIST->AddRect      (ImVec2(winX+cl.startTimePix, yThread), ImVec2(x2, yThread+fontHeight), colorOutline);
+            DRAWLIST->AddRect      (ImVec2(winX+cl.startTimePix, yThread), ImVec2(x2, yThread+fontHeight), colorBoxOutline);
 
             // Draw the wait lock line if required (red line at the bottom)
             if(!isHighlighted && !cl.isCoarse && cl.overlappedThreadIds[0]!=0xFF) {
@@ -489,7 +489,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
             }
 
             // Add the text
-            double clWidth = cl.endTimePix-cl.startTimePix;
+            float clWidth = cl.endTimePix-cl.startTimePix;
             if(!cl.isCoarse && clWidth>=minCharWidth) {
                 const char* s = main->getFullThreadName(cl.e.threadId);
                 const char* remaining = 0;
@@ -542,7 +542,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
 
             // Popup
             if(ImGui::BeginPopup("lock use menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-                double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+                float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
                 ImGui::TextColored(vwConst::grey, "<lock use> [%s]", record->getString(cl.e.nameIdx).value.toChar());
                 // Plot & histogram
                 if(!main->_plotMenuItems.empty()) {
@@ -559,9 +559,9 @@ TimelineDrawHelper::drawLocks(double& yThread)
         }
 
         // Loop on lock notifications
-        const double notifHalfWidthPix = 3;
-        const double notifHeightPix = 0.6*fontHeight;
-        const double yNtf = yThread+fontHeight;
+        const float notifHalfWidthPix = 3.f;
+        const float notifHeightPix = 0.6f*fontHeight;
+        const float yNtf = yThread+fontHeight;
         for(const vwMain::TlCachedLockNtf& ntf : tl->cachedLockNtf[lockIdx]) {
             if(ntf.timePix>winWidth) continue;
             ImGui::PushID(&ntf);
@@ -573,7 +573,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
             ImU32 color = isHovered? vwConst::uWhite : vwConst::uGrey64;
             if(!ntf.isCoarse && !isHovered) {
                 const ImVec4 colorBase = main->getConfig().getThreadColor(ntfTId);
-                color = ImColor(colorBase.x, colorBase.y, colorBase.z, 0.7);
+                color = ImColor(colorBase.x, colorBase.y, colorBase.z, 0.7f);
             }
             if(isHighlighted) color = vwConst::uWhite;
             DRAWLIST->AddTriangleFilled(ImVec2(winX+ntf.timePix-notifHalfWidthPix, yNtf), ImVec2(winX+ntf.timePix+notifHalfWidthPix, yNtf),
@@ -627,7 +627,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
 
             // Popup
             if(ImGui::BeginPopup("lock ntf menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-                double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+                float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
                 ImGui::TextColored(vwConst::grey, "<lock notified> [%s]", record->getString(ntf.e.nameIdx).value.toChar());
                 // Plot & histogram
                 if(!main->_plotMenuItems.empty()) {
@@ -645,7 +645,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
 
         // Draw the lock name overlay
         bool isLockNameHovered = (isWindowHovered && mouseY>yThread && mouseY<yThread+fontHeight && mouseX>winX+threadNamePosX && mouseX<winX+threadNamePosX+maxLockNameWidth+2*textPixMargin);
-        DRAWLIST->AddRectFilled(ImVec2(winX+threadNamePosX, yThread+2.), ImVec2(winX+threadNamePosX+maxLockNameWidth+2*textPixMargin, yThread+fontHeight-2.),
+        DRAWLIST->AddRectFilled(ImVec2(winX+threadNamePosX, yThread+2.f), ImVec2(winX+threadNamePosX+maxLockNameWidth+2*textPixMargin, yThread+fontHeight-2.f),
                                 isLockNameHovered? IM_COL32(0, 0, 0, 32) : vwConst::uBlack);
         DRAWLIST->AddText(ImVec2(winX+50+textPixMargin, yThread+fontSpacing), isLockNameHovered? IM_COL32(255, 255, 255, 64) : vwConst::uWhite,
                           record->getString(record->locks[lockIdx].nameIdx).value.toChar());
@@ -665,7 +665,7 @@ TimelineDrawHelper::drawLocks(double& yThread)
         }
         // Popup
         if(ImGui::BeginPopup("lock all thread use menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-            double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+            float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
             ImGui::TextColored(vwConst::grey, "<lock use> %s (all threads)", record->getString(record->locks[lockIdx].nameIdx).value.toChar());
             // Plot & histogram
             if(!main->_plotMenuItems.empty()) {
@@ -680,18 +680,18 @@ TimelineDrawHelper::drawLocks(double& yThread)
         ImGui::PopID();
 
         // Next lock
-        yThread += 1.5*fontHeight;
+        yThread += 1.5f*fontHeight;
     } // End of loop on used locks
 }
 
 
 void
-TimelineDrawHelper::drawScopes(double& yThread, int tId)
+TimelineDrawHelper::drawScopes(float& yThread, int tId)
 {
     char tmpStr[128];
-    constexpr double coreFontRatio   = 0.8;
-    double widthCoreXX = font->CalcTextSizeA(coreFontRatio*ImGui::GetFontSize(), 1000., 0., "CoreX").x; // Display "Core%d" if enough space
-    double widthCoreX  = font->CalcTextSizeA(coreFontRatio*ImGui::GetFontSize(), 1000., 0., "X").x;     // Second choice is displaying "%d", else nothing
+    constexpr float coreFontRatio = 0.8f;
+    float widthCoreXX = font->CalcTextSizeA(coreFontRatio*ImGui::GetFontSize(), 1000.f, 0.f, "CoreX").x; // Display "Core%d" if enough space
+    float widthCoreX  = font->CalcTextSizeA(coreFontRatio*ImGui::GetFontSize(), 1000.f, 0.f, "X").x;     // Second choice is displaying "%d", else nothing
     int nestingLevelQty = tl->cachedScopesPerThreadPerNLevel[tId].size();
 
     plgScope (TML, "Display Thread");
@@ -710,46 +710,46 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
     // Draw the text background for this thread
     for(auto& tw: main->_texts) {
         if(tw.threadId!=tId) continue;
-        double firstTimeNs = bsMinMax(tw.firstTimeNs, tl->startTimeNs, tl->startTimeNs+tl->timeRangeNs);
-        double lastTimeNs  = bsMinMax(tw.lastTimeNs,  tl->startTimeNs, tl->startTimeNs+tl->timeRangeNs);
+        s64 firstTimeNs = bsMinMax(tw.firstTimeNs, tl->startTimeNs, tl->startTimeNs+tl->timeRangeNs);
+        s64 lastTimeNs  = bsMinMax(tw.lastTimeNs,  tl->startTimeNs, tl->startTimeNs+tl->timeRangeNs);
         if(firstTimeNs==lastTimeNs && (firstTimeNs==tl->startTimeNs || firstTimeNs==tl->startTimeNs+tl->timeRangeNs)) continue;
         const ImVec4  tmp = main->getConfig().getThreadColor(tw.threadId);
         const ImColor colorThread = ImColor(tmp.x, tmp.y, tmp.z, vwConst::TEXT_BG_FOOTPRINT_ALPHA);
-        double x1 = winX+(firstTimeNs-tl->startTimeNs)*nsToPix;
-        double x2 = bsMax(x1+2., winX+(lastTimeNs -tl->startTimeNs)*nsToPix);
-        DRAWLIST->AddRectFilled(ImVec2(x1, yThread - threadTitleHeight+2.*fontSpacing),
+        float x1 = winX+(float)((firstTimeNs-tl->startTimeNs)*nsToPix);
+        float x2 = bsMax(x1+2.f, winX+(float)((lastTimeNs -tl->startTimeNs)*nsToPix));
+        DRAWLIST->AddRectFilled(ImVec2(x1, yThread - threadTitleHeight+2.f*fontSpacing),
                                 ImVec2(x2, yThread + nestingLevelQty*fontHeight), colorThread);
     }
 
     // Draw the context switches
     const bsVec<vwMain::TlCachedSwitch>& cachedSwitches = tl->cachedSwitchPerThread[tId];
-    const double switchHeight = 0.7*fontHeight;
-    const double ySwitch = yThread-switchHeight;
+    const float switchHeight = 0.7f*fontHeight;
+    const float ySwitch = yThread-switchHeight;
     for(const vwMain::TlCachedSwitch& cs : cachedSwitches) {
         if(cs.coreId==PL_CSWITCH_CORE_NONE && !cs.isCoarse) continue;
 
         // Draw the box, with a start line (visually better to indicate the wake up)
         DRAWLIST->AddRectFilled(ImVec2(winX+cs.startTimePix, ySwitch),
-                                ImVec2(winX+bsMax(cs.startTimePix+2., cs.endTimePix), ySwitch+switchHeight), vwConst::uGrey64);
+                                ImVec2(winX+bsMax(cs.startTimePix+2.f, cs.endTimePix), ySwitch+switchHeight), vwConst::uGrey64);
         DRAWLIST->AddRectFilled(ImVec2(winX+cs.startTimePix, ySwitch),
-                                ImVec2(winX+cs.startTimePix+1.5, ySwitch+switchHeight), vwConst::uGrey128, 2.);
+                                ImVec2(winX+cs.startTimePix+1.5f, ySwitch+switchHeight), vwConst::uGrey128, 2.f);
 
         // Add the text
         if(!cs.isCoarse) {
-            const double csWidth = cs.endTimePix-cs.startTimePix;
-            const double scaledFontSize = coreFontRatio*ImGui::GetFontSize();
+            const float csWidth = cs.endTimePix-cs.startTimePix;
+            const float scaledFontSize = coreFontRatio*ImGui::GetFontSize();
             if(csWidth>=widthCoreXX) {
                 snprintf(tmpStr, sizeof(tmpStr), "Core%d", cs.coreId);
-                DRAWLIST->AddText(font, scaledFontSize, ImVec2(winX+cs.startTimePix+0.5*(csWidth-widthCoreXX), ySwitch+0.5*(ImGui::GetFontSize()-scaledFontSize)), vwConst::uWhite, tmpStr);
+                DRAWLIST->AddText(font, scaledFontSize, ImVec2(winX+cs.startTimePix+0.5f*(csWidth-widthCoreXX), ySwitch+0.5f*(ImGui::GetFontSize()-scaledFontSize)), vwConst::uWhite, tmpStr);
             } else if(csWidth>=widthCoreX) {
                 snprintf(tmpStr, sizeof(tmpStr), "%d", cs.coreId);
-                DRAWLIST->AddText(font, scaledFontSize, ImVec2(winX+cs.startTimePix+0.5*(csWidth-widthCoreX), ySwitch+0.5*(ImGui::GetFontSize()-scaledFontSize)), vwConst::uWhite, tmpStr);
+                DRAWLIST->AddText(font, scaledFontSize, ImVec2(winX+cs.startTimePix+0.5f*(csWidth-widthCoreX), ySwitch+0.5f*(ImGui::GetFontSize()-scaledFontSize)), vwConst::uWhite, tmpStr);
             }
         }
 
         // Tooltip
         if(isWindowHovered && !cs.isCoarse && mouseX>=winX+cs.startTimePix &&
-           mouseX<=winX+bsMax(cs.startTimePix+1., cs.endTimePix) && mouseY>=ySwitch && mouseY<ySwitch+switchHeight) {
+           mouseX<=winX+bsMax(cs.startTimePix+1.f, cs.endTimePix) && mouseY>=ySwitch && mouseY<ySwitch+switchHeight) {
             ImGui::SetTooltip("Core %d { %s }", cs.coreId, main->getNiceDuration(cs.durationNs));
         }
     }
@@ -762,7 +762,7 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
 
         // Draw the box
         bool isHighlighted = !cl.isCoarse && main->isScopeHighlighted(cl.e.threadId, cl.e.vS64, cl.e.vS64+cl.durationNs, PL_FLAG_TYPE_LOCK_WAIT|PL_FLAG_SCOPE_BEGIN, -1, cl.e.nameIdx);
-        double x2 = winX+bsMax(cl.startTimePix+2., cl.endTimePix);
+        float x2 = winX+bsMax(cl.startTimePix+2.f, cl.endTimePix);
         ImU32 barColor = cl.isCoarse? IM_COL32(255, 32, 32, 96) : vwConst::uRed;
         DRAWLIST->AddRectFilled(ImVec2(winX+cl.startTimePix, ySwitch+switchHeight-4), ImVec2(x2, ySwitch+switchHeight), isHighlighted? vwConst::uYellow : barColor);
 
@@ -788,12 +788,12 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
     }
 
     // Draw the markers
-    const double yMarker = yThread-fontHeight;
-    const double markerHalfWidthPix = 4;
-    const double markerHeightPix = 0.3*fontHeight;
-    const double markerThickness = 2.;
+    const float yMarker = yThread-fontHeight;
+    const float markerHalfWidthPix = 4.f;
+    const float markerHeightPix = 0.3f*fontHeight;
+    const float markerThickness = 2.f;
     const bsVec<ImVec4>& colors = main->getConfig().getColorPalette(true);
-    float hlTimePix = -1.;
+    float hlTimePix = -1.f;
     for(const vwMain::TlCachedMarker& cm : tl->cachedMarkerPerThread[tId]) {
         ImGui::PushID(&cm);
         bool isHovered = (!cm.isCoarse && isWindowHovered && mouseX>=winX+cm.timePix-markerHalfWidthPix &&
@@ -835,7 +835,7 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
 
         // Popup
         if(ImGui::BeginPopup("marker menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-            double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+            float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
             ImGui::TextColored(vwConst::grey, "Marker [%s]", record->getString(cm.e.nameIdx).value.toChar());
             // Plot & histogram
             if(!main->_plotMenuItems.empty()) {
@@ -861,9 +861,9 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
                                     ImVec2(winX+hlTimePix, yMarker+markerHeightPix), vwConst::uWhite);
     }
 
-    const float dim2 = 0.8; // Alternate level
-    const float dimS = 0.6; // Small
-    const float dimO = 0.5; // Outline
+    const float dim2 = 0.8f; // Alternate level
+    const float dimS = 0.6f; // Small
+    const float dimO = 0.5f; // Outline
     const ImVec4 colorBase = main->getConfig().getThreadColor(tId);
     colorFill1   = ImColor(colorBase);
     colorFill2   = ImColor(dim2*colorBase.x, dim2*colorBase.y, dim2*colorBase.z);
@@ -875,8 +875,8 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
         plgScope (TML, "Display nesting level");
         plgVar(TML, nestingLevel);
         SmallItem si;
-        double lastScopeEndTimeNs = 0.;
-        int y = yThread+nestingLevel*fontHeight;
+        s64 lastScopeEndTimeNs = 0;
+        int y = (int)(yThread+nestingLevel*fontHeight);
 
         // Loop on scopes from the cached record
         const bsVec<vwMain::InfTlCachedScope>& cachedScopes = tl->cachedScopesPerThreadPerNLevel[tId][nestingLevel];
@@ -884,12 +884,12 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
             if(b.startTimePix>winWidth) break;
             // Close previous small scope if hole is large enough or current item is not small
             if(si.isInit && (b.startTimePix-si.endPix>=MIN_SCOPE_PIX || (!b.isCoarseScope && b.endTimePix-b.startTimePix>=MIN_SCOPE_PIX))) {
-                if(si.endPix-si.startPix<0.75*MIN_SCOPE_PIX) si.endPix = si.startPix+0.75*MIN_SCOPE_PIX; // Ensure a minimum displayed size
+                if(si.endPix-si.startPix<0.75f*MIN_SCOPE_PIX) si.endPix = si.startPix+0.75f*MIN_SCOPE_PIX; // Ensure a minimum displayed size
                 // Display a scope
                 if(si.hasEvt) displayScope(tId, nestingLevel, si.scopeLIdx, si.evt,
-                                          si.startPix, si.endPix, y, si.evtDurationNs, lastScopeEndTimeNs, yThread); // One event only, so full display
-                else          displaySmallScope(si, nestingLevel, nestingLevelQty, y, lastScopeEndTimeNs);   // Agglomerated events, so anonymous
-                lastScopeEndTimeNs = si.endPixExact/nsToPix+tl->startTimeNs;
+                                           si.startPix, si.endPix, (float)y, si.evtDurationNs, lastScopeEndTimeNs, yThread); // One event only, so full display
+                else          displaySmallScope(si, nestingLevel, nestingLevelQty, (float)y, lastScopeEndTimeNs);   // Agglomerated events, so anonymous
+                lastScopeEndTimeNs = (s64)(si.endPixExact/nsToPix+tl->startTimeNs);
                 si.isInit = false;
             }
 
@@ -912,23 +912,23 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
             }
             else {
                 // Display the normal scope
-                displayScope(tId, nestingLevel, b.scopeLIdx, b.evt, b.startTimePix, b.endTimePix, y, b.durationNs, lastScopeEndTimeNs, yThread);
+                displayScope(tId, nestingLevel, b.scopeLIdx, b.evt, b.startTimePix, b.endTimePix, (float)y, b.durationNs, lastScopeEndTimeNs, yThread);
                 lastScopeEndTimeNs = b.scopeEndTimeNs;
             }
         } // End of loop on scopes for this nesting level
 
         // Finish to draw the small items, if not completed
         if(si.isInit) {
-            if(si.endPix-si.startPix<0.75*MIN_SCOPE_PIX) si.endPix = si.startPix+0.75*MIN_SCOPE_PIX; // Ensure a minimum displayed size
+            if(si.endPix-si.startPix<0.75f*MIN_SCOPE_PIX) si.endPix = si.startPix+0.75f*MIN_SCOPE_PIX; // Ensure a minimum displayed size
             if(si.hasEvt) displayScope(tId, nestingLevel, si.scopeLIdx, si.evt,
-                                      si.startPix, si.endPix, y, si.evtDurationNs, lastScopeEndTimeNs, yThread); // One event only, so full display
-            else          displaySmallScope(si, nestingLevel, nestingLevelQty, y, lastScopeEndTimeNs);   // Agglomerated events, so anonymous
-            lastScopeEndTimeNs = si.endPixExact/nsToPix+tl->startTimeNs;
+                                       si.startPix, si.endPix, (float)y, si.evtDurationNs, lastScopeEndTimeNs, yThread); // One event only, so full display
+            else          displaySmallScope(si, nestingLevel, nestingLevelQty, (float)y, lastScopeEndTimeNs);   // Agglomerated events, so anonymous
+            lastScopeEndTimeNs = (s64)(si.endPixExact/nsToPix+tl->startTimeNs);
         }
 
         // And the gap at the end
         if(!cachedScopes.empty() && cachedScopes.back().startTimePix>winWidth) {
-            highlightGapIfHovered(lastScopeEndTimeNs, cachedScopes.back().startTimePix, y);
+            highlightGapIfHovered(lastScopeEndTimeNs, cachedScopes.back().startTimePix, (float)y);
         }
     } // End of loop on levels for each thread
 
@@ -937,9 +937,9 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
     for(const vwMain::TlCachedSoftIrq& cs : cachedSoftIrq) {
         // Small line on top of the core representation to show the IRQ on the global scale (multi-res helps)
         DRAWLIST->AddRectFilled(ImVec2(winX+cs.startTimePix, ySwitch),
-                                ImVec2(winX+bsMax(cs.startTimePix+2., cs.endTimePix), ySwitch+2.), vwConst::uLightGrey);
+                                ImVec2(winX+bsMax(cs.startTimePix+2.f, cs.endTimePix), ySwitch+2.f), vwConst::uLightGrey);
         // Dark shadow to show the frozen thread, if large enough
-        if(!cs.isCoarse && cs.endTimePix-cs.startTimePix>2.) {
+        if(!cs.isCoarse && cs.endTimePix-cs.startTimePix>2.f) {
             DRAWLIST->AddRectFilled(ImVec2(winX+cs.startTimePix, ySwitch), ImVec2(winX+cs.endTimePix, yThread+nestingLevelQty*fontHeight),
                                     IM_COL32(32, 32, 32, 64));
         }
@@ -951,10 +951,10 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
     }
 
     // Highlight the hovered used lock in transparent white, both if directly hovered or if any thread waits for it
-    if(main->isScopeHighlighted(tId, tl->startTimeNs, tl->startTimeNs+tl->timeRangeNs, PL_FLAG_TYPE_LOCK_ACQUIRED, -1, -1) ||
-       main->isScopeHighlighted(-1, tl->startTimeNs, tl->startTimeNs+tl->timeRangeNs, PL_FLAG_TYPE_LOCK_WAIT| PL_FLAG_SCOPE_BEGIN, -1, -1)) {
-        double startScopePix = (main->_hlStartTimeNs-tl->startTimeNs)*nsToPix;
-        double endScopePix   = (main->_hlEndTimeNs  -tl->startTimeNs)*nsToPix;
+    if(main->isScopeHighlighted(tId, tl->startTimeNs, tl->startTimeNs+tl->timeRangeNs, PL_FLAG_TYPE_LOCK_ACQUIRED, -1, PL_INVALID) ||
+       main->isScopeHighlighted(-1, tl->startTimeNs, tl->startTimeNs+tl->timeRangeNs, PL_FLAG_TYPE_LOCK_WAIT| PL_FLAG_SCOPE_BEGIN, -1, PL_INVALID)) {
+        float startScopePix = (float)((main->_hlStartTimeNs-tl->startTimeNs)*nsToPix);
+        float endScopePix   = (float)((main->_hlEndTimeNs  -tl->startTimeNs)*nsToPix);
         // Loop on locks
         for(int lockIdx=0; lockIdx<tl->cachedLockUse.size(); ++lockIdx) {
             if(record->locks[lockIdx].nameIdx!=main->_hlNameIdx) continue; // Not the hovered lock
@@ -963,7 +963,7 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
             for(const vwMain::TlCachedLockScope& cl : clu.scopes) {
                 if(cl.isCoarse || cl.e.threadId!=tId || cl.startTimePix>=endScopePix || cl.endTimePix<startScopePix) continue;
                 DRAWLIST->AddRectFilled(ImVec2(winX+cl.startTimePix, yThread),
-                                        ImVec2(winX+bsMax(cl.startTimePix+2., cl.endTimePix), yThread+nestingLevelQty*fontHeight),
+                                        ImVec2(winX+bsMax(cl.startTimePix+2.f, cl.endTimePix), yThread+nestingLevelQty*fontHeight),
                                         IM_COL32(255, 255, 255, 96));
             }
         }
@@ -986,7 +986,7 @@ TimelineDrawHelper::drawScopes(double& yThread, int tId)
 
     // Draw the main menu popup
     if(tl->ctxScopeLIdx!=PL_INVALID && ImGui::BeginPopup("Profile scope menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-        double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+        float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
         // Scope title
         ImGui::TextColored(vwConst::grey, "Scope '%s'", record->getString(tl->ctxScopeNameIdx).value.toChar());
         ImGui::Separator();
@@ -1042,14 +1042,14 @@ void
 vwMain::prepareTimeline(Timeline& tl)
 {
     // Worth working?
-    const double winWidth = bsMax(1.f, ImGui::GetWindowContentRegionMax().x-vwConst::OVERVIEW_VBAR_WIDTH);
+    const float winWidth = bsMax(1.f, ImGui::GetWindowContentRegionMax().x-vwConst::OVERVIEW_VBAR_WIDTH);
     if(!tl.isCacheDirty && tl.lastWinWidth==winWidth) return;
     tl.isCacheDirty = false;
     tl.lastWinWidth = winWidth;
 
     // Init
     plgScope(TML, "prepareTimeline");
-    double nsToPix  = winWidth/tl.timeRangeNs;
+    double nsToPix  = (double)winWidth/(double)tl.timeRangeNs;
     tl.cachedUsagePerCore.clear();
     tl.cachedUsagePerCore.resize(_record->coreQty);
     tl.cachedCpuCurve.clear(); tl.cachedCpuCurve.reserve(256);
@@ -1073,11 +1073,11 @@ vwMain::prepareTimeline(Timeline& tl)
     plgBegin(TML, "Cores");
 
     // Get the CPU usage curve
-    double cpuRatioCoef = 1./bsMax(1, _record->coreQty);
-    cmRecordIteratorCpuCurve itcpu(_record, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+    float cpuRatioCoef = 1.f/(float)bsMax(1, _record->coreQty);
+    cmRecordIteratorCpuCurve itcpu(_record, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
     s64 ptTimeNs; int usedCoreQty;
     while(itcpu.getNextPoint(ptTimeNs, usedCoreQty)) {
-        tl.cachedCpuCurve.push_back( { nsToPix*(ptTimeNs-tl.startTimeNs), cpuRatioCoef*usedCoreQty } );
+        tl.cachedCpuCurve.push_back( { (float)(nsToPix*(ptTimeNs-tl.startTimeNs)), cpuRatioCoef*usedCoreQty } );
         if(ptTimeNs>tl.startTimeNs+tl.timeRangeNs) break; // Time break at the end, as we want 1 point past the range
     }
 
@@ -1092,13 +1092,13 @@ vwMain::prepareTimeline(Timeline& tl)
         s64  timeNs = 0, prevTimeNs = -1, endTimeNs = 0;
         int  threadId = -1, prevThreadId = -1;
         u32  nameIdx  = 0xFFFFFFFE, prevNameIdx  = 0xFFFFFFFE;
-        double prevTimePix = -1.;
+        float prevTimePix = -1.;
 
-        cmRecordIteratorCoreUsage itcu(_record, coreId, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+        cmRecordIteratorCoreUsage itcu(_record, coreId, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
         while(itcu.getNextSwitch(isCoarseScope, timeNs, endTimeNs, threadId, nameIdx)) {
             plgAssert(TML, nameIdx!=PL_INVALID || threadId<cmConst::MAX_THREAD_QTY, isCoarseScope, nameIdx, threadId);
             // Double event: just replace the "previous" data
-            double timePix = nsToPix*((double)timeNs-tl.startTimeNs);
+            float timePix = (float)(nsToPix*(timeNs-tl.startTimeNs));
             if(!isCoarseScope && timeNs==prevTimeNs) {
                 prevTimeNs   = timeNs;
                 prevTimePix  = timePix;
@@ -1107,11 +1107,11 @@ vwMain::prepareTimeline(Timeline& tl)
                 continue;
             }
             if(isCoarseScope) {
-                double endTimePix = bsMin(nsToPix*((double)endTimeNs-tl.startTimeNs), winWidth);
-                cachedCore.push_back( { true, 0xFFFF, PL_INVALID, bsMax(0., (prevNameIdx==0xFFFFFFFE)? timePix : prevTimePix), endTimePix, 0 } );
+                float endTimePix = (float)bsMin(nsToPix*(endTimeNs-tl.startTimeNs), winWidth);
+                cachedCore.push_back( { true, 0xFFFF, PL_INVALID, bsMax(0.f, (prevNameIdx==0xFFFFFFFE)? timePix : prevTimePix), endTimePix, 0 } );
             }
             else if(prevTimeNs>=0 && timePix>=0 && prevNameIdx!=0xFFFFFFFE) {
-                cachedCore.push_back( { false, (u16)prevThreadId, prevNameIdx, bsMax(0., prevTimePix), bsMin(timePix, winWidth), timeNs-prevTimeNs } );
+                cachedCore.push_back( { false, (u16)prevThreadId, prevNameIdx, bsMax(0.f, prevTimePix), bsMin(timePix, winWidth), timeNs-prevTimeNs } );
             }
 
             // Next switch
@@ -1133,7 +1133,7 @@ vwMain::prepareTimeline(Timeline& tl)
         // Cache the used lock
         bool   isCoarseScope = false, prevIsCoarse = false;
         s64    timeNs = 0, prevTimeNs = -1, endTimeNs = 0;
-        double prevTimePix = -1., endTimePix = -1.;
+        float prevTimePix = -1.f, endTimePix = -1.f;
         cmRecord::Evt prevE, e;
         prevE.nameIdx = PL_INVALID; prevE.flags = PL_FLAG_TYPE_LOCK_RELEASED;
         TlCachedLockUse& cachedLockUse = tl.cachedLockUse[lockIdx];
@@ -1143,17 +1143,17 @@ vwMain::prepareTimeline(Timeline& tl)
         cachedLockUse.waitingThreadScopes.resize(waitingThreadQty);
         for(int i=0; i<waitingThreadQty; ++i) cachedLockUse.waitingThreadScopes[i].clear();
 
-        cmRecordIteratorLockUse itLockUse(_record, _record->locks[lockIdx].nameIdx, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+        cmRecordIteratorLockUse itLockUse(_record, _record->locks[lockIdx].nameIdx, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
         while(itLockUse.getNextLock(isCoarseScope, timeNs, endTimeNs, e)) {
-            double timePix = nsToPix*((double)timeNs-tl.startTimeNs);
+            float timePix = (float)(nsToPix*(timeNs-tl.startTimeNs));
             if(isCoarseScope) {
-                endTimePix = nsToPix*((double)endTimeNs-tl.startTimeNs);
+                endTimePix = (float)(nsToPix*(endTimeNs-tl.startTimeNs));
                 cachedLockUse.scopes.push_back( { true, {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF},
-                        bsMax(0., (prevE.flags==PL_FLAG_TYPE_LOCK_RELEASED)? timePix : prevTimePix), bsMin(endTimePix, winWidth), 0 } );
+                        bsMax(0.f, (prevE.flags==PL_FLAG_TYPE_LOCK_RELEASED)? timePix : prevTimePix), bsMin(endTimePix, winWidth), 0 } );
             }
-            if(prevTimeNs>=0 && timePix>=0 && e.flags==PL_FLAG_TYPE_LOCK_RELEASED) {
+            if(prevTimeNs>=0 && timePix>=0.f && e.flags==PL_FLAG_TYPE_LOCK_RELEASED) {
                 cachedLockUse.scopes.push_back( { prevIsCoarse, {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF},
-                        bsMax(0., prevTimePix), bsMin(timePix, winWidth), timeNs-prevTimeNs, prevE } );
+                        bsMax(0.f, prevTimePix), bsMin(timePix, winWidth), timeNs-prevTimeNs, prevE } );
             }
 
             // Next switch
@@ -1168,10 +1168,10 @@ vwMain::prepareTimeline(Timeline& tl)
         bsVec<TlCachedLockNtf>& cachedLockNtf = tl.cachedLockNtf[lockIdx];
         cachedLockNtf.clear();
         cachedLockNtf.reserve(128);
-        cmRecordIteratorLockNtf itLockNtf(_record, _record->locks[lockIdx].nameIdx, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+        cmRecordIteratorLockNtf itLockNtf(_record, _record->locks[lockIdx].nameIdx, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
 
         while(itLockNtf.getNextLock(isCoarseScope, e)) {
-            double timePix = nsToPix*((double)e.vS64-tl.startTimeNs);
+            float timePix = (float)(nsToPix*(e.vS64-tl.startTimeNs));
             cachedLockNtf.push_back({ isCoarseScope, timePix, e });
             if(timePix>winWidth) break;
         } // End of loop on lock notification events
@@ -1211,17 +1211,17 @@ vwMain::prepareTimeline(Timeline& tl)
             bool   isCoarseScope = false, prevIsCoarse = false;
             s64    timeNs = 0, prevTimeNs = -1, endTimeNs = 0;
             int    coreId = 0, prevCoreId = -1;
-            double prevTimePix = -1., endTimePix = -1.;
-            cmRecordIteratorCtxSwitch itcs(_record, tId, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+            float prevTimePix = -1.f, endTimePix = -1.f;
+            cmRecordIteratorCtxSwitch itcs(_record, tId, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
             while(itcs.getNextSwitch(isCoarseScope, timeNs, endTimeNs, coreId)) {
-                double timePix = nsToPix*((double)timeNs-tl.startTimeNs);
+                float timePix = (float)(nsToPix*(timeNs-tl.startTimeNs));
                 if(isCoarseScope) {
-                    endTimePix = nsToPix*((double)endTimeNs-tl.startTimeNs);
-                    cachedSwitches.push_back( { true, 0, bsMax(0., (prevCoreId==PL_CSWITCH_CORE_NONE)? timePix : prevTimePix),
+                    endTimePix = (float)(nsToPix*(endTimeNs-tl.startTimeNs));
+                    cachedSwitches.push_back( { true, 0, bsMax(0.f, (prevCoreId==PL_CSWITCH_CORE_NONE)? timePix : prevTimePix),
                             bsMin(endTimePix, winWidth), 0 } );
                 }
                 if(prevTimeNs>=0 && timePix>=0) {
-                    cachedSwitches.push_back( { prevIsCoarse, (u16)((s16)prevCoreId), bsMax(0., prevTimePix),
+                    cachedSwitches.push_back( { prevIsCoarse, (u16)((s16)prevCoreId), bsMax(0.f, prevTimePix),
                             bsMin(timePix, winWidth), timeNs-prevTimeNs } );
                 }
                 // Next switch
@@ -1242,17 +1242,17 @@ vwMain::prepareTimeline(Timeline& tl)
             bool   isCoarseScope = false, prevIsCoarse = false;
             s64    timeNs = 0, prevTimeNs = -1, endTimeNs = 0;
             u32    nameIdx = 0xFFFFFFFF, prevNameIdx = 0xFFFFFFFF;
-            double prevTimePix = -1., endTimePix = -1.;
-            cmRecordIteratorSoftIrq itSoftIrq(_record, tId, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+            float prevTimePix = -1.f, endTimePix = -1.f;
+            cmRecordIteratorSoftIrq itSoftIrq(_record, tId, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
             while(itSoftIrq.getNextSwitch(isCoarseScope, timeNs, endTimeNs, nameIdx)) {
-                double timePix = nsToPix*((double)timeNs-tl.startTimeNs);
+                float timePix = (float)(nsToPix*(timeNs-tl.startTimeNs));
                 if(isCoarseScope) {
-                    endTimePix = nsToPix*((double)endTimeNs-tl.startTimeNs);
-                    cachedSoftIrq.push_back( { true, 0, bsMax(0., prevNameIdx!=0xFFFFFFFF? prevTimePix : timePix), bsMin(endTimePix, winWidth), 0 } );
+                    endTimePix = (float)(nsToPix*(endTimeNs-tl.startTimeNs));
+                    cachedSoftIrq.push_back( { true, 0, bsMax(0.f, prevNameIdx!=0xFFFFFFFF? prevTimePix : timePix), bsMin(endTimePix, winWidth), 0 } );
                     nameIdx = 0xFFFFFFFF;
                 }
                 else if(prevTimeNs>=0 && timePix>=0 && prevNameIdx!=0xFFFFFFFF) {
-                    cachedSoftIrq.push_back( { prevIsCoarse, prevNameIdx, bsMax(0., prevTimePix), bsMin(timePix, winWidth), timeNs-prevTimeNs } );
+                    cachedSoftIrq.push_back( { prevIsCoarse, prevNameIdx, bsMax(0.f, prevTimePix), bsMin(timePix, winWidth), timeNs-prevTimeNs } );
                 }
                 // Next switch
                 if(timePix>winWidth) break;
@@ -1273,23 +1273,23 @@ vwMain::prepareTimeline(Timeline& tl)
             cachedLockWaits.reserve(128);
             bool   isCoarseScope = false, prevIsCoarse = false;
             s64    timeNs = 0, prevTimeNs = -1, endTimeNs = 0;
-            double prevTimePix = -1., endTimePix = -1.;
-            cmRecord::Evt prevE, e; prevE.flags = 0; prevE.nameIdx = 0xFFFFFFFF;
+            float prevTimePix = -1.f, endTimePix = -1.f;
+            cmRecord::Evt prevE, e; prevE.flags = 0; prevE.threadId = 0xFF; prevE.nameIdx = 0xFFFFFFFF;
             if(!_record->locks.empty()) memset(&idxPerUsedLock[0], 0, _record->locks.size()*sizeof(int));
-            cmRecordIteratorLockWait itLockWait(_record,  tId, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+            cmRecordIteratorLockWait itLockWait(_record,  tId, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
             s64 WAIT_LOCK_LIMIT_NS = 1000*getConfig().getLockLatencyUs();
 
             while(itLockWait.getNextLock(isCoarseScope, timeNs, endTimeNs, e)) { // @#BUG Probably last event (coarse at least) is not stored as a scope.
-                double timePix = nsToPix*((double)timeNs-tl.startTimeNs);
+                float timePix = (float)(nsToPix*(timeNs-tl.startTimeNs));
                 bool  prevIsBegin = (prevE.flags&PL_FLAG_SCOPE_BEGIN);
                 if(isCoarseScope) {
-                    endTimePix = nsToPix*((double)endTimeNs-tl.startTimeNs);
+                    endTimePix = (float)(nsToPix*(endTimeNs-tl.startTimeNs));
                     cachedLockWaits.push_back( { true, {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF},
-                            bsMax(0., prevIsBegin? prevTimePix : timePix), bsMin(endTimePix, winWidth), 0 } );
+                            bsMax(0.f, prevIsBegin? prevTimePix : timePix), bsMin(endTimePix, winWidth), 0 } );
                 }
-                if(prevTimeNs>=0 && timePix>=0) {
+                if(prevTimeNs>=0 && timePix>=0.f) {
                     cachedLockWaits.push_back( { prevIsCoarse, {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF},
-                            bsMax(0., prevTimePix), bsMin(timePix, winWidth), timeNs-prevTimeNs, prevE } );
+                            bsMax(0.f, prevTimePix), bsMin(timePix, winWidth), timeNs-prevTimeNs, prevE } );
                     // Store in the "lock use" section for this thread
                     if(!prevIsCoarse && prevIsBegin && timeNs-prevTimeNs>=WAIT_LOCK_LIMIT_NS) {
                         int eThreadId = prevE.threadId;
@@ -1307,7 +1307,7 @@ vwMain::prepareTimeline(Timeline& tl)
                                 if(useScopes[ulIdx].endTimePix<lastScope.startTimePix) { ++ulIdx; continue; }
                                 if(useScopes[ulIdx].startTimePix>=lastScope.endTimePix) break;
                                 // Overlap case
-                                for(int i=0; i<vwConst::MAX_OVERLAPPED_THREAD; ++i) if(useScopes[ulIdx].overlappedThreadIds[i]==0xFF) { useScopes[ulIdx].overlappedThreadIds[i] = eThreadId; break; }
+                                for(int i=0; i<vwConst::MAX_OVERLAPPED_THREAD; ++i) if(useScopes[ulIdx].overlappedThreadIds[i]==0xFF) { useScopes[ulIdx].overlappedThreadIds[i] = (u8)eThreadId; break; }
                                 for(int i=0; i<vwConst::MAX_OVERLAPPED_THREAD; ++i) if(lastScope.overlappedThreadIds[i]==0xFF) { lastScope.overlappedThreadIds[i] = useScopes[ulIdx].e.threadId; break; }
                                 if(useScopes[ulIdx].endTimePix<lastScope.endTimePix) ++ulIdx;
                                 else break;
@@ -1336,10 +1336,10 @@ vwMain::prepareTimeline(Timeline& tl)
             cachedMarker.reserve(128);
             bool isCoarseScope = false;
             cmRecord::Evt e;
-            cmRecordIteratorMarker itMarker(_record, tId, -1, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+            cmRecordIteratorMarker itMarker(_record, tId, PL_INVALID, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
             while(itMarker.getNextMarker(isCoarseScope, e)) {
                 int*   elemIdx = _record->elemPathToId.find(bsHashStepChain(_record->threads[tId].threadHash, e.nameIdx, cmConst::MARKER_NAMEIDX), cmConst::MARKER_NAMEIDX);
-                double timePix = nsToPix*((double)e.vS64-tl.startTimeNs);
+                float timePix = (float)(nsToPix*(e.vS64-tl.startTimeNs));
                 cachedMarker.push_back( { isCoarseScope, elemIdx? *elemIdx : -1, timePix, e } );
                 if(timePix>winWidth) break;
             }
@@ -1358,10 +1358,10 @@ vwMain::prepareTimeline(Timeline& tl)
 
             plgScope (TML, "Prepare nesting level");
             plgVar(TML, nestingLevel);
-            cmRecordIteratorScope it(_record, tId, nestingLevel, (s64)tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
-            double startTimePix = 0.;
-            double endTimePix   = 0.;
-            double lastScopeEndTimeNs = 0.; // Just for sanity
+            cmRecordIteratorScope it(_record, tId, nestingLevel, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+            float startTimePix = 0.;
+            float endTimePix   = 0.;
+            s64 lastScopeEndTimeNs = 0; // Just for sanity
             s64  scopeStartTimeNs=0, scopeEndTimeNs=0, durationNs=0;
             cmRecord::Evt evt;
             u32 scopeLIdx = PL_INVALID; // Scope index at this level
@@ -1374,16 +1374,16 @@ vwMain::prepareTimeline(Timeline& tl)
                 if(isCoarseScope) { // Case coarse scope
                     plgData(TML, "Scope start time (s)", 0.000000001*scopeStartTimeNs);
                     plgData(TML, "Scope duration   (s)", 0.000000001*(scopeEndTimeNs-scopeStartTimeNs));
-                    startTimePix = nsToPix*((double)scopeStartTimeNs-tl.startTimeNs);
-                    endTimePix   = nsToPix*((double)scopeEndTimeNs  -tl.startTimeNs);
+                    startTimePix = (float)(nsToPix*(scopeStartTimeNs-tl.startTimeNs));
+                    endTimePix   = (float)(nsToPix*(scopeEndTimeNs  -tl.startTimeNs));
                 }
                 else { // Case full resolution
                     scopeStartTimeNs = evt.vS64;
                     plgData(TML, "Event start time (s)", 0.000000001*scopeStartTimeNs);
                     plgData(TML, "Event duration   (s)", 0.000000001*durationNs);
                     scopeEndTimeNs = scopeStartTimeNs+durationNs;
-                    startTimePix  = nsToPix*((double)scopeStartTimeNs-tl.startTimeNs);
-                    endTimePix    = nsToPix*((double)scopeEndTimeNs  -tl.startTimeNs);
+                    startTimePix  = (float)(nsToPix*(scopeStartTimeNs-tl.startTimeNs));
+                    endTimePix    = (float)(nsToPix*(scopeEndTimeNs  -tl.startTimeNs));
                 }
                 if(endTimePix<0) { plgData(TML, "Negative end time", endTimePix); continue; }
                 plAssert(lastScopeEndTimeNs<=scopeStartTimeNs, lastScopeEndTimeNs, scopeStartTimeNs, scopeEndTimeNs);
@@ -1452,7 +1452,7 @@ vwMain::drawTimeline(int tlWindowIdx)
     plgScope(TML, "drawTimeline");
     ImGuiIO& io       = ImGui::GetIO();
     ImGuiStyle& style = ImGui::GetStyle();
-    const double recordDurationNs = _record->durationNs;
+    const s64 recordDurationNs = _record->durationNs;
     Timeline& tl = _timelines[tlWindowIdx];
 
     // Handle animation (smooth move, boundaries, and live record view behavior)
@@ -1460,16 +1460,16 @@ vwMain::drawTimeline(int tlWindowIdx)
     tl.checkTimeBounds(recordDurationNs);
 
     // Ruler and visible range bar
-    double rbWidth, rbStartPix, rbEndPix;
-    double rulerHeight = getTimelineHeaderHeight(false, true);
-    ImGui::BeginChild("ruler", ImVec2(0, 2.0*ImGui::GetStyle().WindowPadding.y+rulerHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
+    float rbWidth, rbStartPix, rbEndPix;
+    float rulerHeight = getTimelineHeaderHeight(false, true);
+    ImGui::BeginChild("ruler", ImVec2(0, 2.0f*ImGui::GetStyle().WindowPadding.y+rulerHeight), false, ImGuiWindowFlags_NoScrollWithMouse);
     const bool isBarHovered  = ImGui::IsWindowHovered();
     drawTimeRuler(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowContentRegionMax().x, rulerHeight,
                   tl.startTimeNs, tl.timeRangeNs, tl.syncMode, rbWidth, rbStartPix, rbEndPix);
     ImGui::EndChild();
 
     // Background color is the one of the titles
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.153, 0.157, 0.13, 1.0));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.153f, 0.157f, 0.13f, 1.0f));
     ImGui::BeginChild("timeline", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse);
 
     // Ensure cache is up to time with the data from record
@@ -1486,11 +1486,11 @@ vwMain::drawTimeline(int tlWindowIdx)
     ctx.winWidth   = ImGui::GetWindowContentRegionMax().x-vwConst::OVERVIEW_VBAR_WIDTH;
     ctx.winHeight  = ImGui::GetWindowSize().y;
     ctx.fontHeight        = ImGui::GetTextLineHeightWithSpacing();
-    ctx.fontSpacing       = 0.5*style.ItemSpacing.y;
-    ctx.textPixMargin     = 2.*ctx.fontSpacing;
+    ctx.fontSpacing       = 0.5f*style.ItemSpacing.y;
+    ctx.textPixMargin     = 2.f*ctx.fontSpacing;
     ctx.threadTitleHeight = getTimelineHeaderHeight(false, true);
     ctx.isWindowHovered   = ImGui::IsWindowHovered();
-    ctx.nsToPix     = ctx.winWidth/tl.timeRangeNs;
+    ctx.nsToPix     = (double)ctx.winWidth/(double)tl.timeRangeNs;
     ctx.startTimeNs = tl.startTimeNs;
     ctx.timeRangeNs = tl.timeRangeNs;
     ctx.mouseX      = ImGui::GetMousePos().x;
@@ -1500,8 +1500,8 @@ vwMain::drawTimeline(int tlWindowIdx)
     ctx.colorFillH  = vwConst::uWhite;
     ctx.colorGap    = vwConst::uLightGrey;
 
-    double scrollbarY = ImGui::GetScrollY();
-    double yThread = ctx.winY-scrollbarY;
+    float scrollbarY = ImGui::GetScrollY();
+    float yThread = ctx.winY-scrollbarY;
     plgData(TML, "Start time (s)", 0.000000001*tl.startTimeNs);
     plgData(TML, "Time range (s)", 0.000000001*tl.timeRangeNs);
 
@@ -1509,17 +1509,17 @@ vwMain::drawTimeline(int tlWindowIdx)
     if(tl.viewThreadId>=0) {
         if(tl.viewThreadId==vwConst::LOCKS_THREADID) {
             int lockQty = tl.cachedLockUse.size();
-            double y = tl.valuePerThread[tl.viewThreadId]-scrollbarY;
+            float y = (float)(tl.valuePerThread[tl.viewThreadId]-scrollbarY);
             // Only if the lock&resource section is not fully visible
-            if(y+ctx.threadTitleHeight+lockQty*1.5*ctx.fontHeight>ImGui::GetWindowHeight() || y<=ctx.winY) {
-                ImGui::SetScrollY(tl.valuePerThread[tl.viewThreadId]);
+            if(y+ctx.threadTitleHeight+lockQty*1.5f*ctx.fontHeight>ImGui::GetWindowHeight() || y<=ctx.winY) {
+                ImGui::SetScrollY((float)tl.valuePerThread[tl.viewThreadId]);
             }
         } else {
             int nestingLevelQty = _record->threads[tl.viewThreadId].levels.size();
-            double y = tl.valuePerThread[tl.viewThreadId]-scrollbarY;
+            float y = (float)(tl.valuePerThread[tl.viewThreadId]-scrollbarY);
             // Only if the thread is not fully visible
             if(y+ctx.threadTitleHeight+nestingLevelQty*ctx.fontHeight>ImGui::GetWindowHeight() || y<=ctx.winY) {
-                ImGui::SetScrollY(tl.valuePerThread[tl.viewThreadId]);
+                ImGui::SetScrollY((float)tl.valuePerThread[tl.viewThreadId]);
             }
         }
         tl.viewThreadId = -1;
@@ -1531,14 +1531,14 @@ vwMain::drawTimeline(int tlWindowIdx)
     int  lastGroupNameIdx = -1;
     int  hoveredThreadId  = -1;
     bool isHeaderHovered  = false;
-    struct VerticalBarData { int threadId; double yStart; };
+    struct VerticalBarData { int threadId; float yStart; };
     VerticalBarData* vBarData = (VerticalBarData*)alloca(getConfig().getLayout().size()*sizeof(VerticalBarData));
 
     for(int layoutIdx=0; layoutIdx<getConfig().getLayout().size(); ++layoutIdx) {
         // Store the thread start Y
         const vwConfig::ThreadLayout& ti = getConfig().getLayout()[layoutIdx];
         tl.valuePerThread[ti.threadId] = yThread-(ctx.winY-ImGui::GetScrollY());
-        vBarData[layoutIdx] = { ti.threadId, tl.valuePerThread[ti.threadId] };
+        vBarData[layoutIdx] = { ti.threadId, (float)tl.valuePerThread[ti.threadId] };
 
         // Get expansion state
         bool doDrawGroupHeader = (ti.groupNameIdx>=0 && ti.groupNameIdx!=lastGroupNameIdx);
@@ -1547,7 +1547,7 @@ vwMain::drawTimeline(int tlWindowIdx)
         if(ti.groupNameIdx>=0 && !doDrawGroupHeader && !isGroupExpanded) continue; // Belong to a hidden group
 
         // Reserve the header space
-        int yHeader = yThread;
+        float yHeader = yThread;
         yThread    += getTimelineHeaderHeight(doDrawGroupHeader, isGroupExpanded);
 
         // Draw the timeline if it is expanded (visibility in window is done inside)
@@ -1598,15 +1598,15 @@ vwMain::drawTimeline(int tlWindowIdx)
     }
 
     // Draw the vertical overview bar
-    double yEnd     = yThread-(ctx.winY-ImGui::GetScrollY());
-    double vBarCoef = ctx.winHeight/bsMax(1., yEnd);
+    float yEnd     = yThread-(ctx.winY-ImGui::GetScrollY());
+    float vBarCoef = ctx.winHeight/bsMax(1.f, yEnd);
     for(int layoutIdx=0; layoutIdx<getConfig().getLayout().size(); ++layoutIdx) {
         bool isLast = (layoutIdx==getConfig().getLayout().size()-1);
         DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY+vBarCoef*vBarData[layoutIdx].yStart),
                                 ImVec2(ctx.winX+ctx.winWidth+vwConst::OVERVIEW_VBAR_WIDTH, ctx.winY+vBarCoef*(isLast? yEnd : vBarData[layoutIdx+1].yStart)),
                                 ImColor(getConfig().getThreadColor(vBarData[layoutIdx].threadId)));
     }
-    DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY), ImVec2(ctx.winX+ctx.winWidth+4., ctx.winY+ctx.winHeight), vwConst::uGreyDark);
+    DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY), ImVec2(ctx.winX+ctx.winWidth+4.f, ctx.winY+ctx.winHeight), vwConst::uGreyDark);
 
 
     // Navigation
@@ -1618,7 +1618,7 @@ vwMain::drawTimeline(int tlWindowIdx)
     if(tl.dragMode==DATA || (ctx.isWindowHovered && !isHeaderHovered && !io.KeyCtrl && tl.ctxDraggedId<0 && tl.dragMode!=BAR)) {
         if(ImGui::IsMouseDragging(2)) { // Data dragging
             if(bsAbs(ImGui::GetMouseDragDelta(2).x)>1. || bsAbs(ImGui::GetMouseDragDelta(2).y)>1) {
-                tl.setView(tl.getStartTimeNs()-ImGui::GetMouseDragDelta(2).x/ctx.nsToPix, tl.getTimeRangeNs());
+                tl.setView(tl.getStartTimeNs()-(s64)(ImGui::GetMouseDragDelta(2).x/ctx.nsToPix), tl.getTimeRangeNs());
                 ImGui::SetScrollY(ImGui::GetScrollY()-ImGui::GetMouseDragDelta(2).y);
                 ImGui::ResetMouseDragDelta(2);
                 tl.dragMode = DATA;
@@ -1631,20 +1631,20 @@ vwMain::drawTimeline(int tlWindowIdx)
     // Keys navigation
     if(hasKeyboardFocus) {
         if(!ImGui::GetIO().KeyCtrl) {
-            if(ImGui::IsKeyPressed(KC_Up  ))  ImGui::SetScrollY(ImGui::GetScrollY()-0.25*ctx.winHeight);
-            if(ImGui::IsKeyPressed(KC_Down))  ImGui::SetScrollY(ImGui::GetScrollY()+0.25*ctx.winHeight);
-            if(ImGui::IsKeyPressed(KC_Left))  { tl.setView(tl.getStartTimeNs()-0.25*tl.getTimeRangeNs(), tl.getTimeRangeNs()); changedNavigation = true; }
-            if(ImGui::IsKeyPressed(KC_Right)) { tl.setView(tl.getStartTimeNs()+0.25*tl.getTimeRangeNs(), tl.getTimeRangeNs()); changedNavigation = true; }
+            if(ImGui::IsKeyPressed(KC_Up  ))  ImGui::SetScrollY(ImGui::GetScrollY()-0.25f*ctx.winHeight);
+            if(ImGui::IsKeyPressed(KC_Down))  ImGui::SetScrollY(ImGui::GetScrollY()+0.25f*ctx.winHeight);
+            if(ImGui::IsKeyPressed(KC_Left))  { tl.setView(tl.getStartTimeNs()-(s64)(0.25*tl.getTimeRangeNs()), tl.getTimeRangeNs()); changedNavigation = true; }
+            if(ImGui::IsKeyPressed(KC_Right)) { tl.setView(tl.getStartTimeNs()+(s64)(0.25*tl.getTimeRangeNs()), tl.getTimeRangeNs()); changedNavigation = true; }
             if(ImGui::IsKeyPressed(KC_H)) openHelpTooltip(tl.uniqueId, "Help Timeline");
         }
         else { // Ctrl+up/down is handled by the mouse wheel code
-            if(ImGui::IsKeyPressed(KC_Left))  { tl.setView(tl.getStartTimeNs()-1.0*tl.getTimeRangeNs(), tl.getTimeRangeNs()); changedNavigation = true; }
-            if(ImGui::IsKeyPressed(KC_Right)) { tl.setView(tl.getStartTimeNs()+1.0*tl.getTimeRangeNs(), tl.getTimeRangeNs()); changedNavigation = true; }
+            if(ImGui::IsKeyPressed(KC_Left))  { tl.setView(tl.getStartTimeNs()-tl.getTimeRangeNs(), tl.getTimeRangeNs()); changedNavigation = true; }
+            if(ImGui::IsKeyPressed(KC_Right)) { tl.setView(tl.getStartTimeNs()+tl.getTimeRangeNs(), tl.getTimeRangeNs()); changedNavigation = true; }
         }
     }
 
     // Update the time of the mouse
-    if(ctx.isWindowHovered) _mouseTimeNs = tl.startTimeNs + (ctx.mouseX-ctx.winX)/ctx.nsToPix;
+    if(ctx.isWindowHovered) _mouseTimeNs = tl.startTimeNs + (s64)((ctx.mouseX-ctx.winX)/ctx.nsToPix);
 
     // Draw visor, handle middle button drag (range selection) and timeline top bar drag
     if(manageVisorAndRangeSelectionAndBarDrag(tl, ctx.isWindowHovered, ctx.mouseX, ctx.mouseY, ctx.winX, ctx.winY, ctx.winWidth, ctx.winHeight,
@@ -1655,13 +1655,13 @@ vwMain::drawTimeline(int tlWindowIdx)
 
     // Double click: range focus on an item (detected above at drawing time)
     if(ctx.forceRangeNs!=0.) {
-        tl.setView(ctx.forceStartNs, bsMax(ctx.forceRangeNs, 1000.));
+        tl.setView(ctx.forceStartNs, bsMax(ctx.forceRangeNs, 1000LL));
         ctx.nsToPix = ctx.winWidth/tl.timeRangeNs;
         changedNavigation = true;
     }
 
     // Wheel input
-    constexpr double vScrollPixPerTick = 50.;
+    constexpr float vScrollPixPerTick = 50.f;
     int deltaWheel = (int)io.MouseWheel; // Wheel or Ctrl+up/down keys control the zoom
     if(hasKeyboardFocus && ImGui::GetIO().KeyCtrl) {
         if(ImGui::IsKeyPressed(KC_Up))   deltaWheel =  1;
@@ -1671,8 +1671,8 @@ vwMain::drawTimeline(int tlWindowIdx)
         // Ctrl: (Horizontal) range zoom
         if(io.KeyCtrl) {
             deltaWheel *= getConfig().getHWheelInversion();
-            double newTimeRangeNs = getUpdatedRange(deltaWheel, tl.getTimeRangeNs());
-            tl.setView(tl.getStartTimeNs()+(ctx.mouseX-ctx.winX)/ctx.winWidth*(tl.getTimeRangeNs()-newTimeRangeNs), newTimeRangeNs);
+            s64 newTimeRangeNs = getUpdatedRange(deltaWheel, tl.getTimeRangeNs());
+            tl.setView(tl.getStartTimeNs()+(s64)((ctx.mouseX-ctx.winX)/ctx.winWidth*(tl.getTimeRangeNs()-newTimeRangeNs)), newTimeRangeNs);
             ctx.nsToPix = ctx.winWidth/newTimeRangeNs;
             changedNavigation = true;
         }

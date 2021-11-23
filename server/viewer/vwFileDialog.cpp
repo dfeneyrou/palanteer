@@ -70,14 +70,14 @@ vwFileDialog::draw(int fontSize)
         plgText(FDIAG, "State", "Open the popup");
         ImGui::OpenPopup(_title.toChar());
         ImGui::SetNextWindowSize(ImVec2(40*ImGui::GetFontSize(),
-                                        bsMin(0.8*ImGui::GetWindowHeight(), 30.*ImGui::GetTextLineHeightWithSpacing())));
+                                        bsMin(0.8f*ImGui::GetWindowHeight(), 30.f*ImGui::GetTextLineHeightWithSpacing())));
         _isOpen         = true;
         _shallOpen      = false;
         _isEntriesDirty = true;
         _path = osGetDirname(_path);
     }
-    float dialogWidth = bsMinMax(fontSize*60., 600., 1200.);
-    ImGui::SetNextWindowSize(ImVec2(dialogWidth, 500));
+    float dialogWidth = bsMinMax(fontSize*60.f, 600.f, 1200.f);
+    ImGui::SetNextWindowSize(ImVec2(dialogWidth, 500.f));
     if(!ImGui::BeginPopupModal(_title.toChar(), 0, ImGuiWindowFlags_NoResize)) {
         ImGui::PopID();
         return false;
@@ -97,7 +97,7 @@ vwFileDialog::draw(int fontSize)
                 for(int i=0; i<32; ++i) {
                     if(_driveBitMap&(1<<i)) {
                         _dirEntries.push_back({"A:", true});
-                        _dirEntries.back().name[0] += i; // Create the right letter value
+                        _dirEntries.back().name[0] += (u8)i; // Create the right letter value
                     }
                 }
             } else {
@@ -165,8 +165,8 @@ vwFileDialog::draw(int fontSize)
 
     // List the folders
     // ================
-    float contentHeight = ImGui::GetContentRegionAvail().y-2*ImGui::GetFrameHeightWithSpacing()-2.*2.*ImGui::GetStyle().FramePadding.y;
-    ImGui::BeginChild("Content", ImVec2(0.4*dialogWidth, contentHeight), true,
+    float contentHeight = ImGui::GetContentRegionAvail().y-2.f*ImGui::GetFrameHeightWithSpacing()-2.f*2.f*ImGui::GetStyle().FramePadding.y;
+    ImGui::BeginChild("Content", ImVec2(0.4f*dialogWidth, contentHeight), true,
                       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_HorizontalScrollbar);
     for(auto& e : _dirEntries) {
         if(!_doShowHidden && !e.name.empty() && e.name[0]=='.') continue;
@@ -274,7 +274,7 @@ vwFileDialog::draw(int fontSize)
     }
 
     // Current selection
-    float comboWidth = maxTypeFilterWidth+2.*spacingX;
+    float comboWidth = maxTypeFilterWidth+2.f*spacingX;
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x-comboWidth-spacingX-ImGui::GetStyle().FramePadding.x);
     if(ImGui::InputText("##Input", (char*)_displayedSelection.toChar(), _displayedSelection.size(),
                         ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_EnterReturnsTrue)) {

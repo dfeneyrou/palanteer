@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.15)
 project(palanteer VERSION 1.0.0 DESCRIPTION "Palanteer")
 
 # Options

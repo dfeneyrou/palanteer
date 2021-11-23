@@ -226,7 +226,7 @@ cmCnx::checkConnection(const bsVec<bsString>& importedFilenames, bsSocket_t mast
             }
 
             // Retrieve the stream initialization information and check them
-            int streamId = initializeTransport(fd, bsSocketError, errorMsg);
+            int streamId = initializeTransport(fd, (bsSocket_t)bsSocketError, errorMsg);
             isInitValid  = (streamId>=0);
 
             // Store in stream order (unless there is an error)
@@ -369,7 +369,7 @@ cmCnx::checkConnection(const bsVec<bsString>& importedFilenames, bsSocket_t mast
         for(int sid=0; sid<cmConst::MAX_STREAM_QTY; ++sid) {
             StreamInfo& si = _streams[sid];
             if(si.fileDescr!=0)               { fclose(si.fileDescr); si.fileDescr = 0; }
-            if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = bsSocketError; }
+            if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = (bsSocket_t)bsSocketError; }
         }
     }
 
@@ -386,7 +386,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
         for(int sid=0; sid<cmConst::MAX_STREAM_QTY; ++sid) {
             StreamInfo& si = _streams[sid];
             if(si.fileDescr!=0)               { fclose(si.fileDescr); si.fileDescr = 0; }
-            if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = bsSocketError; }
+            if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = (bsSocket_t)bsSocketError; }
         }
         return;
     }
@@ -443,7 +443,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
             bsSocket_t maxFd = masterSockFd;
             FD_SET(masterSockFd, &fds);  // To detect new connections
             bool hasValidStream = false;
-            for(int streamId=0; streamId<_streamQty; ++streamId) {
+            for(streamId=0; streamId<_streamQty; ++streamId) {
                 StreamInfo& si = _streams[streamId];
                 if(si.socketDescr!=bsSocketError) {
                     FD_SET(si.socketDescr, &fds);
@@ -458,7 +458,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
             if(selectRet>0) {
 
                 // Get the buffers from each active socket, one after the other (buffer fairness)
-                for(int streamId=0; streamId<_streamQty; ++streamId) {
+                for(streamId=0; streamId<_streamQty; ++streamId) {
                     StreamInfo& si = _streams[streamId];
                     if(!FD_ISSET(si.socketDescr, &fds)) continue;
 
@@ -472,7 +472,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
                     // Client is disconnected?
                     if(qty<1) {
                         bsOsCloseSocket(si.socketDescr);
-                        si.socketDescr = bsSocketError;
+                        si.socketDescr = (bsSocket_t)bsSocketError;
                         continue;
                     }
 
@@ -495,7 +495,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
                     if(!bsIsSocketValid(sock)) break;
 
                     bsString errorMsg;
-                    int streamId = -1;
+                    streamId = -1;
                     if(_isMultiStream) {
                         streamId = initializeTransport(0, sock, errorMsg);
                     }
@@ -535,7 +535,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
     for(int sid=0; sid<cmConst::MAX_STREAM_QTY; ++sid) {
         StreamInfo& si = _streams[sid];
         if(si.fileDescr!=0)               { fclose(si.fileDescr); si.fileDescr = 0; }
-        if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = bsSocketError; }
+        if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = (bsSocket_t)bsSocketError; }
     }
     if(_isSocketInput) {
         _itf->log(LOG_DETAIL, "Client reception: Closed client connection");
@@ -566,7 +566,7 @@ cmCnx::runRxFromClient(void)
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    serverAddress.sin_port = htons(_port);
+    serverAddress.sin_port = htons((u16)_port);
 
     timeval tv;
     tv.tv_sec  = 0;

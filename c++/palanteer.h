@@ -1326,8 +1326,8 @@ public:
 #if USE_PL==1 || PL_EXPORT==1
 
 // Library version
-#define PALANTEER_VERSION "0.5"
-#define PALANTEER_VERSION_NUM 500  // Monotonic number. 100 per version component. Official releases are multiple of 100
+#define PALANTEER_VERSION "0.6"
+#define PALANTEER_VERSION_NUM 501  // Monotonic number. 100 per version component. Official releases are multiple of 100
 
 // Client-Server protocol version
 #define PALANTEER_CLIENT_PROTOCOL_VERSION 2
@@ -1413,13 +1413,13 @@ namespace plPriv {
     struct GlobalContext_t {
         GlobalContext_t(int dynStringQty) : bankAndIndex(0), nextThreadId(0), isBufferSaturated(0), isDynStringPoolEmpty(0),
                                             dynStringPool(dynStringQty, &isDynStringPoolEmpty) { }
-        alignas(64) std::atomic<uint32_t> bankAndIndex = { 0 }; // Force this oftently used (R/W) atomic in its own cache line (64 is conservative) for performance reasons
+        alignas(64) std::atomic<uint32_t> bankAndIndex = { 0 }; // Force this often used (R/W) atomic in its own cache line (64 is conservative) for performance reasons
         alignas(64) std::atomic<uint32_t> nextThreadId = { 0 };
         EventInt* collectBuffers[2]       = { 0, 0 };
         bool     enabled                  = false;
         bool     collectEnabled           = false;
         int      collectBufferMaxEventQty = 0;
-        uint32_t prevBankAndIndex         = (1<<31);
+        uint32_t prevBankAndIndex         = (1UL<<31);
         std::atomic<int> isBufferSaturated = { 0 };
         std::atomic<int> isDynStringPoolEmpty = { 0 };
         MemoryPool<DynString_t> dynStringPool;
@@ -1544,9 +1544,9 @@ namespace plPriv {
         e.nameHash     = nameHash_;
         e.filename     = filename_;
         e.name         = name_;
-        e.lineNbr      = lineNbr_;
+        e.lineNbr      = (uint16_t)lineNbr_;
         e.threadId     = getThreadId();
-        e.flags        = flags_;
+        e.flags        = (uint8_t)flags_;
         return e;
     }
 
@@ -1677,8 +1677,8 @@ namespace plPriv {
         e.nameHash     = PL_STRINGHASH("");
         e.filename     = "";
         e.name         = "";
-        e.lineNbr      = (oldCoreId_<<8) | newCoreId_;
-        e.threadId     = threadId_;
+        e.lineNbr      = (uint16_t)((oldCoreId_<<8) | newCoreId_);
+        e.threadId     = (uint8_t)threadId_;
         e.flags        = PL_FLAG_TYPE_CSWITCH;
         e.extra        = sysThreadId_;
         e.PL_PRIV_RAW_FIELD = (clockType_t)timestamp_;
@@ -1797,7 +1797,7 @@ namespace plPriv {
 
         // Store the thread name for persistency across delayed or multiple starts
         plPriv::ThreadInfo_t& ti = plPriv::globalCtx.threadInfos[tCtx->id];
-        int nameLength = name_? strlen(name_) : 0;
+        int nameLength = name_? (int)strlen(name_) : 0;
         if(nameLength>PL_DYN_STRING_MAX_SIZE-1) nameLength = PL_DYN_STRING_MAX_SIZE-1;
         if(nameLength) memcpy(ti.name, name_, nameLength+1);
         ti.name[PL_DYN_STRING_MAX_SIZE-1] = 0;
@@ -1941,7 +1941,7 @@ namespace plPriv {
 						uint8_t  prevCoreId;  // Context switch
 						uint8_t  newCoreId;
 					};
-				};
+				} ;
 				uint16_t nameIdx;
 			};
             uint32_t memSize;  // Memory case only. The unused fields filenameIdx and nameIdx are overriden
@@ -2060,7 +2060,7 @@ namespace plPriv {
 #include <ws2tcpip.h>
 #include <winsock2.h>
 #pragma comment(lib, "Ws2_32.lib")
-#define PL_PRIV_IS_SOCKET_VALID(s) ((s)!=(plPriv::socket_t)INVALID_SOCKET)
+#define PL_PRIV_IS_SOCKET_VALID(s) ((SOCKET)(s)!=INVALID_SOCKET)
 #define PL_PRIV_SOCKET_ERROR SOCKET_ERROR
 #endif // if defined(_WIN32)
 
@@ -2268,7 +2268,7 @@ namespace plPriv {
                     } else if(p.type==PL_STRING) {
                         int stringLength = 0;
                         p.defaultValue = (uintptr_t)getString(s, stringLength); // Points inside the "spec".
-                        p.defaultStringLength = stringLength+1; // Add the null termination
+                        p.defaultStringLength = (uint16_t)(stringLength+1); // Add the null termination
                     }
                     skipSpace(s);
                 }
@@ -2334,7 +2334,7 @@ namespace plPriv {
                 while(*s) {
                     // Find the parameter in the specification
                     skipSpace(s);
-                    const char* sNameStart = getWord(s, true);
+                    sNameStart = getWord(s, true);
                     if(*s!='=')
                         CLI_INPUT_ERROR("Parameter '%.*s' has no value ('=' missing)", (int)(s-sNameStart), sNameStart);
                     int paramIdx = -1;
@@ -2487,7 +2487,7 @@ namespace plPriv {
         std::atomic<int> threadServerFlagStop = { 0 };
 #if PL_IMPL_CUSTOM_COM_LAYER==0
         FILE*            fileHandle = 0;
-        socket_t         serverSocket = PL_PRIV_SOCKET_ERROR;
+        socket_t         serverSocket = (socket_t)PL_PRIV_SOCKET_ERROR;
 #if defined(_WIN32)
         bool             wsaInitialized = false;
 #endif
@@ -2813,7 +2813,7 @@ namespace plPriv {
             plAssert(implCtx.serverPort>0 && implCtx.serverPort<65536, implCtx.serverPort);
             sockaddr_in m_server;
             m_server.sin_family = AF_INET;
-            m_server.sin_port   = htons(implCtx.serverPort);
+            m_server.sin_port   = htons((uint16_t)implCtx.serverPort);
             int inetSuccess     = inet_pton(AF_INET, implCtx.serverAddr, &m_server.sin_addr);
             plAssert(inetSuccess, "Unable to parse the address", implCtx.serverAddr);
 
@@ -2826,7 +2826,7 @@ namespace plPriv {
 #else
                     close(implCtx.serverSocket);
 #endif
-                    implCtx.serverSocket = PL_PRIV_SOCKET_ERROR;
+                    implCtx.serverSocket = (socket_t)PL_PRIV_SOCKET_ERROR;
                     implCtx.mode         = PL_MODE_INACTIVE;
                     PL_IMPL_PRINT_STDERR("Socket connection to server failed, skipping Palanteer remote service.\n", false, false);
                     return;
@@ -2885,7 +2885,7 @@ namespace plPriv {
             // Linux case
             close(implCtx.serverSocket);
 #endif
-            implCtx.serverSocket = PL_PRIV_SOCKET_ERROR;
+            implCtx.serverSocket = (socket_t)PL_PRIV_SOCKET_ERROR;
         }
 
         if(implCtx.mode==PL_MODE_STORE_IN_FILE) {
@@ -3305,7 +3305,7 @@ namespace plPriv {
             // Send the notification from the last bitmap, if different from the "change" version
             // This 2-step scheme is solving the ABA problem on server side (ABABA is equivalent to ABA)
             if(newBitmap!=ic.frozenLastThreadBitmap) {
-                uint8_t* br = helperFillResponseBufferHeader(PL_NTF_FROZEN_THREAD, 8, ic.sndBuffer);
+                br = helperFillResponseBufferHeader(PL_NTF_FROZEN_THREAD, 8, ic.sndBuffer);
                 br[10] = (ic.frozenLastThreadBitmap>>56)&0xFF;
                 br[11] = (ic.frozenLastThreadBitmap>>48)&0xFF;
                 br[12] = (ic.frozenLastThreadBitmap>>40)&0xFF;
@@ -3840,7 +3840,7 @@ namespace plPriv {
                 e.filename     = PL_EXTERNAL_STRINGS?0:"";
                 e.name         = ti.name[0]? ti.name : 0;
                 e.lineNbr      = 0;
-                e.threadId     = tId;  // We are obliged to expand the event building due to this field...
+                e.threadId     = (uint8_t)tId;  // We are obliged to expand the event building due to this field...
                 e.flags        = PL_FLAG_TYPE_THREADNAME;
                 e.PL_PRIV_RAW_FIELD = 0;
                 e.magic  = bi;
@@ -4343,7 +4343,11 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, int serv
 
     // Configure the logging. Indeed, tracing just activates the event collection so logging is required to retrieve the events...
     EVENT_TRACE_LOGFILE LogFile = {0};
-    LogFile.LoggerName          = KERNEL_LOGGER_NAME;
+#if defined(_UNICODE) || defined(UNICODE)
+    LogFile.LoggerName          = (LPWSTR)KERNEL_LOGGER_NAME;
+#else
+    LogFile.LoggerName          = (LPSTR)KERNEL_LOGGER_NAME;
+#endif
     LogFile.ProcessTraceMode    = PROCESS_TRACE_MODE_REAL_TIME | PROCESS_TRACE_MODE_EVENT_RECORD | PROCESS_TRACE_MODE_RAW_TIMESTAMP;
     LogFile.EventRecordCallback = plPriv::eventRecordCallback;
 
@@ -4545,7 +4549,7 @@ plStopAndUninit(void)
     }
     if(ic.doNotUninit) {
         // Wait for the TX thread to send the last data sending (unless it is the crashing thread)
-        if(ic.threadServerTx && ic.threadServerTx->joinable() && PL_GET_SYS_THREAD_ID()!=ic.txThreadId) ic.threadServerTx->join();
+        if(ic.threadServerTx && ic.threadServerTx->joinable() && (int)PL_GET_SYS_THREAD_ID()!=ic.txThreadId) ic.threadServerTx->join();
         // No cleaning, so stop here
         return;
     }
@@ -4566,7 +4570,7 @@ plStopAndUninit(void)
     // Restore the initial global state
     ic.threadServerFlagStop.store(0);
     plPriv::globalCtx.bankAndIndex.store(0);
-    plPriv::globalCtx.prevBankAndIndex = (1<<31);
+    plPriv::globalCtx.prevBankAndIndex = (1UL<<31);
     delete[] ic.allocCollectBuffer; ic.allocCollectBuffer = 0;
     plPriv::globalCtx.collectBuffers[0] = 0;
     plPriv::globalCtx.collectBuffers[1] = 0;

@@ -124,7 +124,7 @@ void
 vwMain::prepareMarker(Marker& mkr)
 {
     // Check if the cache is still valid
-    const double winHeight = ImGui::GetWindowSize().y; // Approximated and bigger anyway
+    const float winHeight = ImGui::GetWindowSize().y; // Approximated and bigger anyway
     if(!mkr.isCacheDirty && winHeight<=mkr.lastWinHeight) return;
 
     // Worth working
@@ -143,7 +143,7 @@ vwMain::prepareMarker(Marker& mkr)
     // Thread name max length
     mkr.maxThreadNameLength = 6; // For the header word "Thread"
     for(int i=0; i<_record->threads.size(); ++i) {
-        int length = strlen(getFullThreadName(i));
+        int length = (int)strlen(getFullThreadName(i));
         if(length>mkr.maxThreadNameLength) mkr.maxThreadNameLength = length;
     }
 
@@ -164,7 +164,7 @@ vwMain::prepareMarker(Marker& mkr)
     mkr.aggregatedIt.init(_record, elemIdxArray, mkr.startTimeNs, maxLineQty, mkr.cachedItems);
 
     // Compute the scroll ratio (for the scroll bar indication) from the dates
-    mkr.cachedScrollRatio = bsMinMax(mkr.startTimeNs/bsMax((double)_record->durationNs, 1.), 0., 1.);
+    mkr.cachedScrollRatio = (float)bsMinMax((double)mkr.startTimeNs/(double)bsMax(_record->durationNs, 1), 0., 1.);
 }
 
 
@@ -218,13 +218,13 @@ vwMain::drawMarker(Marker& mkr)
     plgScope(MARKER, "drawMarker");
 
     // Display the thread name
-    double fontHeight    = ImGui::GetTextLineHeightWithSpacing();
-    double textPixMargin = ImGui::GetStyle().ItemSpacing.x;
-    float  charWidth     = ImGui::CalcTextSize("0").x;
-    double comboWidth    = ImGui::CalcTextSize("Isolated XXX").x;
-    float  textBgY       = ImGui::GetWindowPos().y+ImGui::GetCursorPos().y;
-    float  comboX        = ImGui::GetWindowContentRegionMax().x-comboWidth;
-    DRAWLIST->AddRectFilled(ImVec2(ImGui::GetWindowPos().x+ImGui::GetCursorPos().x-2., textBgY),
+    float fontHeight    = ImGui::GetTextLineHeightWithSpacing();
+    float textPixMargin = ImGui::GetStyle().ItemSpacing.x;
+    float  charWidth    = ImGui::CalcTextSize("0").x;
+    float comboWidth    = ImGui::CalcTextSize("Isolated XXX").x;
+    float  textBgY      = ImGui::GetWindowPos().y+ImGui::GetCursorPos().y;
+    float  comboX       = ImGui::GetWindowContentRegionMax().x-comboWidth;
+    DRAWLIST->AddRectFilled(ImVec2(ImGui::GetWindowPos().x+ImGui::GetCursorPos().x-2.f, textBgY),
                             ImVec2(ImGui::GetWindowPos().x+comboX, textBgY+ImGui::GetTextLineHeightWithSpacing()+ImGui::GetStyle().FramePadding.y), vwConst::uGrey48);
 
     // Filtering menu
@@ -234,7 +234,7 @@ vwMain::drawMarker(Marker& mkr)
 
     // Thread filtering
     float padMenuX    = ImGui::GetStyle().FramePadding.x;
-    float offsetMenuX = ImGui::GetStyle().ItemSpacing.x+padMenuX+charWidth*14;
+    float offsetMenuX = ImGui::GetStyle().ItemSpacing.x+padMenuX+charWidth*14.f;
     float widthMenu   = ImGui::CalcTextSize("Thread").x;
     ImU32 filterBg    = ImColor(ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
     DRAWLIST->AddRectFilled(ImVec2(ImGui::GetWindowPos().x+offsetMenuX-padMenuX, textBgY),
@@ -299,12 +299,12 @@ vwMain::drawMarker(Marker& mkr)
     ImGui::BeginChild("marker", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar |
                       ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
     prepareMarker(mkr); // Ensure cache is up to date, even after window creation
-    const double winX = ImGui::GetWindowPos().x;
-    const double winY = ImGui::GetWindowPos().y;
-    const double winWidth      = ImGui::GetWindowContentRegionMax().x;
-    const double winHeight     = ImGui::GetWindowSize().y;
-    const double mouseY        = ImGui::GetMousePos().y;
-    const bool   isWindowHovered = ImGui::IsWindowHovered();
+    const float winX = ImGui::GetWindowPos().x;
+    const float winY = ImGui::GetWindowPos().y;
+    const float winWidth  = ImGui::GetWindowContentRegionMax().x;
+    const float winHeight = ImGui::GetWindowSize().y;
+    const float mouseY    = ImGui::GetMousePos().y;
+    const bool isWindowHovered = ImGui::IsWindowHovered();
 
     constexpr int maxMsgSize = 256;
     char tmpStr [maxMsgSize];
@@ -316,8 +316,8 @@ vwMain::drawMarker(Marker& mkr)
         plgScope(MARKER, "New user scroll position from ImGui");
         plgData(MARKER, "expected pos", mkr.lastScrollPos);
         plgData(MARKER, "new pos", curScrollPos);
-        mkr.cachedScrollRatio = curScrollPos/normalizedScrollHeight;
-        mkr.setStartPosition(mkr.cachedScrollRatio*_record->durationNs);
+        mkr.cachedScrollRatio = (float)(curScrollPos/normalizedScrollHeight);
+        mkr.setStartPosition((s64)(mkr.cachedScrollRatio*_record->durationNs));
         mkr.didUserChangedScrollPos = false;
     }
 
@@ -329,14 +329,14 @@ vwMain::drawMarker(Marker& mkr)
     if(isWindowHovered && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
         // Check mouse input
         int textWheelCounter =  (ImGui::GetIO().KeyCtrl)? 0 :
-            (ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion()); // No Ctrl key: wheel is for the text
+            (int)(ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion()); // No Ctrl key: wheel is for the text
         tlWheelCounter       = (!ImGui::GetIO().KeyCtrl)? 0 :
-            (ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline (processed in highlighted text display)
+            (int)(ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline (processed in highlighted text display)
         int  dragLineQty = 0;
         if(ImGui::IsMouseDragging(2)) {
             mkr.isDragging = true;
             if(bsAbs(ImGui::GetMouseDragDelta(2).y)>1.) {
-                double tmp = (ImGui::GetMouseDragDelta(2).y+mkr.dragReminder);
+                float tmp = (ImGui::GetMouseDragDelta(2).y+mkr.dragReminder);
                 ImGui::ResetMouseDragDelta(2);
                 dragLineQty      = (int)(tmp/fontHeight);
                 mkr.dragReminder = tmp-fontHeight*dragLineQty;
@@ -348,7 +348,7 @@ vwMain::drawMarker(Marker& mkr)
             plgText(MARKER, "Key", "Down pressed");
             if(mkr.cachedItems.size()>=2) {
                 mkr.setStartPosition(mkr.cachedItems[1].evt.vS64);
-           }
+            }
         }
 
         if(ImGui::IsKeyPressed(KC_Up)) {
@@ -396,7 +396,7 @@ vwMain::drawMarker(Marker& mkr)
     // Set the modified scroll position in ImGui, if not changed through imGui
     if(mkr.didUserChangedScrollPos) {
         plgData(MARKER, "Set new scroll pos from user", mkr.cachedScrollRatio*normalizedScrollHeight);
-        ImGui::SetScrollY(mkr.cachedScrollRatio*normalizedScrollHeight);
+        ImGui::SetScrollY((float)(mkr.cachedScrollRatio*normalizedScrollHeight));
     }
     // Mark the virtual total size
     mkr.lastScrollPos = ImGui::GetScrollY();
@@ -409,9 +409,9 @@ vwMain::drawMarker(Marker& mkr)
     // Draw the marker
     // =============
     float y = winY;
-    double mouseTimeBestY      = -1.;
-    double mouseTimeBestTimeNs = -1.;
-    double newMouseTimeNs      = -1.;
+    float mouseTimeBestY      = -1.;
+    s64   mouseTimeBestTimeNs = -1;
+    s64   newMouseTimeNs      = -1;
     for(const auto& ci : mkr.cachedItems) {
         const cmRecord::Evt&    evt = ci.evt;
         const cmRecord::String& s   = _record->getString(evt.filenameIdx);
@@ -423,18 +423,18 @@ vwMain::drawMarker(Marker& mkr)
         if(isWindowHovered && mouseY>=y && mouseY<y+heightPix) {
             // Synchronized navigation
             if(mkr.syncMode>0) { // No synchronized navigation for isolated windows
-                double syncStartTimeNs, syncTimeRangeNs;
+                s64 syncStartTimeNs, syncTimeRangeNs;
                 getSynchronizedRange(mkr.syncMode, syncStartTimeNs, syncTimeRangeNs);
 
                 // Click: set timeline position at middle screen only if outside the center third of screen
                 if((ImGui::IsMouseReleased(0) && ImGui::GetMousePos().x<winX+winWidth) || tlWheelCounter) {
-                    synchronizeNewRange(mkr.syncMode, bsMax(0., evt.vS64-0.5*syncTimeRangeNs), syncTimeRangeNs);
+                    synchronizeNewRange(mkr.syncMode, bsMax(evt.vS64-(s64)(0.5*syncTimeRangeNs), 0LL), syncTimeRangeNs);
                     ensureThreadVisibility(mkr.syncMode, evt.threadId);
                 }
 
                 // Zoom the timeline
                 if(tlWheelCounter!=0) {
-                    double newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
+                    s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
                     synchronizeNewRange(mkr.syncMode, syncStartTimeNs+(evt.vS64-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
                                         newTimeRangeNs);
                     ensureThreadVisibility(mkr.syncMode, evt.threadId);
@@ -460,10 +460,10 @@ vwMain::drawMarker(Marker& mkr)
         }
 
         // Display the date
-        double offsetX = winX+textPixMargin;
+        float offsetX = winX+textPixMargin;
         snprintf(tmpStr, maxMsgSize, "%f s", 0.000000001*evt.vS64);
         DRAWLIST->AddText(ImVec2(offsetX, y), vwConst::uWhite, tmpStr);
-        offsetX += charWidth*14;
+        offsetX += charWidth*14.f;
 
         // Display the thread
         snprintf(tmpStr, maxMsgSize, "[%s]", getFullThreadName(evt.threadId));
@@ -493,13 +493,13 @@ vwMain::drawMarker(Marker& mkr)
     if(mouseTimeBestY>=0) {
         DRAWLIST->AddLine(ImVec2(winX, mouseTimeBestY), ImVec2(winX+winWidth, mouseTimeBestY), vwConst::uYellow);
     }
-    if(newMouseTimeNs>=0.) _mouseTimeNs = newMouseTimeNs;
+    if(newMouseTimeNs>=0) _mouseTimeNs = newMouseTimeNs;
     if(!ImGui::IsMouseDragging(2)) mkr.isDragging = false;
 
 
     // Contextual menu
     if(ImGui::BeginPopup("marker menu", ImGuiWindowFlags_AlwaysAutoResize)) {
-        double headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
+        float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5.f;
         ImGui::TextColored(vwConst::grey, "Marker [%s]", _record->getString(mkr.ctxNameIdx).value.toChar());
         ImGui::Separator();
         ImGui::Separator();
