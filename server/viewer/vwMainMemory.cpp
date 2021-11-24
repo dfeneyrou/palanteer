@@ -1474,7 +1474,7 @@ vwMain::drawMemoryDetailList(int detailWindowIdx)
                     // Zoom the timeline
                     if(tlWheelCounter!=0) {
                         s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
-                        synchronizeNewRange(mdl.syncMode, syncStartTimeNs+(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
+                        synchronizeNewRange(mdl.syncMode, syncStartTimeNs+(s64)((double)(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs)),
                                             newTimeRangeNs);
                         ensureThreadVisibility(mdl.syncMode, targetThreadId);
                     }

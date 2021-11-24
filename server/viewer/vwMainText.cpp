@@ -574,7 +574,7 @@ vwMain::drawText(Text& t)
                 // Zoom the timeline
                 if(tlWheelCounter!=0) {
                     s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
-                    synchronizeNewRange(t.syncMode, syncStartTimeNs+(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
+                    synchronizeNewRange(t.syncMode, syncStartTimeNs+(s64)((double)(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs)),
                                         newTimeRangeNs);
                     ensureThreadVisibility(t.syncMode, t.threadId);
                 }

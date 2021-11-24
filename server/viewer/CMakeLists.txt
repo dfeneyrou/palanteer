@@ -59,7 +59,6 @@ if(MSVC)
   add_compile_options(/W4 /permissive-)
   add_compile_options(/wd4505) # Disable the "unreferenced function with internal linkage has been removed" (seen in stb library)
   add_compile_options(/wd4706) # Disable the "assignment within conditional expression"
-  add_compile_options(/wd4996) # Disable the "This function or variable may be unsafe", pushing for not well supported extensions
   add_compile_options(/wd6385) # Disable the "Reading invalid data from..." which generates mainly obvious false alarms
   add_compile_options(/wd6255) # Disable the "_alloca indicates failure by raising a stack overflow exception.  Consider using _malloca instead"
   add_compile_options(/wd4996) # Disable the "This function or variable may be unsafe", pushing for not well supported extensions

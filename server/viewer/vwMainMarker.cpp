@@ -435,7 +435,7 @@ vwMain::drawMarker(Marker& mkr)
                 // Zoom the timeline
                 if(tlWheelCounter!=0) {
                     s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
-                    synchronizeNewRange(mkr.syncMode, syncStartTimeNs+(evt.vS64-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
+                    synchronizeNewRange(mkr.syncMode, syncStartTimeNs+(s64)((double)(evt.vS64-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs)),
                                         newTimeRangeNs);
                     ensureThreadVisibility(mkr.syncMode, evt.threadId);
                 }
