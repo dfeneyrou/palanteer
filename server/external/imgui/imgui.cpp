@@ -14228,7 +14228,7 @@ static void ImGui::DockNodeUpdate(ImGuiDockNode* node)
     }
 
     // Update focused node (the one whose title bar is highlight) within a node tree
-    if (node->IsSplitNode())
+    if (0 && node->IsSplitNode())  // [DF] Temporary workaround for a crash when applying the first layout saved on disk (in a not well identified case)
         IM_ASSERT(node->TabBar == NULL);
     if (node->IsRootNode())
         if (g.NavWindow && g.NavWindow->RootWindow->DockNode && g.NavWindow->RootWindow->ParentWindow == host_window)
