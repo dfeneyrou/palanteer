@@ -32,7 +32,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #define bsIsSocketValid(s) ((s)>=0)
-#define bsSocketError -1
+#define bsSocketError (-1)
 typedef int bsSocket_t;
 #define bsOsCloseSocket(s) close(s)
 #define bsGetSocketError(s) errno

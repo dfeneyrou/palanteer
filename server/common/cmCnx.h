@@ -31,7 +31,7 @@
 #include "bsLockFree.h"
 #include "cmInterface.h"
 
-#define MAX_REMOTE_COMMAND_BYTE_SIZE 32*1024
+#define MAX_REMOTE_COMMAND_BYTE_SIZE (32*1024)
 
 class cmCnx {
 public:

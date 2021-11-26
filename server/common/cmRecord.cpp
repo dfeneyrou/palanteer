@@ -678,7 +678,7 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     if(bsOsFseek(recFd, -16L, SEEK_END)!=0) LOAD_ERROR("find the record bootstrap");
     char magic[9];
     if((int)fread(&magic, 1, 8, recFd)!=8) LOAD_ERROR("read the magic identifier");
-    if(strncmp(magic, "PL-MAGIC", 8)) LOAD_ERROR("match a Palanteer file type");
+    if(strncmp(magic, "PL-MAGIC", 8)!=0) LOAD_ERROR("match a Palanteer file type");
     s64 headerStartOffset;
     if((int)fread(&headerStartOffset, 8, 1, recFd)!=1) LOAD_ERROR("read the meta information location");
     if(bsOsFseek(recFd, headerStartOffset, SEEK_SET)!=0) LOAD_ERROR("find the meta information");

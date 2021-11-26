@@ -21,7 +21,7 @@
 #include <cinttypes>
 #include <cmath>
 #include <algorithm>
-#include <time.h>
+#include <ctime>
 
 // External
 #include "imgui.h"
@@ -132,24 +132,24 @@ vwMain::vwMain(vwPlatform* platform, int rxPort, const bsString& overrideStorage
     _fileDialogExtStrings   = new vwFileDialog("Update external strings from file",  vwFileDialog::OPEN_FILE,  {"*.txt", "*.*"});
     _fileDialogImport       = new vwFileDialog("Import a record as a file",          vwFileDialog::OPEN_FILE,  {"*.pltraw", "*.*"});
     _fileDialogSelectRecord = new vwFileDialog("Select the new record storage path", vwFileDialog::SELECT_DIR, {"*.*"});
-    log(LOG_INFO, "Record storage path is: %s", _storagePath.toChar());
+    vwMain::log(LOG_INFO, "Record storage path is: %s", _storagePath.toChar());
 
     // Ensure configuration path exists
     if(!osDirectoryExists(getConfig().getConfigPath())) {
         if(osMakeDir(getConfig().getConfigPath())!=bsDirStatusCode::OK) {
-            log(LOG_ERROR, "Unable to create the configuration folder %s", getConfig().getConfigPath().toChar());
+            vwMain::log(LOG_ERROR, "Unable to create the configuration folder %s", getConfig().getConfigPath().toChar());
         }
     }
 
     // Ensure record storage path exists
     if(!osDirectoryExists(_storagePath)) {
         if(osMakeDir(_storagePath)!=bsDirStatusCode::OK) {
-            log(LOG_ERROR, "Unable to create the record storage folder %s", _storagePath.toChar());
+            vwMain::log(LOG_ERROR, "Unable to create the record storage folder %s", _storagePath.toChar());
         }
     }
 
     // Install the icon
-    int width, height;
+    int width=0, height=0;
     u8* pixels = stbi_load_from_memory((const stbi_uc*)icon_data, icon_size, &width, &height, 0, 4);
     osSetIcon(width, height, pixels);  // The array is owned by the OS layer now
     free(pixels);
@@ -713,8 +713,8 @@ vwMain::drawAbout(void)
     y += 2.f*fontSize;
 
 #define TEXT_POSITION(text, lineSpan, coefScreenWidth, coefTextWidth)   \
-    DRAWLIST->AddText(ImVec2(winX+coefScreenWidth*winWidth+coefTextWidth*ImGui::CalcTextSize(text).x, y), vwConst::uWhite, text); \
-    y += lineSpan*fontSize
+    DRAWLIST->AddText(ImVec2(winX+(coefScreenWidth)*winWidth+(coefTextWidth)*ImGui::CalcTextSize(text).x, y), vwConst::uWhite, text); \
+    y += (lineSpan)*fontSize
 
     // Version
     char tmpStr[128];
@@ -1451,7 +1451,7 @@ vwMain::clearViews(void)
 
     _hlThreadId = cmConst::MAX_THREAD_QTY;
 
-#define CLEAR_ARRAY_VIEW(array) for(auto& a : array) releaseId(a.uniqueId); array.clear();
+#define CLEAR_ARRAY_VIEW(array) for(auto& a : (array)) releaseId(a.uniqueId); (array).clear();
     CLEAR_ARRAY_VIEW(_timelines);
     CLEAR_ARRAY_VIEW(_memTimelines);
     CLEAR_ARRAY_VIEW(_memDetails);
@@ -1676,10 +1676,10 @@ vwMain::createLayoutViews(const vwConfig::ScreenLayout& layout)
 #define SET_VIEW_ATTRIBUTES(array)                          \
     plAssert(view.id<1000000);                              \
     while(idArray.size()<=view.id) idArray.push_back(0);    \
-    idArray[view.id]              = 1; /* in use */         \
-    array.back().syncMode         = syncMode;               \
-    array.back().isNew            = false;                  \
-    array.back().isWindowSelected = false;
+    idArray[view.id]                = 1; /* in use */       \
+    (array).back().syncMode         = syncMode;             \
+    (array).back().isNew            = false;                \
+    (array).back().isWindowSelected = false;
 
     // Init (clear views)
     u64 hash=0, hash2=0;
@@ -1789,7 +1789,7 @@ vwMain::copyCurrentLayout(vwConfig::ScreenLayout& layout, const bsString& window
     layout.windows = windowLayout;
     layout.views.clear(); layout.views.reserve(32);
 
-#define SAVE_VIEWS(array) for(int i=0; i<array.size(); ++i) layout.views.push_back({ array[i].uniqueId, array[i].getDescr() });
+#define SAVE_VIEWS(array) for(int i=0; i<(array).size(); ++i) layout.views.push_back({ (array)[i].uniqueId, (array)[i].getDescr() });
     SAVE_VIEWS(_timelines);
     SAVE_VIEWS(_memTimelines);
     SAVE_VIEWS(_markers);

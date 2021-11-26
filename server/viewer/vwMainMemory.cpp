@@ -17,9 +17,9 @@
 // This file implements the memory timeline view
 
 // System
-#include <math.h>
+#include <cmath>
+#include <cinttypes>
 #include <algorithm>
-#include <inttypes.h>
 
 // Internal
 #include "cmRecord.h"
@@ -510,7 +510,7 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
             } else {
                 // Draw the previous & non-overlapping thin block per strip (blocks are sorted by x)
                 int x      = fusion->x1;
-                int colIdx = (int)(fusion->y/BLOCK_MIN_ROW_PIX + x/SMALL_BLOCK_PATTERN_WIDTH);
+                int colIdx = (int)(fusion->y/BLOCK_MIN_ROW_PIX + (float)(x/SMALL_BLOCK_PATTERN_WIDTH));
                 while(x<fusion->x2) {
                     int nextX = ((x/SMALL_BLOCK_PATTERN_WIDTH)+1)*SMALL_BLOCK_PATTERN_WIDTH;
                     DRAWLIST->AddRectFilled(ImVec2((float)x, (float)fusion->y), ImVec2((float)nextX, (float)(fusion->y-BLOCK_MIN_ROW_PIX)), (colIdx&1)? colorThin1 : colorThin2);
@@ -636,7 +636,7 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
     mw.workLkupFusionedBlocks.exportData(remainingThinBlocks);
     for(auto& fusion : remainingThinBlocks) {
         int x      = fusion.x1;
-        int colIdx = (int)(fusion.y/BLOCK_MIN_ROW_PIX + x/SMALL_BLOCK_PATTERN_WIDTH);
+        int colIdx = (int)(fusion.y/BLOCK_MIN_ROW_PIX + (float)(x/SMALL_BLOCK_PATTERN_WIDTH));
         while(x<fusion.x2) {
             int nextX = ((x/SMALL_BLOCK_PATTERN_WIDTH)+1)*SMALL_BLOCK_PATTERN_WIDTH;
             DRAWLIST->AddRectFilled(ImVec2((float)x, (float)fusion.y), ImVec2((float)nextX, (float)(fusion.y-BLOCK_MIN_ROW_PIX)), (colIdx&1)? colorThin1 : colorThin2);

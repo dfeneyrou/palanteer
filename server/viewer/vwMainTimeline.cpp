@@ -257,7 +257,7 @@ TimelineDrawHelper::drawCoreTimeline(float& yThread)
 
         // Draw the gradient curve
 #define DRAW_LAYERED_CURVE(thresMin, thresMax, colorCode)               \
-        if(value>thresMin) {                                            \
+        if(value>(thresMin)) {                                          \
             float tValue = bsMin(value, thresMax), tY = yThread-tValue*fontHeight; \
             colorUp = colorCode;                                        \
             DRAWLIST->AddRectFilledMultiColor(ImVec2(x1, prevY), ImVec2(x2, tY), prevColor, prevColor, colorUp, colorUp); \
@@ -1532,11 +1532,12 @@ vwMain::drawTimeline(int tlWindowIdx)
     int  hoveredThreadId  = -1;
     bool isHeaderHovered  = false;
     struct VerticalBarData { int threadId; float yStart; };
-    VerticalBarData* vBarData = (VerticalBarData*)alloca(getConfig().getLayout().size()*sizeof(VerticalBarData));
+    const bsVec<vwConfig::ThreadLayout>& layouts = getConfig().getLayout();
+    VerticalBarData* vBarData = (VerticalBarData*)alloca(layouts.size()*sizeof(VerticalBarData));
 
-    for(int layoutIdx=0; layoutIdx<getConfig().getLayout().size(); ++layoutIdx) {
+    for(int layoutIdx=0; layoutIdx<layouts.size(); ++layoutIdx) {
         // Store the thread start Y
-        const vwConfig::ThreadLayout& ti = getConfig().getLayout()[layoutIdx];
+        const vwConfig::ThreadLayout& ti = layouts[layoutIdx];
         tl.valuePerThread[ti.threadId] = yThread-(ctx.winY-ImGui::GetScrollY());
         vBarData[layoutIdx] = { ti.threadId, (float)tl.valuePerThread[ti.threadId] };
 
@@ -1581,8 +1582,8 @@ vwMain::drawTimeline(int tlWindowIdx)
         // Get the hovered thread
         if(hoveredThreadId<0 && ctx.mouseY<yThread) hoveredThreadId = ti.threadId;
     }
-    if(hoveredThreadId<0 && ctx.isWindowHovered && !getConfig().getLayout().empty()) {
-        hoveredThreadId = getConfig().getLayout().back().threadId;
+    if(hoveredThreadId<0 && ctx.isWindowHovered && !layouts.empty()) {
+        hoveredThreadId = layouts.back().threadId;
     }
 
     // Thread dragging, to reorder them
@@ -1600,8 +1601,8 @@ vwMain::drawTimeline(int tlWindowIdx)
     // Draw the vertical overview bar
     float yEnd     = yThread-(ctx.winY-ImGui::GetScrollY());
     float vBarCoef = ctx.winHeight/bsMax(1.f, yEnd);
-    for(int layoutIdx=0; layoutIdx<getConfig().getLayout().size(); ++layoutIdx) {
-        bool isLast = (layoutIdx==getConfig().getLayout().size()-1);
+    for(int layoutIdx=0; layoutIdx<layouts.size(); ++layoutIdx) {
+        bool isLast = (layoutIdx==layouts.size()-1);
         DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY+vBarCoef*vBarData[layoutIdx].yStart),
                                 ImVec2(ctx.winX+ctx.winWidth+vwConst::OVERVIEW_VBAR_WIDTH, ctx.winY+vBarCoef*(isLast? yEnd : vBarData[layoutIdx+1].yStart)),
                                 ImColor(getConfig().getThreadColor(vBarData[layoutIdx].threadId)));

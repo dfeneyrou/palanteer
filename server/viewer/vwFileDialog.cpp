@@ -96,7 +96,7 @@ vwFileDialog::draw(int fontSize)
                 // Creation of the drive letters on Windows
                 for(int i=0; i<32; ++i) {
                     if(_driveBitMap&(1<<i)) {
-                        _dirEntries.push_back({"A:", true});
+                        _dirEntries.push_back({"A:", {}, 0, false});
                         _dirEntries.back().name[0] += (u8)i; // Create the right letter value
                     }
                 }
@@ -108,7 +108,7 @@ vwFileDialog::draw(int fontSize)
         }
         // Dispatch folder and files in the right storage
         for(const bsDirEntry& e : entries) {
-            if(e.isDir) _dirEntries.push_back({e.name, {}, 0 });
+            if(e.isDir) _dirEntries.push_back({e.name, {}, 0, false });
             else {
                 bsString fullPath = _path+bsString(PL_DIR_SEP)+e.name;
                 _fileEntries.push_back({e.name, osGetCreationDate(fullPath), (s64)osGetSize(fullPath), false});

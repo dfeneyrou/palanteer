@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include <string.h>
+#include <cstring>
 
 #include "bs.h"
 #include "bsVec.h"
@@ -57,6 +57,7 @@ public:
     }
 
     bsHashMap<K,V>& operator=(const bsHashMap<K,V>& other) noexcept {
+        if(&other==this) return *this;
         rehashPo2(other._maxSize);
         _size = other._size; memcpy(&_nodes[0], &other._nodes[0], _size*sizeof(Node)); // Only for numeric or integral types
         return *this;

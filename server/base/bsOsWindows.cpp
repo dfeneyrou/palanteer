@@ -768,7 +768,7 @@ osProcessInputs(bsOsHandler* handler)
 int
 APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
-    (void)hPrevInstance; (void)lpCmdLine; 
+    (void)hPrevInstance; (void)lpCmdLine;
     // Update global scope
     gGlob.hInstance = hInstance;
     gGlob.nCmdShow  = nCmdShow;
@@ -910,7 +910,6 @@ osCopyFile(const bsString& srcPath, const bsString& dstPath)
     FILE *fSrc = 0, *fDst = 0;
 
     // Open the 2 files
-    fSrc = osFileOpen(srcPath, "rb");
     if(!(fSrc=osFileOpen(srcPath, "rb"))) goto end;
     if(!(fDst=osFileOpen(dstPath, "wb"))) goto end;
 

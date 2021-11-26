@@ -17,8 +17,8 @@
 // This file implements the socket connection to a program and its protocol, in a dedicated thread.
 
 // System
-#include <string.h>
-#include <stdio.h>
+#include <cstring>
+#include <cstdio>
 #include <chrono>
 #include <algorithm>
 #include <iterator>
@@ -664,7 +664,7 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
 }
 
 #define CHECK_TLV_PAYLOAD_SIZE(expectedSize, name)                      \
-    if(tlvLength!=expectedSize) {                                       \
+    if(tlvLength!=(expectedSize)) {                                     \
         errorMsg = "Client send a corrupted " name " TLV";              \
         return -1;                                                      \
     }
@@ -699,7 +699,7 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
         errorMsg = "Client did not send the full connection establishment header.";
         return -1;
     }
-    if(strncmp((char*)&header[0], "PL-MAGIC", 8)) {
+    if(strncmp((char*)&header[0], "PL-MAGIC", 8)!=0) {
         errorMsg = "Client sent bad connection magic (probably not a Palanteer client)";
         return -1;
     }
@@ -924,7 +924,7 @@ cmCnx::processNewEvents(int streamId, u8* buf, int eventQty)
     // Compact model: conversion required
     static_assert(sizeof(plPriv::EventExtCompact)==12, "Bad size of compact exchange event structure");
     static_assert(sizeof(plPriv::EventExt       )==24, "Bad size of exchange event structure");
-    _conversionBuffer.resize(eventQty*sizeof(plPriv::EventExt));
+    _conversionBuffer.resize(eventQty*(int)sizeof(plPriv::EventExt));
 
     plPriv::EventExtCompact* src = (plPriv::EventExtCompact*)buf;
     plPriv::EventExt*        dst = (plPriv::EventExt*)&_conversionBuffer[0];

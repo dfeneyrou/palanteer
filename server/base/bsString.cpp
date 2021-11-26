@@ -21,7 +21,7 @@
 // SOFTWARE.
 
 // System
-#include <string.h>
+#include <cstring>
 
 // Internal
 #include "bsString.h"
@@ -148,7 +148,7 @@ int
 bsString::findChar(char c) const
 {
     for(int i=0; i<size(); ++i) {
-        if(_array[i]==c) return i;
+        if(_array[i]==(u8)c) return i;
     }
     return -1;
 }
@@ -158,7 +158,7 @@ int
 bsString::rfindChar(char c) const
 {
     for(int i=size()-1; i>=0; --i) {
-        if(_array[i]==c) return i;
+        if(_array[i]==(u8)c) return i;
     }
     return -1;
 }

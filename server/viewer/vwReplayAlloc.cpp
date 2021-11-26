@@ -18,7 +18,7 @@
 // See http://gee.cs.oswego.edu/dl/html/malloc.html
 
 // System
-#include <math.h>
+#include <cmath>
 
 // Internal
 #include "vwReplayAlloc.h"

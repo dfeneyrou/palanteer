@@ -17,8 +17,8 @@
 // This file implements the histogram view
 
 // System
-#include <math.h>
-#include <inttypes.h>
+#include <cmath>
+#include <cinttypes>
 
 #include "cmRecord.h"
 #include "vwConst.h"
@@ -599,12 +599,9 @@ vwMain::drawHistogram(int histogramIdx)
     if(!isWindowHovered || highlightedIdx<0 || highlightedIdx>=h.data.size()) highlightedIdx = -1;
     if(highlightedIdx>=0) { // Refine to hit only hovering the primitives (cumulative point and drawn bar)
         const HistoData& hd = h.data[highlightedIdx];
-        if(hd.qty==0) highlightedIdx = -1;
-        else if(mouseY<yLowest-bsMax(yHistFactor*hd.qty, MIN_BAR_HEIGHT) &&
-                bsAbs(mouseY-(yLowest-yCumulFactor*hd.cumulQty))>1.5*pointSize) {
-            highlightedIdx = -1;
-        } else if(mouseX<winX-scrollX+uMargin+highlightedIdx*barTotalWidth+halfBarSpacing ||
-                  mouseX>winX-scrollX+uMargin+(highlightedIdx+1)*barTotalWidth-halfBarSpacing) {
+        if(hd.qty==0 ||
+           (mouseY<yLowest-bsMax(yHistFactor*hd.qty, MIN_BAR_HEIGHT) && bsAbs(mouseY-(yLowest-yCumulFactor*hd.cumulQty))>1.5*pointSize) ||
+           (mouseX<winX-scrollX+uMargin+highlightedIdx*barTotalWidth+halfBarSpacing || mouseX>winX-scrollX+uMargin+(highlightedIdx+1)*barTotalWidth-halfBarSpacing)) {
             highlightedIdx = -1;
         }
     }

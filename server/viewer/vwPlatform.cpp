@@ -18,8 +18,8 @@
 // Drawing is subcontracted to the graphic backend
 
 // System
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 // External
@@ -333,7 +333,7 @@ vwPlatform::redraw(void)
     if(dirtyRedrawCount<=0 && !(bounceCount==1 && currentTimeUs-_lastRenderingTimeUs>=BOUNCE_RENDER_GAP_US)) {
         return false; // Display is not dirty and it is not a bounce time: nothing to display
     }
-#define WRITE_DIRTY_COUNT(drc,bc) _dirtyRedrawCount.store((((u64)bc)<<32) | ((u32)(drc&0xFFFFFFFF)))
+#define WRITE_DIRTY_COUNT(drc,bc) _dirtyRedrawCount.store((((u64)(bc))<<32) | ((u32)((drc)&0xFFFFFFFF)))
     if(dirtyRedrawCount>=0) {
         if(dirtyRedrawCount>0) --dirtyRedrawCount;
         if(dirtyRedrawCount==0) {

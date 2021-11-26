@@ -17,7 +17,7 @@
 // This file implements the search window
 
 // System
-#include <inttypes.h>
+#include <cinttypes>
 
 #include "imgui.h"
 #include "imgui_internal.h" // For ImGui::BringWindowToDisplayFront
@@ -316,8 +316,8 @@ vwMain::drawSearch(void)
                     const cmRecord::String& name = _record->getString(nameIdx);
                     if(name.value.size()<=1 || !(name.threadBitmapAsName&threadBitmap)) continue; // Only non-empty strings related to user instrumentation for selected threads
                     const char* autoComplete = name.value.toChar();
-                    if     (!s.isInputCaseSensitive && !strcasestr(autoComplete, s.input)) continue;
-                    else if( s.isInputCaseSensitive && !strstr    (autoComplete, s.input)) continue;
+                    if((!s.isInputCaseSensitive && !strcasestr(autoComplete, s.input)) ||
+                       (s.isInputCaseSensitive && !strstr    (autoComplete, s.input))) continue;
                     s.completionNameIdxs.push_back(nameIdx);
                 }
             }
@@ -337,8 +337,10 @@ vwMain::drawSearch(void)
                     plMarker("user", "New search");
                 }
                 // Mouse, as up & down arrows,  drives selection too
-                else if(ImGui::IsItemHovered() && ImGui::GetMousePos().y!=s.lastMouseY) s.completionIdx = i;
-                else if(s.completionNameIdxs.size()==1) s.completionIdx = i;
+                else if((ImGui::IsItemHovered() && ImGui::GetMousePos().y!=s.lastMouseY) ||
+                        (s.completionNameIdxs.size()==1)) {
+                    s.completionIdx = i;
+                }
                 ImGui::PopID();
             }
 
@@ -509,7 +511,7 @@ vwMain::drawSearch(void)
         else snprintf(nameStr, maxMsgSize, "%s", _record->getString(evt.nameIdx).value.toChar());
 
         switch(v) {
-        case PL_FLAG_TYPE_DATA_NONE:      break;
+        case PL_FLAG_TYPE_DATA_NONE:
         case PL_FLAG_TYPE_DATA_TIMESTAMP: break;
         case PL_FLAG_TYPE_DATA_S32:       snprintf(valueStr, maxMsgSize, "%d",  evt.vInt); break;
         case PL_FLAG_TYPE_DATA_U32:       snprintf(valueStr, maxMsgSize, "%u",  evt.vU32); break;

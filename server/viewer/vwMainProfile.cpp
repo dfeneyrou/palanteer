@@ -18,7 +18,7 @@
 
 // System
 #include <algorithm>
-#include <math.h>
+#include <cmath>
 #include <cinttypes>
 
 // Internal
@@ -92,7 +92,7 @@ vwMain::addProfileScope(int id, ProfileKind kind, int threadId, int nestingLevel
 
 void
 vwMain::_addProfileStack(Profile& prof, const bsString& name, s64 startTimeNs, s64 timeRangeNs,
-                          bool addFakeRootNode, int startNestingLevel, bsVec<u32> scopeLIndexes)
+                          bool addFakeRootNode, int startNestingLevel, const bsVec<u32>& scopeLIndexes)
 {
     // Store the finalized profile infos
     prof.name        = name;
@@ -617,7 +617,7 @@ vwMain::_drawTextProfile(Profile& prof)
                 if(!lkup.empty() && sortsSpecs->SpecsCount>0) {
                     s64 direction = (sortsSpecs->Specs->SortDirection==ImGuiSortDirection_Ascending)? 1 : -1;
                     if(sortsSpecs->Specs->ColumnIndex==0) {
-                        std::stable_sort(lkup.begin(), lkup.end(), [direction, &data](const int a, const int b)->bool \
+                        std::stable_sort(lkup.begin(), lkup.end(), [direction](const int a, const int b)->bool \
                         { return direction*(a-b)<=0; } );
                     }
                     if(sortsSpecs->Specs->ColumnIndex==1 || sortsSpecs->Specs->ColumnIndex==2) {

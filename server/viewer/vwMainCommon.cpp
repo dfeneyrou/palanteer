@@ -18,8 +18,8 @@
 
 // System
 #include <algorithm>
-#include <math.h>
-#include <inttypes.h>
+#include <cmath>
+#include <cinttypes>
 
 // Internal
 #include "cmRecord.h"
@@ -256,7 +256,7 @@ vwMain::precomputeRecordDisplay(void)
         constexpr s64 fixedRecordLengthBeforeMoveNs = 5000000000;
         const s64 recordDurationNs = _record->durationNs;
 #define LOOP_LIVE_RANGE(array)                                          \
-        for(auto& t : array) {                                          \
+        for(auto& t : (array)) {                                        \
             if(recordDurationNs<=fixedRecordLengthBeforeMoveNs) {       \
                 t.setView(0, recordDurationNs, true);                   \
                 t.checkTimeBounds(recordDurationNs);                    \
@@ -332,7 +332,7 @@ void
 vwMain::getSynchronizedRange(int syncMode, s64& startTimeNs, s64& timeRangeNs)
 {
 #define LOOP_GET_RANGE(array)                   \
-    for(auto& t : array) {                      \
+    for(auto& t : (array)) {                    \
         if(t.syncMode!=syncMode) continue;      \
         startTimeNs = t.getStartTimeNs();       \
         timeRangeNs = t.getTimeRangeNs();       \
@@ -354,7 +354,7 @@ vwMain::synchronizeNewRange(int syncMode, s64 startTimeNs, s64 timeRangeNs)
 {
     if(syncMode<=0) return; // Source is not synchronized
 #define LOOP_SET_RANGE(array)                   \
-    for(auto& t : array) {                      \
+    for(auto& t : (array)) {                    \
         if(t.syncMode!=syncMode) continue;      \
         t.setView(startTimeNs, timeRangeNs);    \
     }
@@ -370,7 +370,7 @@ vwMain::ensureThreadVisibility(int syncMode, int threadId)
 {
     if(syncMode<=0) return; // Source is not synchronized
 #define LOOP_VISIBILITY(array)                  \
-    for(auto& t : array) {                      \
+    for(auto& t : (array)) {                    \
         if(t.syncMode!=syncMode) continue;      \
         t.ensureThreadVisibility(threadId);     \
     }
@@ -1312,16 +1312,16 @@ vwMain::drawTimeRuler(float winX, float winY, float winWidth, float rulerHeight,
     for(auto& tw: _texts) {
         ImColor colorThread = getConfig().getThreadColor(tw.threadId);
         colorThread.Value.w = 0.5f; // Make the bar slightly transparent to handle overlaps
-        float x1 = winX+rbWidth*(float)(tw.firstTimeNs/recordDurationNs);
-        float x2 = bsMax(x1+2.f, winX+rbWidth*(float)(tw.lastTimeNs/recordDurationNs));
+        float x1 = winX+rbWidth*(float)((double)tw.firstTimeNs/(double)recordDurationNs);
+        float x2 = bsMax(x1+2.f, winX+rbWidth*(float)((double)tw.lastTimeNs/(double)recordDurationNs));
         DRAWLIST->AddRectFilled(ImVec2(x1, winY+6.f), ImVec2(x2, winY+rbHeight-6.f), colorThread);
     }
     for(auto& mw: _memTimelines) {
         if(mw.allocBlockThreadId<0) continue;
         ImColor colorThread = getConfig().getThreadColor(mw.allocBlockThreadId);
         colorThread.Value.w = 0.5f; // Make the bar slightly transparent to handle overlaps
-        float x1 = winX+rbWidth*(float)(mw.allocBlockStartTimeNs/recordDurationNs);
-        float x2 = bsMax(x1+2.f, winX+rbWidth*(float)(mw.allocBlockEndTimeNs/recordDurationNs));
+        float x1 = winX+rbWidth*(float)((double)mw.allocBlockStartTimeNs/(double)recordDurationNs);
+        float x2 = bsMax(x1+2.f, winX+rbWidth*(float)((double)mw.allocBlockEndTimeNs/(double)recordDurationNs));
         DRAWLIST->AddRectFilled(ImVec2(x1, winY+6.f), ImVec2(x2, winY+rbHeight-6.f), colorThread);
     }
 

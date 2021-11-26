@@ -17,8 +17,8 @@
 // This file implements the plot view
 
 // System
-#include <math.h>
-#include <inttypes.h>
+#include <cmath>
+#include <cinttypes>
 
 // Internal
 #include "cmRecord.h"

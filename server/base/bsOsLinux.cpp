@@ -29,9 +29,9 @@
 #endif
 
 // System
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
@@ -175,7 +175,7 @@ osCreateWindow(const char* windowTitle, const char* configName, float ratioLeft,
     int dHeight   = DisplayHeight  (gGlob.xDisplay, defaultScreenId);
 
     // Compute DPI
-#define COMPUTE_DPI(pix, mm) (int)(9.6*((int)(((double)pix)/((double)mm)*(254./96.)+0.5)))  /* Quantize the DPI each 5%, to clean approximated values */
+#define COMPUTE_DPI(pix, mm) (int)(9.6*((int)(((double)(pix))/((double)(mm))*(254./96.)+0.5)))  /* Quantize the DPI each 5%, to clean approximated values */
     int dWidthMm    = DisplayWidthMM (gGlob.xDisplay, defaultScreenId); // In millimeter
     int dHeightMm   = DisplayHeightMM(gGlob.xDisplay, defaultScreenId);
     gGlob.dpiWidth  = COMPUTE_DPI(dWidth, dWidthMm);
@@ -470,7 +470,7 @@ answerReqClipboard(void)
 {
     Atom da, incr, type;
     int di;
-    unsigned long size, dul;
+    uint64_t size, dul;
     unsigned char* prop_ret = NULL;
     // Dummy call to get type and size
     XGetWindowProperty(gGlob.xDisplay, gGlob.windowHandle, gClip.aMyProperty, 0, 0, False, AnyPropertyType, &type, &di, &dul, &size, &prop_ret);
@@ -566,7 +566,7 @@ keysymToKeycode(KeySym symbol)
     case XK_backslash:    return KC_Backslash;
     case XK_grave:        return KC_Tilde;
     case XK_space:        return KC_Space;
-    case XK_Return:       return KC_Enter;
+    case XK_Return:
     case XK_KP_Enter:     return KC_Enter;
     case XK_BackSpace:    return KC_Backspace;
     case XK_Tab:          return KC_Tab;
@@ -916,7 +916,7 @@ osLoadFileContent(const bsString& path, bsVec<u8>& buffer, int maxSize)
     FILE* fh = osFileOpen(path, "rb");
     if(!fh) return false;
     // Read it in buffer
-    buffer.resize(fileSize);
+    buffer.resize((int)fileSize);
     if(fread(&buffer[0], 1, fileSize, fh)!=fileSize) {
         buffer.clear();
         fclose(fh);
@@ -937,17 +937,18 @@ osCopyFile(const bsString& srcPath, const bsString& dstPath)
     FILE *fSrc = 0, *fDst = 0;
 
     // Open the 2 files
-    fSrc = osFileOpen(srcPath, "rb");
     if(!(fSrc=osFileOpen(srcPath, "rb"))) goto end;
     if(!(fDst=osFileOpen(dstPath, "wb"))) goto end;
+    isSuccess = true;
 
     // Read per chunk
     chunk = new u8[chunkSize];
     int readBytes;
-    while((readBytes=fread(chunk, 1, chunkSize, fSrc))>0) {
-        fwrite(chunk, 1, readBytes, fDst);
+    while(isSuccess && (readBytes=(int)fread(chunk, 1, chunkSize, fSrc))>0) {
+        if((int)fwrite(chunk, 1, readBytes, fDst)!=readBytes) {
+            isSuccess = false;
+        }
     }
-    isSuccess = true;
 
  end:
     if(fSrc) fclose(fSrc);

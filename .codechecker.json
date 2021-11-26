@@ -1,0 +1,31 @@
+{
+    "analyze": [
+        "--skip=$HOME/codechecker/skip_palanteer.txt",
+        "--disable=cert-err34-c",
+        "--disable=bugprone-incorrect-roundings",
+        "--disable=bugprone-narrowing-conversions",
+        "--disable=bugprone-reserved-identifier",
+        "--disable=cppcoreguidelines-special-member-functions",
+        "--disable=cert-dcl21-cpp",
+        "--disable=cert-dcl37-c",
+        "--disable=cert-dcl50-cpp",
+        "--disable=cert-dcl51-cpp",
+        "--disable=cert-err58-cpp",
+        "--disable=misc-definitions-in-headers",
+        "--disable=performance-no-int-to-ptr",
+        "--disable=google-explicit-constructor",
+        "--disable=deadcode.DeadStores"
+    ],
+    "parse": [
+        "--trim-path-prefix",
+        "$HOME/codechecker"
+    ],
+    "server": [
+        "--workspace=$HOME/workspace",
+        "--port=9090"
+    ],
+    "store": [
+        "--name=palanteer",
+        "--url=http://codechecker.my:9090/palanteer"
+    ]
+}

@@ -137,7 +137,7 @@ vwMain::drawRecord(void)
 #define DUMP_STAT_EVENT(name, qty)                                      \
                     ImGui::TableNextColumn(); ImGui::Text(name); ImGui::TableNextColumn(); \
                     ImGui::TextColored(vwConst::grey, "%s events (%d%%)", getNiceBigPositiveNumber(qty), \
-                                       (int)((100LL*qty+totalEventQty/2)/totalEventQty))
+                                       (int)((100LL*(qty)+totalEventQty/2)/totalEventQty))
                     DUMP_STAT_EVENT("Generic",    _record->elemEventQty);
                     DUMP_STAT_EVENT("Memory",     _record->memEventQty);
                     DUMP_STAT_EVENT("Lock",       _record->lockEventQty);
@@ -251,7 +251,7 @@ vwMain::drawRecord(void)
                             }
                             if(sortsSpecs->Specs->ColumnIndex==3) {
                                 std::stable_sort(_record->errors, _record->errors+_record->errorQty,
-                                                 [direction, this](const cmRecord::RecError& a, const cmRecord::RecError& b)->bool
+                                                 [direction](const cmRecord::RecError& a, const cmRecord::RecError& b)->bool
                                                  { return direction*((int)a.count-(int)b.count)<=0; } );
                             }
                             if(sortsSpecs->Specs->ColumnIndex==4) {
@@ -262,7 +262,7 @@ vwMain::drawRecord(void)
                             }
                             if(sortsSpecs->Specs->ColumnIndex==5) {
                                 std::stable_sort(_record->errors, _record->errors+_record->errorQty,
-                                                 [direction, this](const cmRecord::RecError& a, const cmRecord::RecError& b)->bool
+                                                 [direction](const cmRecord::RecError& a, const cmRecord::RecError& b)->bool
                                                  { return direction*((int)a.lineNbr-(int)b.lineNbr)<=0; } );
                             }
                          }

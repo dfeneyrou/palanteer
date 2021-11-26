@@ -138,7 +138,7 @@ vwMain::prepareText(Text& t)
 
         // End of scope: update level and the scope end time, not set in this case
         if((flags&PL_FLAG_SCOPE_MASK)==PL_FLAG_SCOPE_END) {
-            --level;
+            if(level>0) --level;
             scopeEndTimeNs = evt.vS64;
         }
 

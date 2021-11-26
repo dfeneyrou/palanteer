@@ -557,7 +557,7 @@ private:
     bsVec<Profile> _profiles;
     int            _profiledCmDataIdx = -1;
     void _addProfileStack(Profile& prof, const bsString& name, s64 startTimeNs, s64 timeRangeNs,
-                          bool addFakeRootNode, int startNestingLevel, bsVec<u32> scopeLIndexes);
+                          bool addFakeRootNode, int startNestingLevel, const bsVec<u32>& scopeLIndexes);
     bool _computeChunkProfileStack(Profile& prof);
     void _drawTextProfile(Profile& prof);
     void _drawFlameGraph(bool doDrawDownward, Profile& prof);

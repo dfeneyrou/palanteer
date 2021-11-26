@@ -17,8 +17,8 @@
 // This file implements the recording functionality (live or import) and saves the record file.
 
 // System
-#include <string.h>
-#include <stdio.h>
+#include <cstring>
+#include <cstdio>
 #include <chrono>
 #include <algorithm>
 
@@ -216,13 +216,13 @@ cmRecording::storeNewString(int streamId, const bsString& newString, u64 hash)
 
 
 #define INSERT_IN_ELEM(elem_, elemIdx_, lIdx_, time_, value_, threadBitmap_) \
-    elem_.chunkLIdx  .push_back(lIdx_);                                 \
-    elem_.chunkTimes .push_back(time_);                                 \
-    elem_.chunkValues.push_back(value_);                                \
-    elem_.threadBitmap |= threadBitmap_;                                \
-    plAssert(elem_.chunkLIdx.size()<=cmElemChunkSize, elem_.chunkLIdx.size(), cmElemChunkSize); \
-    if(elem_.chunkLIdx.size()==cmElemChunkSize) writeElemChunk(elem_);   \
-    if(!elem_.hasDeltaChanges) { elem_.hasDeltaChanges = true; _recUpdatedElemIds.push_back(elemIdx_); }
+    (elem_).chunkLIdx  .push_back(lIdx_);                               \
+    (elem_).chunkTimes .push_back(time_);                               \
+    (elem_).chunkValues.push_back(value_);                              \
+    (elem_).threadBitmap |= (threadBitmap_);                            \
+    plAssert((elem_).chunkLIdx.size()<=cmElemChunkSize, (elem_).chunkLIdx.size(), cmElemChunkSize); \
+    if((elem_).chunkLIdx.size()==cmElemChunkSize) writeElemChunk((elem_)); \
+    if(!(elem_).hasDeltaChanges) { (elem_).hasDeltaChanges = true; _recUpdatedElemIds.push_back(elemIdx_); }
 
 
 void
@@ -233,7 +233,7 @@ cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     if(_recGlobal.markerChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.markerChunkData, _recGlobal.markerChunkLocs);
     _recGlobal.markerChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, { evtx.filenameIdx },
                                                          evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                         (u64)evtx.vS64 } );
+                                                         { (u64)evtx.vS64 } } );
     ++tc.markerEventQty;
     ++_recMarkerEventQty;
     u32 lIdx = _recGlobal.markerChunkLocs.size()*cmChunkSize+_recGlobal.markerChunkData.size()-1;
@@ -314,7 +314,7 @@ cmRecording::processLockNotifyEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int
     if(_recGlobal.lockNtfChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.lockNtfChunkData, _recGlobal.lockNtfChunkLocs);
     _recGlobal.lockNtfChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, { evtx.filenameIdx },
                                                           evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                          (u64)evtx.vS64 } );
+                                                          { (u64)evtx.vS64 } } );
     ++tc.lockEventQty;
     ++_recLockEventQty;
     u32 lIdx = _recGlobal.lockNtfChunkLocs.size()*cmChunkSize+_recGlobal.lockNtfChunkData.size()-1;
@@ -356,7 +356,7 @@ cmRecording::processLockWaitEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int l
     if(tc.lockWaitChunkData.size()==cmChunkSize) writeGenericChunk(tc.lockWaitChunkData, tc.lockWaitChunkLocs);
     tc.lockWaitChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
                                                    evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                   (u64)evtx.vS64 } );
+                                                   { (u64)evtx.vS64 } } );
     ++_recLockEventQty;
     ++tc.lockEventQty;
 
@@ -444,7 +444,7 @@ cmRecording::processLockUseEvent(int streamId, plPriv::EventExt& evtx, bool& doI
     if(_recGlobal.lockUseChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.lockUseChunkData, _recGlobal.lockUseChunkLocs);
     _recGlobal.lockUseChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
                                                           evtx.threadId, 0, evtx.flags, 0, evtx.lineNbr, 0,
-                                                          (u64)evtx.vS64 } );
+                                                          { (u64)evtx.vS64 } } );
 
     if(lock.isInUse) {
         // Lock is acquired, store the information
@@ -501,7 +501,7 @@ cmRecording::processCtxSwitchEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     if(tc.ctxSwitchChunkData.size()==cmChunkSize) writeGenericChunk(tc.ctxSwitchChunkData, tc.ctxSwitchChunkLocs);
     tc.ctxSwitchChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
                                                     evtx.threadId, 0, evtx.flags, 0, 0, 0,
-                                                    (u64)evtx.vS64 } );
+                                                    { (u64)evtx.vS64 } } );
     ++_recCtxSwitchEventQty;
     ++tc.ctxSwitchEventQty;
     // Get the elem from the path hash   @#SIMPLIFY The assumption about mandatory thread declaration below is no more true. We can use the threadHash as for all other cases. Iterator shall be updated too
@@ -538,7 +538,7 @@ cmRecording::processSoftIrqEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     if(tc.softIrqChunkData.size()==cmChunkSize) writeGenericChunk(tc.softIrqChunkData, tc.softIrqChunkLocs);
     tc.softIrqChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
                                                   evtx.threadId, 0, evtx.flags, 0, 0, 0,
-                                                  (u64)evtx.vS64 } );
+                                                  { (u64)evtx.vS64 } } );
     ++_recCtxSwitchEventQty;
 
     // Get the elem from the path hash
@@ -589,7 +589,7 @@ cmRecording::processCoreUsageEvent(int streamId, plPriv::EventExt& evtx)
     if(_recGlobal.coreUsageChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.coreUsageChunkData, _recGlobal.coreUsageChunkLocs);
     _recGlobal.coreUsageChunkData.push_back(cmRecord::Evt { {{(u32)_recUsedCoreCount, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
                                                             evtx.threadId, 0, PL_FLAG_TYPE_CSWITCH, 0, 0, 0,
-                                                            (u64)evtx.vS64 } );
+                                                            { (u64)evtx.vS64 } } );
     ++_recCtxSwitchEventQty;
 
     // Get the elem for this core
@@ -693,14 +693,14 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
         if(tc.memAllocChunkData.size()==cmChunkSize) writeGenericChunk(tc.memAllocChunkData, tc.memAllocChunkLocs);
         tc.memAllocChunkData.push_back(cmRecord::Evt{ {{PL_INVALID, lc.lastAllocSize}}, evtx.nameIdx, {tc.levels[level].parentNameIdx},
                                                       evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                      evtx.vU64 });
+                                                      { evtx.vU64 } });
         tc.memDeallocMIdx.push_back(PL_INVALID); // If not leaked, will be overwritten when deallocated
 
         // Store the new "alloc call" elem (plottable)
         if(tc.memPlotChunkData.size()==cmChunkSize) writeGenericChunk(tc.memPlotChunkData, tc.memPlotChunkLocs);
         tc.memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, tc.levels[level].parentNameIdx, {0},
                                                      evtx.threadId, (u8)(level-1), tc.levels[level].parentFlags, 0, evtx.lineNbr, 0,
-                                                     evtx.vU64 });
+                                                     { evtx.vU64 } });
         tc.memPlotChunkData.back().memElemValue = tc.sumAllocQty;
     }
 
@@ -741,13 +741,13 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
             tcAlloc->memDeallocMIdx[allocElems.mIdx] = deallocMIdx;
             tcAlloc->memDeallocChunkData.push_back(cmRecord::Evt { {{PL_INVALID, allocElems.mIdx}}, evtx.nameIdx, {tc.levels[level].parentNameIdx},
                                                                    evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                                   evtx.vU64 } );
+                                                                   { evtx.vU64 } } );
 
             // Store the new "dealloc call" elem (plottable)
             if(tcAlloc->memPlotChunkData.size()==cmChunkSize) writeGenericChunk(tcAlloc->memPlotChunkData, tcAlloc->memPlotChunkLocs);
             tcAlloc->memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, tc.levels[level].parentNameIdx, {0},
                                                                evtx.threadId, (u8)(level-1), tc.levels[level].parentFlags, 0, evtx.lineNbr, 0,
-                                                               evtx.vU64 });
+                                                               { evtx.vU64 } });
             tcAlloc->memPlotChunkData.back().memElemValue = tcAlloc->sumDeallocQty;
         }
         lc.lastDeallocPtr = 0;
@@ -761,7 +761,7 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
     if(tcAlloc->memPlotChunkData.size()==cmChunkSize) writeGenericChunk(tcAlloc->memPlotChunkData, tcAlloc->memPlotChunkLocs);
     tcAlloc->memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, evtx.nameIdx, {tc.levels[level].parentNameIdx},
                                                        (u8)allocThreadId, (u8)(level-1), tc.levels[level].parentFlags, 0, evtx.lineNbr, 0,
-                                                       evtx.vU64 });
+                                                       { evtx.vU64 } });
     tcAlloc->memPlotChunkData.back().memElemValue = (s64)(_recThreads[allocThreadId].sumAllocSize-_recThreads[allocThreadId].sumDeallocSize);
 
     // Update the elem "allocSize" with the new element
@@ -848,17 +848,17 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
 
     // Last linkLIdx shall point to its next item, except for "begin scope" which points to the first child in the next level
 #define UPDATE_LINK(paramLc, paramLevel, paramCurrentLIdx, paramIsAScope) \
-    if(paramLc.lastIsScope) {                                           \
-        if(!paramLc.scopeChunkData.empty() && !(paramLc.scopeChunkData.back().flags&PL_FLAG_SCOPE_BEGIN)) \
-            paramLc.scopeChunkData.back().linkLIdx = paramCurrentLIdx;  \
+    if((paramLc).lastIsScope) {                                           \
+        if(!(paramLc).scopeChunkData.empty() && !((paramLc).scopeChunkData.back().flags&PL_FLAG_SCOPE_BEGIN)) \
+            (paramLc).scopeChunkData.back().linkLIdx = paramCurrentLIdx;  \
     } else {                                                            \
-        if(!paramLc.nonScopeChunkData.empty())                          \
-            paramLc.nonScopeChunkData.back().linkLIdx = paramCurrentLIdx; \
+        if(!(paramLc).nonScopeChunkData.empty())                          \
+            (paramLc).nonScopeChunkData.back().linkLIdx = paramCurrentLIdx; \
     }                                                                   \
-    paramLc.lastIsScope = paramIsAScope;                                \
-    if(paramLevel>0 && tc.levels[paramLevel-1].scopeChunkData.back().linkLIdx==PL_INVALID) { \
-        plAssert(tc.levels[paramLevel-1].scopeChunkData.back().flags&PL_FLAG_SCOPE_BEGIN); \
-        tc.levels[paramLevel-1].scopeChunkData.back().linkLIdx = paramCurrentLIdx; \
+    (paramLc).lastIsScope = paramIsAScope;                                \
+    if((paramLevel)>0 && tc.levels[(paramLevel)-1].scopeChunkData.back().linkLIdx==PL_INVALID) { \
+        plAssert(tc.levels[(paramLevel)-1].scopeChunkData.back().flags&PL_FLAG_SCOPE_BEGIN); \
+        tc.levels[(paramLevel)-1].scopeChunkData.back().linkLIdx = paramCurrentLIdx; \
     }
 
     NestingLevelBuild& lc = tc.levels[level];
@@ -900,7 +900,7 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
                 if(lcc.nonScopeChunkData.size()==cmChunkSize) writeGenericChunk(lcc.nonScopeChunkData, lcc.nonScopeChunkLocs);
                 lcc.nonScopeChunkData.push_back(cmRecord::Evt { {{tc.levels[level].scopeCurrentLIdx, PL_INVALID}}, 0, {0},
                                                                 evtx.threadId, (u8)(level+1), PL_FLAG_TYPE_ALLOC, 0, evtx.lineNbr, 0,
-                                                               ( ((tc.sumAllocQty-lc.beginSumAllocQty)<<32) | bsMin((u64)0xFFFFFFFFULL, tc.sumAllocSize-lc.beginSumAllocSize) ) } );
+                                                                { ( ((tc.sumAllocQty-lc.beginSumAllocQty)<<32) | bsMin((u64)0xFFFFFFFFULL, tc.sumAllocSize-lc.beginSumAllocSize) ) } } );
                 ++tc.elemEventQty;
                 ++_recElemEventQty;
             }
@@ -911,7 +911,7 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
                 if(lcc.nonScopeChunkData.size()==cmChunkSize) writeGenericChunk(lcc.nonScopeChunkData, lcc.nonScopeChunkLocs);
                 lcc.nonScopeChunkData.push_back(cmRecord::Evt { {{tc.levels[level].scopeCurrentLIdx, PL_INVALID}}, 0, {0},
                                                                 evtx.threadId, (u8)(level+1), PL_FLAG_TYPE_DEALLOC, 0, evtx.lineNbr, 0,
-                                                               ( ((tc.sumDeallocQty-lc.beginSumDeallocQty)<<32) | bsMin((u64)0xFFFFFFFFULL, tc.sumDeallocSize-lc.beginSumDeallocSize) ) } );
+                                                                { ( ((tc.sumDeallocQty-lc.beginSumDeallocQty)<<32) | bsMin((u64)0xFFFFFFFFULL, tc.sumDeallocSize-lc.beginSumDeallocSize) ) } } );
                 ++tc.elemEventQty;
                 ++_recElemEventQty;
             }
@@ -953,13 +953,13 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
             // Store the "scope" event
             lc.scopeChunkData.push_back(cmRecord::Evt { {{parentIdx, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
                                                         evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                        evtx.vU64 } );
+                                                        { evtx.vU64 } } );
             lc.scopeCurrentLIdx = currentLIdx;
         } else {
             // Store the "flat" event
             lc.nonScopeChunkData.push_back(cmRecord::Evt { {{parentIdx, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
                                                            evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                           evtx.vU64 } );
+                                                           { evtx.vU64 } } );
         }
 
         // Get the elem from the path hash
@@ -1722,7 +1722,7 @@ cmRecording::endRecord(void)
     if(emptyIdx==(u32)_recStrings.size()) storeNewString(0, "", _hashEmptyString);
 
     // Force the closing of all open blocks
-    plPriv::EventExt endEvtx = { 0, PL_FLAG_TYPE_DATA_TIMESTAMP | PL_FLAG_SCOPE_END, 0, emptyIdx, emptyIdx, 0, {0} };
+    plPriv::EventExt endEvtx = { 0, PL_FLAG_TYPE_DATA_TIMESTAMP | PL_FLAG_SCOPE_END, 0, { emptyIdx } , { emptyIdx }, 0, {0} };
     endEvtx.vS64 = _recDurationNs;
     for(int threadId=0; threadId<_recThreads.size(); ++threadId) {
         ThreadBuild& tc  = _recThreads[threadId];

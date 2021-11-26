@@ -73,18 +73,18 @@
 // The maximum byte size of a received remote request (at least 64 bytes)
 // Such buffer will be allocated twice (once for remote request reception, once for CLI parameter work buffer)
 #ifndef PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY
-#define PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY 8*1024
+#define PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY (8*1024)
 #endif
 
 // The maximum byte size of a remote CLI response (at least 64 bytes)
 // Such buffer will be allocated 3 times (CLI response building, generic command response and one for lock free sending)
 #ifndef PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY
-#define PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY 8*1024
+#define PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY (8*1024)
 #endif
 
 // The byte size of the buffer to send a batch of newly seen strings (at least 128 bytes or the size of the longest string), allocated once
 #ifndef PL_IMPL_STRING_BUFFER_BYTE_QTY
-#define PL_IMPL_STRING_BUFFER_BYTE_QTY 8*1024
+#define PL_IMPL_STRING_BUFFER_BYTE_QTY (8*1024)
 #endif
 
 // The expected known string quantity which defines the initial allocation of the lookup hash->string.
@@ -352,7 +352,7 @@
 #endif // if (USE_PL==1 && (PL_NOCONTROL==0 || PL_NOEVENT==0)) || PL_EXPORT==1
 
 #if (USE_PL==1 && PL_NOCONTROL==0) || PL_EXPORT==1
-#include <stdarg.h>  // For variable argument in the CLI response creation
+#include <cstdarg>  // For variable argument in the CLI response creation
 #endif // if if (USE_PL==1 && PL_NOCONTROL==0) || PL_EXPORT==1
 
 
@@ -489,7 +489,7 @@ void plDetachVirtualThread(bool isSuspended);
 
 // Sets the name of the current thread. Only first call is taken into account
 // Calls can happen before service is started and are persistent across multiple starts. This eases the "on demand" profiling
-#define plDeclareThread(name_) plPriv::declareThread(PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:name_, PL_STORE_COLLECT_CASE_, false);
+#define plDeclareThread(name_) plPriv::declareThread(PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:(name_), PL_STORE_COLLECT_CASE_, false);
 #define plDeclareThreadDyn(format_,...)                                 \
     do { char name_[PL_DYN_STRING_MAX_SIZE];                            \
         plPriv::formatDynString(name_, format_,##__VA_ARGS__);          \
@@ -515,24 +515,24 @@ void plDetachVirtualThread(bool isSuspended);
 // Tracks the scope between begin and end calls (which shall have exactly the same name)
 #define plBegin(name_)                                                  \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, \
                                 PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC()); \
     } while(0)
 #define plEnd(name_)                                                    \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, \
                                 PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_END | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC()); \
     } while(0)
 #define plgBegin(group_, name_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plBegin(name_),do {} while(0))
 #define plgEnd(group_, name_)   PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plEnd(name_),do {} while(0))
 #define plBeginDyn(name_)                                               \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, \
                                        PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC()); \
     } while(0)
 #define plEndDyn(name_)                                                 \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, \
                                        PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_END | PL_FLAG_TYPE_DATA_TIMESTAMP, PL_GET_CLOCK_TICK_FUNC()); \
     } while(0)
 #define plgBeginDyn(group_, name_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plBeginDyn(name_),do {} while(0))
@@ -541,7 +541,7 @@ void plDetachVirtualThread(bool isSuspended);
 // Log a numeric event with a name and a value. Optionally, the words after "##" in the name is the unit (for grouping curves)
 #define plData(name_, value_)                                          \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogData(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, PL_STORE_COLLECT_CASE_, value_); \
+            plPriv::eventLogData(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, PL_STORE_COLLECT_CASE_, value_); \
     } while(0)
 #define plgData(group_, name_, value_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plData(name_, value_), do {} while(0))
 
@@ -570,7 +570,7 @@ void plDetachVirtualThread(bool isSuspended);
 // Log a named & categorized & dated event that shall be highlighted in the viewer. Filename is not tracked (no enough space)
 #define plMarker(category_, msg_)                                       \
     do { if(PL_IS_ENABLED_()) {                                         \
-            plPriv::eventLogRaw(PL_STRINGHASH(msg_), PL_STRINGHASH(category_), PL_EXTERNAL_STRINGS?0:msg_, PL_EXTERNAL_STRINGS?0:category_, __LINE__, \
+            plPriv::eventLogRaw(PL_STRINGHASH(msg_), PL_STRINGHASH(category_), PL_EXTERNAL_STRINGS?0:(msg_), PL_EXTERNAL_STRINGS?0:(category_), __LINE__, \
                                 PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_MARKER, PL_GET_CLOCK_TICK_FUNC()); \
         } } while(0)
 #define plgMarker(group_, category_, msg_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plMarker(category_, msg_),do {} while(0))
@@ -589,13 +589,13 @@ void plDetachVirtualThread(bool isSuspended);
 // Call to plLockState must be called to stop the waiting
 #define plLockWait(name_)                                               \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, \
                                 PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_LOCK_WAIT, PL_GET_CLOCK_TICK_FUNC()); \
     } while(0)
 #define plgLockWait(group_, name_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plLockWait(name_),do {} while(0))
 #define plLockWaitDyn(name_)                                           \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name_, __LINE__, \
+            plPriv::eventLogRawDynName(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, (name_), __LINE__, \
                                        PL_STORE_COLLECT_CASE_, PL_FLAG_SCOPE_BEGIN | PL_FLAG_TYPE_LOCK_WAIT, PL_GET_CLOCK_TICK_FUNC()); \
     } while(0)
 #define plgLockWaitDyn(group_, name_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plLockWaitDyn(name_),do {} while(0))
@@ -605,7 +605,7 @@ void plDetachVirtualThread(bool isSuspended);
 // Shall be placed just before any "unlock" call (to prevent any race condition in traces)
 #define plLockState(name_, state_)                                      \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, \
                                 PL_STORE_COLLECT_CASE_, (state_)? PL_FLAG_TYPE_LOCK_ACQUIRED : PL_FLAG_TYPE_LOCK_RELEASED, PL_GET_CLOCK_TICK_FUNC()); \
     } while(0)
 #define plgLockState(group_, name_, state_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plLockState(name_, state_),do {} while(0))
@@ -626,7 +626,7 @@ void plDetachVirtualThread(bool isSuspended);
 // Shall be placed just before any "notify" call (i.e. semaphore posting, condition variable notify etc...)
 #define plLockNotify(name_)                                             \
     do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, \
+            plPriv::eventLogRaw(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, \
                                 PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_LOCK_NOTIFIED, PL_GET_CLOCK_TICK_FUNC()); \
     } while(0)
 #define plgLockNotify(group_, name_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plLockNotify(name_),do {} while(0))
@@ -718,12 +718,14 @@ void plDetachVirtualThread(bool isSuspended);
 #define PL_NOINLINE_PRE
 #define PL_NOINLINE_POST __attribute__ ((noinline))
 #define PL_NOINSTRUMENT  __attribute__ ((no_instrument_function))
+#define PL_NORETURN      __attribute__ ((__noreturn__))
 #else
 #define PL_LIKELY(x)   (x)
 #define PL_UNLIKELY(x) (x)
 #define PL_NOINLINE_PRE
 #define PL_NOINLINE_POST
 #define PL_NOINSTRUMENT
+#define PL_NORETURN
 #endif
 
 #define PL_UNUSED(x) ((void)(x))
@@ -833,11 +835,11 @@ struct plString_t {
 };
 
 // Macro to create a plHashString (does hash computation at compile time)
-#define plMakeString(s) plString_t(PL_EXTERNAL_STRINGS?0:s, PL_STRINGHASH(s))
+#define plMakeString(s) plString_t(PL_EXTERNAL_STRINGS?0:(s), PL_STRINGHASH(s))
 
 #if USE_PL==1
 // Break inside this function in debugger
-void plCrash(const char* message);
+void PL_NORETURN plCrash(const char* message);
 #endif // if USE_PL==1
 
 //-----------------------------------------------------------------------------
@@ -882,7 +884,7 @@ namespace plPriv {
 
     // Variadic template based assertion display
     PL_NOINLINE_PRE
-    template<typename... Args> void PL_NOINLINE_POST failedAssert(const char* filename, int lineNbr, const char* function, const char* condition, Args... args)
+    template<typename... Args> void PL_NOINLINE_POST PL_NORETURN failedAssert(const char* filename, int lineNbr, const char* function, const char* condition, Args... args)
     {
         char infoStr[CRASH_MSG_SIZE];
         int offset = snprintf(infoStr, sizeof(infoStr), "[PALANTEER] Assertion failed: %s\n  On function: %s\n  On file    : %s(%d)\n", condition, function, filename, lineNbr);
@@ -945,7 +947,7 @@ namespace plPriv {
 
     // Variadic template based assertion display
     PL_NOINLINE_PRE
-    template<typename... Args> void PL_NOINLINE_POST failedAssertEs(hashStr_t filenameHash, int lineNbr, hashStr_t conditionHash, Args... args)
+    template<typename... Args> void PL_NOINLINE_POST PL_NORETURN failedAssertEs(hashStr_t filenameHash, int lineNbr, hashStr_t conditionHash, Args... args)
     {
         char infoStr[CRASH_MSG_SIZE];
         int  offset = snprintf(infoStr, sizeof(infoStr), "[PALANTEER] Assertion failed: @@%016" PL_PRI_HASH "@@\n  On file @@%016" PL_PRI_HASH "@@(%d)\n",
@@ -978,9 +980,9 @@ namespace plPriv {
 #if USE_PL==1 && PL_NOASSERT==0
 namespace plPriv {
 #if PL_EXTERNAL_STRINGS==0
-    void failedAssertSimple(const char* filename, int lineNbr, const char* function, const char* condition);
+    void PL_NORETURN failedAssertSimple(const char* filename, int lineNbr, const char* function, const char* condition);
 #else
-    void failedAssertSimpleEs(hashStr_t filenameHash, int lineNbr, hashStr_t conditionHash);
+    void PL_NORETURN failedAssertSimpleEs(hashStr_t filenameHash, int lineNbr, hashStr_t conditionHash);
 #endif // if PL_EXTERNAL_STRINGS==0
 }
 #endif // if USE_PL==1 && PL_NOASSERT==0
@@ -1009,6 +1011,8 @@ namespace plPriv {
         inline T&       operator[](int index)       { return _array[index]; }
         inline const T& operator[](int index) const { return _array[index]; }
     private:
+        Array(const Array<T,N>& other); // To please static analyzers
+        Array<T,N>& operator=(Array<T,N> other);
         int _maxSize = 0;
         int _size    = 0;
         T*  _array   = 0;
@@ -1132,7 +1136,8 @@ public:
     int64_t     getParamInt   (int paramIdx) const {
         plAssert(paramIdx>=0 && paramIdx<_paramQty, "Wrong parameter index", paramIdx, _paramQty);
         plAssert(_paramTypes[paramIdx]==plPriv::plCliParamTypes::PL_INTEGER, "This parameter is not declared as an integer", paramIdx);
-        return _paramValues[paramIdx];
+        char* tmp = (char*)&_paramValues[paramIdx]; // Removes strict-aliasing warning
+        return *(int64_t*)tmp;
     }
 
     double      getParamFloat (int paramIdx) const {
@@ -1226,7 +1231,7 @@ typedef void (*plCliHandler_t)(plCliIo& cio);
 //  - Note that a 'string' shall not contains any space or zero. It can contain space if enclosed in a double bracket/
 //  - Warning: 'specParams' cannot be masked by the external string feature as its content is used internally
 #define plRegisterCli(handler, name, specParams, description)            \
-    plPriv::registerCli(handler, PL_EXTERNAL_STRINGS?0:name, specParams, PL_EXTERNAL_STRINGS?0:description, \
+    plPriv::registerCli(handler, PL_EXTERNAL_STRINGS?0:(name), specParams, PL_EXTERNAL_STRINGS?0:(description), \
                        PL_STRINGHASH(name), PL_STRINGHASH(specParams), PL_STRINGHASH(description))
 
 namespace plPriv {
@@ -1495,13 +1500,13 @@ namespace plPriv {
 
 #if USE_PL==1 && PL_NOEVENT==0
 
-#define PL_SCOPE__(name_, ext_) plPriv::TimedScope timedScope##ext_(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__)
+#define PL_SCOPE__(name_, ext_) plPriv::TimedScope timedScope##ext_(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__)
 #define PL_SCOPE_(name_, ext_)  PL_SCOPE__(name_, ext_)
 
 #define PL_SCOPE_DYN__(name_, ext_)  plPriv::TimedScopeDyn timedScope##ext_(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name_, __LINE__)
 #define PL_SCOPE_DYN_(name_, ext_)   PL_SCOPE_DYN__(name_, ext_)
 
-#define PL_SCOPE_LOCK__(name_, state_, ext_) plPriv::TimedLock timedLock##ext_(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:name_, __LINE__, state_)
+#define PL_SCOPE_LOCK__(name_, state_, ext_) plPriv::TimedLock timedLock##ext_(PL_STRINGHASH(PL_BASEFILENAME), PL_STRINGHASH(name_), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, PL_EXTERNAL_STRINGS?0:(name_), __LINE__, state_)
 #define PL_SCOPE_LOCK_(name_, state_, ext_)  PL_SCOPE_LOCK__(name_, state_, ext_)
 
 #define PL_SCOPE_LOCK_DYN__(name_, state_, ext_) plPriv::TimedLockDyn timedLock##ext_(PL_STRINGHASH(PL_BASEFILENAME), PL_EXTERNAL_STRINGS?0:PL_BASEFILENAME, name_, __LINE__, state_)
@@ -2011,7 +2016,6 @@ namespace plPriv {
 
 #if USE_PL==1 && PL_IMPLEMENTATION==1
 
-#include <cinttypes>          // For platform independent printf/scanf
 #include <mutex>              // Used with conditional variable
 #include <condition_variable> // For the thread freeze feature and Tx thread synchro
 
@@ -2050,7 +2054,7 @@ namespace plPriv {
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #define PL_PRIV_IS_SOCKET_VALID(s) ((s)>=0)
-#define PL_PRIV_SOCKET_ERROR -1
+#define PL_PRIV_SOCKET_ERROR (-1)
 #endif // if defined(__unix__)
 
 #if defined(_WIN32)
@@ -2396,7 +2400,7 @@ namespace plPriv {
 
     private:
         void skipSpace(const char*& s) {
-            while(*s && *s==' ') ++s;
+            while(*s==' ') ++s;
         }
         const char* getWord(const char*& s, bool doStopOnEqual=false, bool doStopOnBracket=false) {
             const char* s2 = s; while(*s && *s!=' ' && (!doStopOnEqual || *s!='=') && (!doStopOnBracket || *s!='[')) ++s; return s2;
@@ -3188,7 +3192,7 @@ namespace plPriv {
     {                                                                   \
         uint32_t stringIndex;                                           \
         if(!ic.lkupStringToIndex.find(h, stringIndex)) {                \
-            int l = 1 + (s?(int)strlen(s):0);                           \
+            int l = 1 + ((s)?(int)strlen(s):0);                         \
             if(8+l>sBuf.free_space()) {                                 \
                 sendStrings(stringQty);                                 \
                 stringQty = 0;                                          \
@@ -3197,22 +3201,22 @@ namespace plPriv {
             }                                                           \
             int sOffset = sBuf.size();                                  \
             sBuf.resize(sBuf.size()+8+l);                               \
-            sBuf[sOffset+0] = (((uint64_t)h)>>56)&0xFF;                 \
-            sBuf[sOffset+1] = (((uint64_t)h)>>48)&0xFF;                 \
-            sBuf[sOffset+2] = (((uint64_t)h)>>40)&0xFF;                 \
-            sBuf[sOffset+3] = (((uint64_t)h)>>32)&0xFF;                 \
-            sBuf[sOffset+4] = (((uint64_t)h)>>24)&0xFF;                 \
-            sBuf[sOffset+5] = (((uint64_t)h)>>16)&0xFF;                 \
-            sBuf[sOffset+6] = (((uint64_t)h)>> 8)&0xFF;                 \
-            sBuf[sOffset+7] = (((uint64_t)h)>> 0)&0xFF;                 \
+            sBuf[sOffset+0] = (((uint64_t)(h))>>56)&0xFF;                 \
+            sBuf[sOffset+1] = (((uint64_t)(h))>>48)&0xFF;                 \
+            sBuf[sOffset+2] = (((uint64_t)(h))>>40)&0xFF;                 \
+            sBuf[sOffset+3] = (((uint64_t)(h))>>32)&0xFF;                 \
+            sBuf[sOffset+4] = (((uint64_t)(h))>>24)&0xFF;                 \
+            sBuf[sOffset+5] = (((uint64_t)(h))>>16)&0xFF;                 \
+            sBuf[sOffset+6] = (((uint64_t)(h))>> 8)&0xFF;                 \
+            sBuf[sOffset+7] = (((uint64_t)(h))>> 0)&0xFF;                 \
             if(s) memcpy(&sBuf[sOffset+8], s, l);                       \
             else  sBuf[sOffset+8] = 0;                                  \
             ic.lkupStringToIndex.insert(h, ic.stringUniqueId);          \
-            d = ic.stringUniqueId;                                      \
+            (d) = ic.stringUniqueId;                                    \
             ++ic.stringUniqueId;                                        \
             ++stringQty;                                                \
         }                                                               \
-        else { d = stringIndex; }                                       \
+        else { (d) = stringIndex; }                                     \
     }
 
 #if PL_NOCONTROL==0
@@ -3804,7 +3808,7 @@ namespace plPriv {
 
             // Wait that the process is unfrozen by the server
             std::unique_lock<std::mutex> lk(ic.threadInitMx);
-            while(!ic.threadInitCvTx.wait_for(lk, std::chrono::milliseconds(50), [&ic] { return ic.rxIsStarted; })) {
+            while(!ic.threadInitCvTx.wait_for(lk, std::chrono::milliseconds(50), [&] { return ic.rxIsStarted; })) {
 #if PL_SHORT_DATE==1
                 updateDateWrap(PL_GET_CLOCK_TICK_FUNC());
 #endif
@@ -4063,7 +4067,7 @@ plCrash(const char* message)
 
 #if !defined(PL_BUG_CLANG_ASAN_NEW_OVERLOAD)
 
-#define PL_NEW_(ptr, size) malloc(size); if(PL_IS_ENABLED_()) { plPriv::eventLogAlloc(ptr, (uint32_t)size); }
+#define PL_NEW_(ptr, size) malloc(size); if(PL_IS_ENABLED_()) { plPriv::eventLogAlloc(ptr, (uint32_t)(size)); }
 #define PL_DELETE_(ptr)    if(PL_IS_ENABLED_()) { plPriv::eventLogDealloc(ptr); } free(ptr)
 
 // @#LATER Handle the alignments stuff

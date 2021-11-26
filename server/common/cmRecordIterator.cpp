@@ -134,7 +134,7 @@ cmRecordIteratorScope::cmRecordIteratorScope(const cmRecord* record, int threadI
 
 
 cmRecordIteratorScope::cmRecordIteratorScope(const cmRecord* record, int threadId, int nestingLevel, u32 lIdx) :
-    _record(record), _threadId(threadId), _nestingLevel(nestingLevel), _speckUs(0), _mrLevel(-1), _lIdx(lIdx)
+    _record(record), _threadId(threadId), _nestingLevel(nestingLevel), _speckUs(0), _mrLevel(-1), _lIdx(lIdx), _childScopeZoneSeen(false)
 {
     plgScope(ITZ, "cmRecordIteratorScope::cmRecordIteratorScope");
     plgVar(ITZ, threadId, _nestingLevel, _lIdx);

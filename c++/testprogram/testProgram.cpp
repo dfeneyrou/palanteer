@@ -27,10 +27,10 @@
 
 
 #define _WINSOCKAPI_
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
 
 #include <cstdint>
 #include <list>
@@ -562,12 +562,12 @@ main(int argc, char** argv)
             printf("Build name is: %s\n", buildName);
         }
         else if(strcasecmp(w, "--port")==0 && argCount+1<argc) {
-            int serverPort = atoi(argv[++argCount]);
+            int serverPort = strtol(argv[++argCount], 0, 10);
             printf("Socket port: %d\n", serverPort);
             plSetServer("127.0.0.1", serverPort);
         }
         else if((strcasecmp(w, "-t")==0 || strcasecmp(w, "--t")==0) && argCount+1<argc) {
-            threadGroupQty = atoi(argv[++argCount]);
+            threadGroupQty = strtol(argv[++argCount], 0, 10);
             printf("Thread group qty: %d\n", threadGroupQty);
             if(threadGroupQty<1 || threadGroupQty>9) {
                 printf("Error: the thread group quantity shall be in [1;9]\n");
@@ -575,11 +575,11 @@ main(int argc, char** argv)
             }
         }
         else if((strcasecmp(w, "-w")==0 || strcasecmp(w, "--w")==0) && argCount+1<argc) {
-            serverConnectionTimeoutMsec = atoi(argv[++argCount]);
+            serverConnectionTimeoutMsec = strtol(argv[++argCount], 0, 10);
             printf("Server connection timeout: %d ms\n", serverConnectionTimeoutMsec);
         }
         else if((strcasecmp(w, "-l")==0 || strcasecmp(w, "--l")==0) && argCount+1<argc) {
-            durationMultiplier = atoi(argv[++argCount]);
+            durationMultiplier = strtol(argv[++argCount], 0, 10);
             if(durationMultiplier<=0) {
                 printf("Error: the duration multiplier shall be a strictly positive integer\n");
                 doDisplayUsage = true;
