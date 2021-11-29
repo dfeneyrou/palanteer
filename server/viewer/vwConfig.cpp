@@ -66,6 +66,8 @@ vwConfig::vwConfig(vwMain* main, const bsString& programDataPath) :
 
     // Other
     _lastFileImportPath = osGetCurrentPath();
+    _lastFileExportPath = _lastFileImportPath;
+    _lastFileExportScreenshotPath = _lastFileImportPath;
 
     // Load global settings
     loadGlobal();
@@ -247,6 +249,30 @@ vwConfig::setLastFileImportPath(const bsString& path)
     plgScope(CFG, "setLastFileImportPath");
     if(_lastFileImportPath==path) return true;
     _lastFileImportPath = path;
+    plgData(CFG, "path", path.toChar());
+    _globalNeedsSaving  = true;
+    return true;
+}
+
+
+bool
+vwConfig::setLastFileExportPath(const bsString& path)
+{
+    plgScope(CFG, "setLastFileExportPath");
+    if(_lastFileExportPath==path) return true;
+    _lastFileExportPath = path;
+    plgData(CFG, "path", path.toChar());
+    _globalNeedsSaving  = true;
+    return true;
+}
+
+
+bool
+vwConfig::setLastFileExportScreenshotPath(const bsString& path)
+{
+    plgScope(CFG, "setLastFileExportScreenshotPath");
+    if(_lastFileExportScreenshotPath==path) return true;
+    _lastFileExportScreenshotPath = path;
     plgData(CFG, "path", path.toChar());
     _globalNeedsSaving  = true;
     return true;
@@ -679,6 +705,8 @@ vwConfig::saveGlobal(void)
     fprintf(fh, "freezePointEnabled %d\n", _freezePointEnabled);
     fprintf(fh, "recordStoragePath %s\n", _recordStoragePath.toChar());
     fprintf(fh, "lastFileImportPath %s\n", _lastFileImportPath.toChar());
+    fprintf(fh, "lastFileExportPath %s\n", _lastFileExportPath.toChar());
+    fprintf(fh, "lastFileExportScreenshotPath %s\n", _lastFileExportScreenshotPath.toChar());
     fprintf(fh, "lastLoadedRecordPath %s\n", _lastLoadedRecordPath.toChar());
     fprintf(fh, "lastFileExtStringsPath %s\n", _lastFileExtStringsPath.toChar());
 
@@ -723,6 +751,11 @@ vwConfig::loadGlobal(void)
             if(sscanf(line+kwLength+1, __VA_ARGS__)!=readQty)           \
                 { _main->log(cmLogKind::LOG_WARNING, "Unable to read global config for field '" #fieldName "'\n"); } \
         }
+#define READ_PATH(fieldName)                                            \
+        if(!strncmp(line, #fieldName, kwLength)) {                      \
+            _ ## fieldName = bsString(&line[kwLength]).strip();         \
+            if(!_ ## fieldName.empty() && _ ## fieldName.back()=='\n') _ ## fieldName.pop_back(); \
+        }
 
         READ_GLOBAL(fontSize,    1, "%d", &_fontSize);
         READ_GLOBAL(cacheMBytes, 1, "%d", &_cacheMBytes);
@@ -739,31 +772,15 @@ vwConfig::loadGlobal(void)
         READ_GLOBAL(winVisiConsole, 1, "%d", &_winVisiConsole);
         READ_GLOBAL(winVisiSettings, 1, "%d", &_winVisiSettings);
         READ_GLOBAL(multiStreamIsMulti, 1, "%d", &_multiStreamIsMulti);
-        if(!strncmp(line, "multiStreamAppName", kwLength)) {
-            _multiStreamAppName = bsString(&line[kwLength]).strip();
-            if(!_multiStreamAppName.empty() && _multiStreamAppName.back()=='\n') _multiStreamAppName.pop_back();
-        }
+        READ_PATH(multiStreamAppName);
         READ_GLOBAL(freezePointEnabled, 1, "%d", &_freezePointEnabled);
 
-        if(!strncmp(line, "lastFileImportPath", kwLength)) {
-            _lastFileImportPath = bsString(&line[kwLength]).strip();
-            if(!_lastFileImportPath.empty() && _lastFileImportPath.back()=='\n') _lastFileImportPath.pop_back();
-        }
-
-        if(!strncmp(line, "recordStoragePath", kwLength)) {
-            _recordStoragePath = bsString(&line[kwLength]).strip();
-            if(!_recordStoragePath.empty() && _recordStoragePath.back()=='\n') _recordStoragePath.pop_back();
-        }
-
-        if(!strncmp(line, "lastLoadedRecordPath", kwLength)) {
-            _lastLoadedRecordPath = bsString(&line[kwLength]).strip();
-            if(!_lastLoadedRecordPath.empty() && _lastLoadedRecordPath.back()=='\n') _lastLoadedRecordPath.pop_back();
-        }
-
-        if(!strncmp(line, "lastFileExtStringsPath", kwLength)) {
-            _lastFileExtStringsPath = bsString(&line[kwLength]).strip();
-            if(!_lastFileExtStringsPath.empty() && _lastFileExtStringsPath.back()=='\n') _lastFileExtStringsPath.pop_back();
-        }
+        READ_PATH(lastFileImportPath);
+        READ_PATH(lastFileExportPath);
+        READ_PATH(lastFileExportScreenshotPath);
+        READ_PATH(recordStoragePath);
+        READ_PATH(lastLoadedRecordPath);
+        READ_PATH(lastFileExtStringsPath);
 
         if(!strncmp(line, "keepOnlyLastRecord", kwLength)) {
             int state, n;

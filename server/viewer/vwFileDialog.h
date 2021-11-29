@@ -33,8 +33,8 @@ public:
     void close(void) { _shallClose = true; }
     bool draw (int fontSize);
 
-    bool hasSelection(void) const  { return !_selection.empty(); }
-    void clearSelection(void)      { _selection.clear(); }
+    bool hasSelection(void) const  { return _hasSelection; }
+    void clearSelection(void)      { _hasSelection = false; _selection.clear(); }
     const bsVec<bsString>& getSelection(void) { plAssert(hasSelection()); return _selection; }
 
 private:
@@ -44,14 +44,16 @@ private:
         s64      size;
         bool     isSelected;
     };
+    static constexpr int MAX_WRITE_SELECTION_SIZE = 256;
 
     bsString _title;
     bsString _path;
     bsString _displayedSelection;
+    char     _modifiableSelection[MAX_WRITE_SELECTION_SIZE] = { 0 };
     Mode     _mode;
     bsVec<bsString> _typeFilters;
-    bsVec<Entry> _dirEntries;
-    bsVec<Entry> _fileEntries;
+    bsVec<Entry>    _dirEntries;
+    bsVec<Entry>    _fileEntries;
     bsVec<bsString> _selection;
     int      _selectedFilterIdx = 0;
     u32      _driveBitMap       = 0;
@@ -61,5 +63,6 @@ private:
     bool     _isOpen     = false;
     bool     _shallOpen  = false;
     bool     _shallClose = false;
+    bool     _hasSelection = false;
     int      _maxSelectionQty = 1;
 };

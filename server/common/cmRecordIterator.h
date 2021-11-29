@@ -195,7 +195,9 @@ public:
 
 class cmRecordIteratorHierarchy {
 public:
+    cmRecordIteratorHierarchy(void) = default;
     cmRecordIteratorHierarchy(const cmRecord* record, int threadId, int nestingLevel, u32 lIdx);
+    void init(const cmRecord* record, int threadId, int nestingLevel, u32 lIdx);
 
     struct Parent { cmRecord::Evt evt; u32 lIdx; };
     void getParents(bsVec<Parent>& parents);
@@ -204,14 +206,15 @@ public:
     bool next(bool doSkipChildren, cmRecord::Evt& nextEvt);
     void rewindOneItem(bool doSkipChildren);
 
+    int   getThreadId(void)     const { return _threadId; }
     int   getNestingLevel(void) const { return _nestingLevel; }
     u32   getLIdx(void)         const { return _lIdx; }
 private:
     bool next_(bool doSkipChildren, cmRecord::Evt& nextEvt);
-    const cmRecord* _record;
-    int _threadId;
-    int _nestingLevel;
-    u32 _lIdx;
+    const cmRecord* _record = 0;
+    int _threadId = -1;
+    int _nestingLevel = -1;
+    u32 _lIdx = 0;
 };
 
 

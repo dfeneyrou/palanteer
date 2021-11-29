@@ -373,6 +373,13 @@ vwPlatform::redraw(void)
 }
 
 
+bool
+vwPlatform::captureScreen(int* width, int* height, u8** buffer)
+{
+    return vwCaptureScreen(width, height, buffer);
+}
+
+
 void
 vwPlatform::configureStyle(void)
 {

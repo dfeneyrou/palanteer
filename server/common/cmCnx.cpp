@@ -782,17 +782,7 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
             // Get the application name
             si.appName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
             if(!si.appName.empty() && si.appName.back()==0) si.appName.pop_back();
-            // Filter out the problematic characters
-            {
-                int i=0;
-                for(u8 c : si.appName) {
-                    if(c<0x1F || c==0x7F || c=='"' || c=='*' || c=='/' || c=='\\' ||
-                       c==':' || c=='<' || c=='>' || c=='^' || c=='?' || c=='|') continue;
-                    si.appName[i++] = c;
-                }
-                si.appName.resize(i);
-                si.appName.strip();
-            }
+            si.appName.filterForFilename();
             // Some logging
             _itf->log(LOG_DETAIL, "   Application name is '%s'", si.appName.toChar());
             plgData(CLIENTRX, "Application name", si.appName.toChar());

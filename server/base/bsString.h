@@ -61,6 +61,7 @@ public:
     bsString subString(int startIdx, int endIdx=-1) const;
     bsString capitalize(void) const;
     bsString& strip(void);
+    bsString& filterForFilename(void);
     bsStringUtf16 toUtf16(void) const;
 };
 

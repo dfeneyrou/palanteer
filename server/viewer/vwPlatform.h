@@ -47,6 +47,7 @@ public:
     bsUs_t getLastMouseMoveDurationUs(void) const { return bsGetClockUs()-_lastMouseMoveTimeUs; }
     int    getDisplayWidth (void) const { return _displayWidth; }
     int    getDisplayHeight(void) const { return _displayHeight; }
+    bool   captureScreen(int* width, int* height, u8** buffer);
 
     // Event handling
     bool redraw(void);

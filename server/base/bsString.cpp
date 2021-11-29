@@ -197,6 +197,22 @@ bsString::strip(void)
 
 
 bsString&
+bsString::filterForFilename(void)
+{
+    // Filter out the usual problematic characters for file systems
+    int i=0;
+    for(u8 c : *this) {
+        if(c<0x1F || c==0x7F || c=='"' || c=='*' || c=='/' || c=='\\' ||
+           c==':' || c=='<' || c=='>' || c=='^' || c=='?' || c=='|') continue;
+        (*this)[i++] = c;
+    }
+    resize(i);
+    strip();
+    return *this;
+}
+
+
+bsString&
 bsString::operator+=(const bsString& s)
 {
     reserve(size()+s.size());

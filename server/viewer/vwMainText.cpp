@@ -574,22 +574,21 @@ vwMain::drawText(Text& t)
                 // Zoom the timeline
                 if(tlWheelCounter!=0) {
                     s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
-                    synchronizeNewRange(t.syncMode, syncStartTimeNs+(s64)((double)(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs)),
+                    synchronizeNewRange(t.syncMode, syncStartTimeNs+(s64)((double)(targetTimeNs-syncStartTimeNs)/(double)syncTimeRangeNs*(double)(syncTimeRangeNs-newTimeRangeNs)),
                                         newTimeRangeNs);
                     ensureThreadVisibility(t.syncMode, t.threadId);
                 }
-
-                // Right click: contextual menu, only on scope start
-                if(!t.isDragging && ImGui::IsMouseReleased(2)) {
-                    t.ctxNestingLevel = nestingLevel;
-                    t.ctxScopeLIdx    = levelElems[hlLevel].lIdx;
-                    t.ctxNameIdx      = evt.nameIdx;
-                    t.ctxFlags        = flags;
-                    ImGui::OpenPopup("Text menu");
-                    _plotMenuItems.clear(); // Reset the popup menu state
-                    prepareGraphContextualMenu(t.threadId, t.ctxNestingLevel, (flags&PL_FLAG_SCOPE_END)? (levelElems[hlLevel].lIdx&(~1)) : tci.lIdx,
-                                               0, _record->durationNs);
-                }
+            }
+            // Right click: contextual menu, only on scope start
+            if(!t.isDragging && ImGui::IsMouseReleased(2)) {
+                t.ctxNestingLevel = nestingLevel;
+                t.ctxScopeLIdx    = levelElems[hlLevel].lIdx;
+                t.ctxNameIdx      = evt.nameIdx;
+                t.ctxFlags        = flags;
+                ImGui::OpenPopup("Text menu");
+                _plotMenuItems.clear(); // Reset the popup menu state
+                prepareGraphContextualMenu(t.threadId, t.ctxNestingLevel, (flags&PL_FLAG_SCOPE_END)? (levelElems[hlLevel].lIdx&(~1)) : tci.lIdx,
+                                           0, _record->durationNs);
             }
 
             // Tooltip
@@ -705,6 +704,23 @@ vwMain::drawText(Text& t)
             ImGui::Separator();
             std::function<void(int)> curveSetColor = [this] (int colorIdx) { getConfig().setCurveColorIdx(_plotMenuItems[0].elemIdx, colorIdx); };
             displayColorSelectMenu("Color", getConfig().getCurveColorIdx(_plotMenuItems[0].elemIdx), curveSetColor);
+        }
+
+        // Export
+        ImGui::Separator();
+        if(ImGui::BeginMenu("Export in a text file...")) {
+            if(ImGui::MenuItem("the content of this window")) {
+                initiateExportText(t.threadId, -1, t.startNLevel, t.startLIdx, -1, bsMax(1, (int)(winHeight/fontHeight)));
+            }
+            if(t.syncMode!=0 && ImGui::MenuItem("the time range of the group")) {
+                s64 startTimeNs, timeRangeNs;
+                vwMain::getSynchronizedRange(t.syncMode, startTimeNs, timeRangeNs);
+                initiateExportText(t.threadId, startTimeNs, -1, 0, startTimeNs+timeRangeNs, -1);
+            }
+            if(ImGui::MenuItem("the content of the full thread")) {
+                initiateExportText(t.threadId, 0, -1, 0, -1, -1);
+            }
+            ImGui::EndMenu();
         }
 
         ImGui::EndPopup();

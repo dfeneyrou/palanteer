@@ -35,7 +35,7 @@
 
 
 // @#BUG Key 'F' does not work on record window on error table. KB focus issue? Is this true for all tables?
-// @#TODO Support multiselection (handly to delete a bunch of old records, all with a build name)
+// @#TODO Support multiselection (handy to delete a bunch of old records, all with a build name)
 
 void
 vwMain::drawRecord(void)
@@ -463,7 +463,7 @@ vwMain::drawCatalog(void)
                     bool doCloseAndSave = ImGui::InputText("##Nickname", &localBuffer[0], sizeof(ri.nickname), ImGuiInputTextFlags_EnterReturnsTrue);
                     if(isChanged) ImGui::PopStyleColor();
                     ImGui::SameLine();
-                    if(doCloseAndSave || ImGui::SmallButton("OK")) {
+                    if(doCloseAndSave || ImGui::SmallButton("OK") || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
                         memcpy(&ri.nickname[0], localBuffer, sizeof(ri.nickname));
                         ri.nickname[sizeof(ri.nickname)-1] = 0;
                         if(ri.nickname[0]==0) {
@@ -506,7 +506,7 @@ vwMain::drawCatalog(void)
                 if(ImGui::BeginPopupModal("Delete a record", 0, ImGuiWindowFlags_AlwaysAutoResize)) {
                     ImGui::Text("Really delete this record?\n  %s\n", ri.path.toChar());
                     ImGui::Separator();
-                    if(ImGui::Button("OK", ImVec2(120, 0))) {
+                    if(ImGui::Button("OK", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
                         _recordsToDelete.push_back(ri.path);
                         plMarker("menu", "Delete one record");
                         ImGui::CloseCurrentPopup();
@@ -608,7 +608,7 @@ vwMain::drawCatalog(void)
         if(ImGui::BeginPopupModal("Delete all record", 0, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Really delete the %d records?\n\n", appInfo.records.size());
             ImGui::Separator();
-            if(ImGui::Button("OK", ImVec2(120, 0))) {
+            if(ImGui::Button("OK", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
                 for(RecordInfos& ri : appInfo.records) _recordsToDelete.push_back(ri.path);
                 plMarker("menu", "Delete all records");
                 ImGui::CloseCurrentPopup();
@@ -624,7 +624,7 @@ vwMain::drawCatalog(void)
         if(ImGui::BeginPopupModal("Delete all record without nickname", 0, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Really delete the %d records?\n\n", appInfo.records.size()-countAppWithNickname);
             ImGui::Separator();
-            if(ImGui::Button("OK", ImVec2(120, 0))) {
+            if(ImGui::Button("OK", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
                 for(RecordInfos& ri : appInfo.records) if(ri.nickname[0]==0) _recordsToDelete.push_back(ri.path);
                 plMarker("menu", "Delete all records without nickname");
                 ImGui::CloseCurrentPopup();
@@ -640,7 +640,7 @@ vwMain::drawCatalog(void)
         if(ImGui::BeginPopupModal("Keep only last records", 0, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Really delete the %d records?\n\n", appInfo.records.size()-countAppWithNickname-keepOnlyLastRecordQty);
             ImGui::Separator();
-            if(ImGui::Button("OK", ImVec2(120, 0))) {
+            if(ImGui::Button("OK", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
                 int skipQty = keepOnlyLastRecordQty;
                 for(RecordInfos& ri : appInfo.records)
                     if(ri.nickname[0]==0 && --skipQty<0) _recordsToDelete.push_back(ri.path);
@@ -657,8 +657,10 @@ vwMain::drawCatalog(void)
         if(_fileDialogExtStrings->draw(getConfig().getFontSize())) dirty();
         if(_fileDialogExtStrings->hasSelection()) {
             const bsVec<bsString>& result = _fileDialogExtStrings->getSelection();
-            getConfig().setExtStringsPath(appInfo.name, result[0]);
-            getConfig().setLastFileExtStringsPath(result[0]);
+            if(!result.empty()) {
+                getConfig().setExtStringsPath(appInfo.name, result[0]);
+                getConfig().setLastFileExtStringsPath(result[0]);
+            }
             _fileDialogExtStrings->clearSelection();
         }
 

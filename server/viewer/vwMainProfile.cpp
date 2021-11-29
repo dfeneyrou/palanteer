@@ -674,7 +674,7 @@ vwMain::_drawTextProfile(Profile& prof)
                             s64 targetTimeNs   = syncStartTimeNs + (s64)(0.5*syncTimeRangeNs); // Middle of screen is the invariant
                             s64 newTimeRangeNs = getUpdatedRange(deltaWheel, syncTimeRangeNs);
                             synchronizeNewRange(prof.syncMode,
-                                                syncStartTimeNs+(targetTimeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs),
+                                                syncStartTimeNs+(s64)((double)(targetTimeNs-syncStartTimeNs)/(double)syncTimeRangeNs*(double)(syncTimeRangeNs-newTimeRangeNs)),
                                                 newTimeRangeNs);
                             ensureThreadVisibility(prof.syncMode, prof.threadId);
                         }

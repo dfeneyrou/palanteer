@@ -82,6 +82,10 @@ class vwConfig {
     bool            setRecordStoragePath(const bsString& path);
     bsString getLastFileImportPath(void) { return _lastFileImportPath; }
     bool     setLastFileImportPath(const bsString& path);
+    bsString getLastFileExportPath(void) { return _lastFileExportPath; }
+    bool     setLastFileExportPath(const bsString& path);
+    bsString getLastFileExportScreenshotPath(void) { return _lastFileExportScreenshotPath; }
+    bool     setLastFileExportScreenshotPath(const bsString& path);
     bsString getLastLoadedRecordPath(void) { return _lastLoadedRecordPath; }
     bool     setLastLoadedRecordPath(const bsString& path);
     bsString getLastFileExtStringsPath(void) { return _lastFileExtStringsPath; }
@@ -232,6 +236,8 @@ class vwConfig {
     int _freezePointEnabled  = false;
     bsString _recordStoragePath;
     bsString _lastFileImportPath;
+    bsString _lastFileExportPath;
+    bsString _lastFileExportScreenshotPath;
     bsString _lastLoadedRecordPath;
     bsString _lastFileExtStringsPath;
 

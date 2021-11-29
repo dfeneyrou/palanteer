@@ -1253,7 +1253,7 @@ cmRecordIteratorLockUseGraph::init(const cmRecord* record, int threadId, u32 nam
 
 
 bool
-cmRecordIteratorLockUseGraph::getNextLock(s64& timeNs, double& value, cmRecord::Evt& evt)
+cmRecordIteratorLockUseGraph::getNextLock(s64& timeNs, double& value, cmRecord::Evt& evt) // @#QUESTION Is timeNs useful? It is the same as evt.vS64...
 {
     // Get base fields
     plgScope(ITLOCK, "cmRecordIteratorTimePlotBase::getNextEvent");
@@ -1382,6 +1382,18 @@ cmRecordIteratorHierarchy::cmRecordIteratorHierarchy(const cmRecord* record, int
 }
 
 
+void
+cmRecordIteratorHierarchy::init(const cmRecord* record, int threadId, int nestingLevel, u32 lIdx)
+{
+    plgScope(ITTEXT, "cmRecordIteratorHierarchy::init");
+    plgVar(ITTEXT, threadId, nestingLevel, lIdx);
+    _record       = record;
+    _threadId     = threadId;
+    _nestingLevel = nestingLevel;
+    _lIdx         = lIdx;
+}
+
+
 u64
 cmRecordIteratorHierarchy::getParentDurationNs(void)
 {
@@ -1479,6 +1491,7 @@ cmRecordIteratorHierarchy::getItem(int& nestingLevel, u32& lIdx, cmRecord::Evt& 
     // Get location infos
     plgScope(ITTEXT, "getItem");
     const cmRecord::Thread& rt = _record->threads[_threadId];
+    if(rt.levels.empty()) return false;
     const bsVec<chunkLoc_t>& nonScopeChunkLocs = rt.levels[_nestingLevel].nonScopeChunkLocs;
     const bsVec<chunkLoc_t>& scopeChunkLocs    = rt.levels[_nestingLevel].scopeChunkLocs;
     const bsVec<chunkLoc_t>* chunkLocs = GET_ISFLAT(_lIdx)? &nonScopeChunkLocs : &scopeChunkLocs;

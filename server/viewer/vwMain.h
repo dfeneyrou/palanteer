@@ -64,7 +64,7 @@ public:
     void updateRecordList(void);
 
     // Interface for the record library
-    bool isRecordProcessingAvailable(void) const { return _actionMode==READY; }
+    bool isRecordProcessingAvailable(void) const { return _actionMode==READY && !_backgroundComputationInUse; }
     bool isMultiStreamEnabled(void) const { return _config->isMultiStream(); }
     bool notifyRecordStarted(const cmStreamInfo& infos, s64 timeTickOrigin, double tickToNs);
     void notifyRecordEnded(bool isRecordOk);
@@ -107,7 +107,7 @@ public:
     const char* getNiceDuration(s64 ns, s64 displayRangeNs=0, int bank=0) const;
     const char* getNiceByteSize(s64 byteSize) const;
     const char* getNiceBigPositiveNumber(u64 number, int bank=0) const;
-    const char* getValueAsChar(int flags, double value, double displayRange=0., bool isHexa=false, int bank=0) const;
+    const char* getValueAsChar(int flags, double value, double displayRange=0., bool isHexa=false, int bank=0, bool withUnit=true) const;
     const char* getValueAsChar(const cmRecord::Evt& e) const;
     const char* getFullThreadName(int threadId) const { return _fullThreadNames[threadId].toChar(); }
     const char* getUnitFromFlags(int flags) const;
@@ -195,6 +195,10 @@ private:
     vwConfig*      _config = 0;
     vwFileDialog*  _fileDialogExtStrings    = 0;
     vwFileDialog*  _fileDialogImport        = 0;
+    vwFileDialog*  _fileDialogExportChromeTF = 0;
+    vwFileDialog*  _fileDialogExportText    = 0;
+    vwFileDialog*  _fileDialogExportPlot    = 0;
+    vwFileDialog*  _fileDialogExportScreenshot = 0;
     vwFileDialog*  _fileDialogSelectRecord  = 0;
     bsUs_t         _lastMouseMoveDurationUs = 0;
     bool           _backgroundComputationInUse = false;
@@ -975,7 +979,7 @@ private:
     void copyCurrentLayout(vwConfig::ScreenLayout& layout, const bsString& windowLayout);
     void createLayoutViews(const vwConfig::ScreenLayout& layout);
 
-    // Actions
+    // Actions for the main automata
     enum ActionMode { READY, ERROR_DISPLAY, START_RECORD, END_RECORD, LOAD_RECORD };
     ActionMode       _actionMode = READY;
     bsVec<bsString>  _recordsToDelete;
@@ -983,6 +987,53 @@ private:
     int              _waitForDisplayRefresh = 0;
     vwConfig::ScreenLayout _screenLayoutToApply;
     bsString         _doSaveTemplateLayoutName;
+
+    // Export automata
+    enum ExportState { IDLE, FILE_DIALOG, CONFIRMATION_DIALOG, EFFECTIVE_SAVE };
+    struct ExportChromeTraceFormat {
+        ExportState state = IDLE;
+        bsString filename;
+        int      computationLevel = 100;
+        FILE*    fileHandle = 0;
+        cmRecordIteratorHierarchy it;
+    };
+    struct ExportScreenshot {
+        ExportState state = IDLE;
+        u8* buffer = 0;
+        int width;
+        int height;
+        void free(void) { delete[] buffer; buffer = 0; }
+    };
+    struct ExportText {
+        ExportState state = IDLE;
+        cmRecordIteratorHierarchy it;
+        s64 startTimeNs, endTimeNs;
+        int dumpedQty;
+        FILE* fileHandle = 0;
+    };
+    struct ExportPlot {
+        ExportState state = IDLE;
+        int elemIdx;
+        cmRecordIteratorMarker itMarker;
+        cmRecordIteratorLockNtf itLockNtf;
+        cmRecordIteratorLockUseGraph itLockUse;
+        cmRecordIteratorElem itGeneric;
+        s64 startTimeNs, endTimeNs;
+        FILE* fileHandle = 0;
+    };
+    ExportChromeTraceFormat _exportCTF;
+    ExportScreenshot        _exportScreenshot;
+    ExportText              _exportText;
+    ExportPlot              _exportPlot;
+    bool _isExportOnGoing = false;
+    void handleExportCTF(void);
+    void handleExportScreenshot(void);
+    void handleExportText(void);
+    void handleExportPlot(void);
+    void handleExports(void);
+    void initiateExportText(int threadId, s64 startTimeNs, int startNestingLevel, u32 startLIdx, s64 endTimeNs, int dumpedQty);
+    void initiateExportPlot(int elemIdx, s64 startTimeNs, s64 endTimeNs);
+    void initiateExportCTF(void);
 
     // Inter-thread messages
     struct MsgRecord { bsString recordPath; };

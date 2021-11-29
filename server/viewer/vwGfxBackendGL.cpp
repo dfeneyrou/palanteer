@@ -58,6 +58,8 @@ static const GLchar* guiFragmentShaderSrc =
 
 // Rendering context
 static struct {
+    int frameBufferWidth  = 0;
+    int frameBufferHeight = 0;
     bsGlProgramVAO guiGlProgram;
     GLuint         fontTextureId             = 0;
     int            unifAttribLocationTex     = 0;
@@ -104,11 +106,11 @@ vwBackendDraw(void)
 {
     ImDrawData* drawData = ImGui::GetDrawData();
     plAssert(drawData);
-    int frameBufferWidth  = (int)(drawData->DisplaySize.x * drawData->FramebufferScale.x);
-    int frameBufferHeight = (int)(drawData->DisplaySize.y * drawData->FramebufferScale.y);
-    if(frameBufferWidth==0 || frameBufferHeight==0) return false;
+    vwGlCtx.frameBufferWidth  = (int)(drawData->DisplaySize.x * drawData->FramebufferScale.x);
+    vwGlCtx.frameBufferHeight = (int)(drawData->DisplaySize.y * drawData->FramebufferScale.y);
+    if(vwGlCtx.frameBufferWidth==0 || vwGlCtx.frameBufferHeight==0) return false;
     plScope("OpenGL engine");
-    plVar(frameBufferWidth, frameBufferHeight);
+    plVar(vwGlCtx.frameBufferWidth, vwGlCtx.frameBufferHeight);
 
     // Backup GL state
     //vwGlBackupState backup;
@@ -126,7 +128,7 @@ vwBackendDraw(void)
     GL_CHECK();
 
     // Setup viewport, orthographic projection matrix
-    glViewport(0, 0, (GLsizei)frameBufferWidth, (GLsizei)frameBufferHeight);
+    glViewport(0, 0, (GLsizei)vwGlCtx.frameBufferWidth, (GLsizei)vwGlCtx.frameBufferHeight);
     ImGuiIO& io = ImGui::GetIO();
     const float ortho_projection[4][4] = {
         { 2.0f/io.DisplaySize.x, 0.0f,                   0.0f, 0.0f },
@@ -173,9 +175,9 @@ vwBackendDraw(void)
                 clipRect.y = (cmd->ClipRect.y-clipOff.y)*clipScale.y;
                 clipRect.z = (cmd->ClipRect.z-clipOff.x)*clipScale.x;
                 clipRect.w = (cmd->ClipRect.w-clipOff.y)*clipScale.y;
-                if(clipRect.x<frameBufferWidth && clipRect.y<frameBufferHeight && clipRect.z>=0.0f && clipRect.w>=0.0f) {
+                if(clipRect.x<vwGlCtx.frameBufferWidth && clipRect.y<vwGlCtx.frameBufferHeight && clipRect.z>=0.0f && clipRect.w>=0.0f) {
                     // Apply scissor/clipping rectangle
-                    glScissor((int)cmd->ClipRect.x, (int)(frameBufferHeight-cmd->ClipRect.w),
+                    glScissor((int)cmd->ClipRect.x, (int)(vwGlCtx.frameBufferHeight-cmd->ClipRect.w),
                               (int)(cmd->ClipRect.z-cmd->ClipRect.x), (int)(cmd->ClipRect.w-cmd->ClipRect.y));
                     // Bind texture, Draw
                     glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)cmd->TextureId);
@@ -194,6 +196,18 @@ vwBackendDraw(void)
     return true; // We drew something
 }
 
+
+bool
+vwCaptureScreen(int* width, int* height, u8** buffer)
+{
+    if(vwGlCtx.frameBufferWidth==0 || vwGlCtx.frameBufferHeight==0) return false;
+    plAssert(width && height && buffer);
+    *width  = vwGlCtx.frameBufferWidth;
+    *height = vwGlCtx.frameBufferHeight;
+    *buffer = new u8[3*(*width)*(*height)];  // RGB = 3 components
+    glReadPixels(0, 0, *width, *height, GL_RGB, GL_UNSIGNED_BYTE, *buffer);
+    return true;
+}
 
 
 void

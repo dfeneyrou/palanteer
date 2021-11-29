@@ -132,7 +132,7 @@ vwMain::getNiceBigPositiveNumber(u64 number, int bank) const
 
 // Get the value as string
 const char*
-vwMain::getValueAsChar(int flags, double value, double displayRange, bool isHexa, int bank) const
+vwMain::getValueAsChar(int flags, double value, double displayRange, bool isHexa, int bank, bool withUnit) const
 {
     static char valueStr1[128];
     static char valueStr2[128];
@@ -140,7 +140,9 @@ vwMain::getValueAsChar(int flags, double value, double displayRange, bool isHexa
 
     // Case scope or lock use
     if((flags&PL_FLAG_SCOPE_BEGIN) || (flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOCK_ACQUIRED) {
-        return getNiceDuration((s64)value, (s64)displayRange, bank);
+        if(withUnit) return getNiceDuration((s64)value, (s64)displayRange, bank);
+        snprintf(valueStr, sizeof(valueStr1), "%" PRId64, (s64)value);
+        return valueStr;
     }
     // Case string
     else if((flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_DATA_STRING) return _record->getString((int)bsRound(value)).value.toChar();
@@ -478,6 +480,7 @@ vwMain::prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64
     cmRecordIteratorHierarchy it(_record, threadId, nestingLevel, lIdx);
     it.getParents(parents);
     plAssert(!parents.empty(), "At least current item is expected");
+    if(parents[0].evt.flags==PL_FLAG_TYPE_LOCK_RELEASED) parents[0].evt.flags = PL_FLAG_TYPE_LOCK_ACQUIRED;  // Replace the lock end by the lock begin
 
     // Compute scope hashpath in reverse order
     _plotMenuThreadUniqueHash = (threadId>=0)? _record->threads[threadId].threadUniqueHash : 0;

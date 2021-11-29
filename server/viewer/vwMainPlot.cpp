@@ -146,9 +146,9 @@ vwMain::preparePlot(PlotWindow& p)
             } // End of loop on lock notification events
         }
         else if(eType==PL_FLAG_TYPE_LOCK_ACQUIRED) { // Lock use case (specific iterator)
-            cmRecordIteratorLockUseGraph it(_record, elem.threadId, elem.nameIdx, p.startTimeNs, nsPerPix);
+            cmRecordIteratorLockUseGraph itLockUse(_record, elem.threadId, elem.nameIdx, p.startTimeNs, nsPerPix);
             s64 ptTimeNs; double ptValue; cmRecord::Evt evt;
-            while(it.getNextLock(ptTimeNs, ptValue, evt)) {
+            while(itLockUse.getNextLock(ptTimeNs, ptValue, evt)) {
                 cache.push_back( { ptTimeNs, ptValue, PL_INVALID, evt } );
                 c.absYMin = bsMin(c.absYMin, ptValue);
                 c.absYMax = bsMax(c.absYMax, ptValue);
@@ -420,6 +420,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
             DRAWLIST->AddText(ImVec2(x, y), vwConst::uYellow, yString);
             DRAWLIST->AddLine(ImVec2(winX, y), ImVec2(x, y), vwConst::uYellow&0x3FFFFFFF, 1.0); // Quarter transparency
         }
+
 
         const char* valueMaxString = getValueAsChar(typicalFlag, pw.valueMax, pw.valueMax-pw.valueMin, pw.curves[0].isHexa);
         DRAWLIST->AddText(ImVec2(winX+winWidth-ImGui::CalcTextSize(valueMaxString).x,
@@ -787,8 +788,22 @@ vwMain::drawPlot(int curPlotWindowIdx)
             pointSize = bsMinMax(pointSize, 1, 10);
             getConfig().setCurvePointSize(curve.elemIdx, pointSize);
         }
-
         ImGui::PopItemWidth();
+
+        // Export
+        ImGui::Separator();
+        if(ImGui::BeginMenu("Export in a CSV file the values...")) {
+            if(pw.syncMode!=0 && ImGui::MenuItem("from the time range of the group")) {
+                s64 startTimeNs, timeRangeNs;
+                vwMain::getSynchronizedRange(pw.syncMode, startTimeNs, timeRangeNs);
+                initiateExportPlot(curve.elemIdx, startTimeNs, startTimeNs+timeRangeNs);
+            }
+            if(ImGui::MenuItem("from the full thread")) {
+                initiateExportPlot(curve.elemIdx, 0, _record->durationNs);
+            }
+            ImGui::EndMenu();
+        }
+
         ImGui::EndPopup();
     }
 

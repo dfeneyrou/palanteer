@@ -45,15 +45,19 @@ void
 vwFileDialog::open(const bsString& initialPath, int maxSelectionQty)
 {
     if(_isOpen) return;
+    plAssert(_mode==OPEN_FILE || maxSelectionQty==1);
     _path        = initialPath.empty()? osGetCurrentPath() : initialPath;
+    if(_path.empty() || _path[0]!=PL_DIR_SEP_CHAR) _path = bsString(PL_DIR_SEP) + _path;  // Robustness
     _driveBitMap = osGetDriveBitmap();
     _shallOpen   = true;
     _shallClose  = false;
+    _hasSelection = false;
     _selection.clear();
     _isSelDisplayDirty = true;
     _maxSelectionQty   = maxSelectionQty;
     _displayedSelection.clear();
- }
+    _modifiableSelection[0] = 0;
+}
 
 
 bool
@@ -74,6 +78,10 @@ vwFileDialog::draw(int fontSize)
         _isOpen         = true;
         _shallOpen      = false;
         _isEntriesDirty = true;
+        if(_mode==SAVE_FILE) {
+            snprintf(_modifiableSelection, MAX_WRITE_SELECTION_SIZE, "%s", osGetBasename(_path).toChar());
+            _isSelDisplayDirty = false;
+        }
         _path = osGetDirname(_path);
     }
     float dialogWidth = bsMinMax(fontSize*60.f, 600.f, 1200.f);
@@ -175,7 +183,9 @@ vwFileDialog::draw(int fontSize)
             else if(_path==bsString(PL_DIR_SEP)) newPath = bsString(PL_DIR_SEP)+e.name; // Root case for linux
             else                                 newPath = _path+bsString(PL_DIR_SEP)+e.name;
             isNewPathSet = true;
-            _isSelDisplayDirty = true;
+            if(_mode!=SAVE_FILE) {
+                _isSelDisplayDirty = true;
+            }
             if(_mode==SELECT_DIR) {
                 e.isSelected = true;
                 if(ImGui::IsMouseDoubleClicked(0)) _shallClose = true;
@@ -268,18 +278,30 @@ vwFileDialog::draw(int fontSize)
     if(_isSelDisplayDirty) {
         _isSelDisplayDirty = false;
         _displayedSelection.clear();
-        for(auto& e : _fileEntries) {
-            if(e.isSelected) _displayedSelection += _path+bsString(PL_DIR_SEP)+e.name+bsString("  ");
+        _modifiableSelection[0] = 0;
+        if(_mode==SAVE_FILE) {
+            for(auto& e : _fileEntries) {
+                if(!e.isSelected) continue;
+                snprintf(_modifiableSelection, MAX_WRITE_SELECTION_SIZE, "%s", e.name.toChar());
+                break; // Only 1 selection maximum
+            }
+        } else {
+            for(auto& e : _fileEntries) {
+                if(e.isSelected) _displayedSelection += _path+bsString(PL_DIR_SEP)+e.name+bsString("  ");
+            }
         }
     }
 
     // Current selection
     float comboWidth = maxTypeFilterWidth+2.f*spacingX;
     ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x-comboWidth-spacingX-ImGui::GetStyle().FramePadding.x);
-    if(ImGui::InputText("##Input", (char*)_displayedSelection.toChar(), _displayedSelection.size(),
-                        ImGuiInputTextFlags_ReadOnly | ImGuiInputTextFlags_EnterReturnsTrue)) {
-        _shallClose = true;
-    }
+    bool isEnterHit = (_mode==SAVE_FILE)?
+        ImGui::InputText("##Input", _modifiableSelection, MAX_WRITE_SELECTION_SIZE,
+                         ImGuiInputTextFlags_EnterReturnsTrue) :
+        ImGui::InputText("##Input", (char*)_displayedSelection.toChar(), _displayedSelection.size(),
+                         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_ReadOnly);
+    if(isEnterHit) _shallClose = true;
+
     // Extension selection
     ImGui::SameLine();
     ImGui::SetNextItemWidth(comboWidth);
@@ -315,20 +337,25 @@ vwFileDialog::draw(int fontSize)
     ImGui::SameLine();
     if(ImGui::Button("Cancel")) {
         for(auto& e2 : _fileEntries) e2.isSelected = false;
+        _modifiableSelection[0] = 0;
         _shallClose = true;
     }
 
     // Handle the closing
     if(_shallClose) {
         ImGui::CloseCurrentPopup();
-        if(_mode!=SELECT_DIR) {
+        if(_mode==OPEN_FILE) {
             for(auto& e : _fileEntries) {
                 if(e.isSelected) _selection.push_back(_path+bsString(PL_DIR_SEP)+e.name);
             }
         }
-        _isOpen     = false;
-        _shallClose = false;
-        hasWorked   = true;
+        else if(_mode==SAVE_FILE && !bsString(_modifiableSelection).strip().empty()) {
+            _selection.push_back((_path+bsString(PL_DIR_SEP)+bsString(_modifiableSelection)).strip());
+        }
+        _isOpen       = false;
+        _shallClose   = false;
+        _hasSelection = true;
+        hasWorked     = true;
     }
     ImGui::EndPopup();
     ImGui::PopID();

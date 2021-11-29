@@ -129,9 +129,13 @@ vwMain::vwMain(vwPlatform* platform, int rxPort, const bsString& overrideStorage
     _recording = new cmRecording(this, _storagePath, false);
     _clientCnx = new cmCnx(this, rxPort);
     _live      = new cmLiveControl(this, _clientCnx);
-    _fileDialogExtStrings   = new vwFileDialog("Update external strings from file",  vwFileDialog::OPEN_FILE,  {"*.txt", "*.*"});
-    _fileDialogImport       = new vwFileDialog("Import a record as a file",          vwFileDialog::OPEN_FILE,  {"*.pltraw", "*.*"});
-    _fileDialogSelectRecord = new vwFileDialog("Select the new record storage path", vwFileDialog::SELECT_DIR, {"*.*"});
+    _fileDialogExtStrings       = new vwFileDialog("Update external strings from file",  vwFileDialog::OPEN_FILE,  {"*.txt", "*.*"});
+    _fileDialogImport           = new vwFileDialog("Import a record as a file",          vwFileDialog::OPEN_FILE,  {"*.pltraw", "*.*"});
+    _fileDialogExportChromeTF   = new vwFileDialog("Export a record as Chrome Trace Format (JSON)", vwFileDialog::SAVE_FILE,  {"*.json", "*.*"});
+    _fileDialogExportText       = new vwFileDialog("Export a thread in text", vwFileDialog::SAVE_FILE,  {"*.txt", "*.*"});
+    _fileDialogExportPlot       = new vwFileDialog("Export values of a curve (CSV)", vwFileDialog::SAVE_FILE,  {"*.csv", "*.*"});
+    _fileDialogExportScreenshot = new vwFileDialog("Export a screenshot as PNG image", vwFileDialog::SAVE_FILE,  {"*.png", "*.*"});
+    _fileDialogSelectRecord     = new vwFileDialog("Select the new record storage path", vwFileDialog::SELECT_DIR, {"*.*"});
     vwMain::log(LOG_INFO, "Record storage path is: %s", _storagePath.toChar());
 
     // Ensure configuration path exists
@@ -163,6 +167,10 @@ vwMain::~vwMain(void)
     clearRecord();
     delete _fileDialogExtStrings;
     delete _fileDialogImport;
+    delete _fileDialogExportChromeTF;
+    delete _fileDialogExportText;
+    delete _fileDialogExportPlot;
+    delete _fileDialogExportScreenshot;
     delete _fileDialogSelectRecord;
     delete _live;
     delete _recording;
@@ -216,13 +224,29 @@ vwMain::drawMainMenuBar(void)
 
     if(ImGui::BeginMenuBar()) {
         if(ImGui::BeginMenu("File")) {
-            if(ImGui::MenuItem("Import", NULL, false, _underRecordAppIdx<0)) {
+            if(ImGui::MenuItem("Import Palanteer file", NULL, false, _underRecordAppIdx<0)) {
                 _fileDialogImport->open(getConfig().getLastFileImportPath(), getConfig().isMultiStream()? cmConst::MAX_STREAM_QTY : 1);
                 plMarker("menu", "Open import file dialog");
             }
+            else if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) {
+                if(!getConfig().isMultiStream()) {
+                    ImGui::SetTooltip("Import a Palanteer .pltraw file");
+                } else {
+                    ImGui::SetTooltip("Import up to %d Palanteer .pltraw files\nunder the application name: %s",
+                                      cmConst::MAX_STREAM_QTY, getConfig().getMultiStreamAppName().toChar());
+                }
+            }
+
             if(ImGui::MenuItem("Clear", NULL, false, _underDisplayAppIdx>=0)) {
                 _doClearRecord = true;
                 getConfig().setLastLoadedRecordPath("");
+            }
+
+            ImGui::Separator();
+            if(ImGui::MenuItem("Export as Chrome Trace Format", NULL, false,
+                               !_backgroundComputationInUse && !_isExportOnGoing && _underDisplayAppIdx>=0)) {
+                initiateExportCTF();
+                plMarker("menu", "Open Chrome Trace Format export file dialog");
             }
 
             ImGui::Separator();
@@ -407,8 +431,10 @@ vwMain::drawMainMenuBar(void)
                     (int)(1000000/bsMax(1001LL, _platform->getLastRenderingDuration())));
 #endif
         ImGui::EndMenuBar();
-    }
+    }  // End of the menu bar
 
+
+    // Workspace dialog popup
     static char localBuffer[64];
     if(doOpenSaveTemplate) {
         ImGui::OpenPopup("Save workspace template as ...");
@@ -441,12 +467,12 @@ vwMain::drawMainMenuBar(void)
     if(_fileDialogImport->draw(getConfig().getFontSize())) dirty();
     if(_fileDialogImport->hasSelection()) {
         const bsVec<bsString>& result = _fileDialogImport->getSelection();
-        plAssert(!result.empty());
-        getConfig().setLastFileImportPath(result[0]);
-        _clientCnx->injectFiles(result);
+        if(!result.empty()) {
+            getConfig().setLastFileImportPath(result[0]);
+            _clientCnx->injectFiles(result);
+        }
         _fileDialogImport->clearSelection();
     }
-
 }
 
 
@@ -653,6 +679,7 @@ vwMain::drawHelp(void)
         "Unless not applicable or specified otherwise in the dedicated help window, the usual actions for navigation are:\n"
         "-#F key#| Toggle full view screen\n"
         "-#Ctrl-F key#| Text search view\n"
+        "-#Ctrl-P key#| Capture screen and save into a PNG image\n"
         "-#Right mouse button dragging#| Move the visible part of the view\n"
         "-#Left/Right key#| Move horizontally\n"
         "-#Ctrl-Left/Right key#| Move horizontally faster\n"
@@ -1132,6 +1159,9 @@ vwMain::draw(void)
         _recordLoadSavedMsg = 0;
         _msgRecordLoad.releaseMsg();
     }
+
+    // Handle export automata and per chunk computations
+    handleExports();
 
     // Global record precomputations
     precomputeRecordDisplay();

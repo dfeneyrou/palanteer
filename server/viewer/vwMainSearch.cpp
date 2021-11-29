@@ -556,14 +556,14 @@ vwMain::drawSearch(void)
                 // Double click: adapt also the scale to have the scope at 10% of the screen
                 if(ImGui::IsMouseDoubleClicked(0) && (evt.flags&PL_FLAG_SCOPE_BEGIN)) {
                     s64 newTimeRangeNs =  (s64)(vwConst::DCLICK_RANGE_FACTOR*sci.value);
-                    synchronizeNewRange(s.syncMode, syncStartTimeNs+(s64)((double)(sci.timeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs)),
+                    synchronizeNewRange(s.syncMode, syncStartTimeNs+(s64)((double)(sci.timeNs-syncStartTimeNs)/(double)syncTimeRangeNs*(double)(syncTimeRangeNs-newTimeRangeNs)),
                                         newTimeRangeNs);
                     ensureThreadVisibility(s.syncMode, evt.threadId);
                 }
                 // Zoom the timeline
                 if(tlWheelCounter!=0) {
                     s64 newTimeRangeNs = getUpdatedRange(tlWheelCounter, syncTimeRangeNs);
-                    synchronizeNewRange(s.syncMode, syncStartTimeNs+(s64)((double)(sci.timeNs-syncStartTimeNs)/syncTimeRangeNs*(syncTimeRangeNs-newTimeRangeNs)),
+                    synchronizeNewRange(s.syncMode, syncStartTimeNs+(s64)((double)(sci.timeNs-syncStartTimeNs)/(double)syncTimeRangeNs*(double)(syncTimeRangeNs-newTimeRangeNs)),
                                         newTimeRangeNs);
                     ensureThreadVisibility(s.syncMode, evt.threadId);
                 }

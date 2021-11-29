@@ -20,4 +20,5 @@
 void vwBackendInit(void);
 void vwBackendInstallFont(const void* fontData, int fontDataSize, int fontSize);
 bool vwBackendDraw(void);  // Return true is something has been drawn
+bool vwCaptureScreen(int* width, int* height, u8** buffer);
 void vwBackendUninit(void);
