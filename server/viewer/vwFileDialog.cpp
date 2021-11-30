@@ -47,10 +47,10 @@ vwFileDialog::open(const bsString& initialPath, int maxSelectionQty)
     if(_isOpen) return;
     plAssert(_mode==OPEN_FILE || maxSelectionQty==1);
     _path        = initialPath.empty()? osGetCurrentPath() : initialPath;
-#ifndef _WIN32
-    if(_path.empty() || _path[0]!=PL_DIR_SEP_CHAR) _path = bsString(PL_DIR_SEP) + _path;  // Robustness
-#endif
     _driveBitMap = osGetDriveBitmap();
+    if(_driveBitMap==0 && (_path.empty() || _path[0]!=PL_DIR_SEP_CHAR)) {   // Robustness in Linux case: path shall start with "/"
+        _path = bsString(PL_DIR_SEP) + _path;
+    }
     _shallOpen   = true;
     _shallClose  = false;
     _hasSelection = false;
