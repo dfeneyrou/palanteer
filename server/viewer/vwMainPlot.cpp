@@ -616,11 +616,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
             s64 newTimeRangeNs = 0;
             if   (pcp.lIdx==PL_INVALID) { } // Marker case (we do not know the parent, so no duration)
             else if(elem.nameIdx==elem.hlNameIdx) newTimeRangeNs = (s64)(vwConst::DCLICK_RANGE_FACTOR*pcp.value); // For scopes, the value is the duration
-            else {
-                // For "flat" items, the duration is the one of the parent
-                cmRecordIteratorHierarchy it(_record, pcp.evt.threadId, nestingLevel, pcp.lIdx);
-                newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*it.getParentDurationNs();
-            }
+            else newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*cmGetParentDurationNs(_record, pcp.evt.threadId, nestingLevel, pcp.lIdx); // For "flat" items, the duration is the one of the parent
             if(newTimeRangeNs>0.) {
                 s64 newStartTimeNs = bsMax(pw.startTimeNs+(s64)((pcp.timeNs-pw.startTimeNs)/pw.timeRangeNs*(pw.timeRangeNs-newTimeRangeNs)), 0LL);
                 pw.setView(newStartTimeNs, newTimeRangeNs);

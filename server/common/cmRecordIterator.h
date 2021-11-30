@@ -202,20 +202,22 @@ public:
     struct Parent { cmRecord::Evt evt; u32 lIdx; };
     void getParents(bsVec<Parent>& parents);
     u64  getParentDurationNs(void);
-    bool getItem(int& nestingLevel, u32& lIdx, cmRecord::Evt& evt, s64& scopeEndTimeNs);
-    bool next(bool doSkipChildren, cmRecord::Evt& nextEvt);
-    void rewindOneItem(bool doSkipChildren);
-
-    int   getThreadId(void)     const { return _threadId; }
-    int   getNestingLevel(void) const { return _nestingLevel; }
-    u32   getLIdx(void)         const { return _lIdx; }
+    bool getItem(int& nestingLevel, u32& lIdx, cmRecord::Evt& evt, s64& scopeEndTimeNs, bool noMoveToNext=false);
+    bool rewind(void);
+    int  getThreadId(void)     const { return _threadId; }
+    int  getNestingLevel(void) const { return _nestingLevel; }
+    u32  getLIdx(void)         const { return _lIdx; }
 private:
-    bool next_(bool doSkipChildren, cmRecord::Evt& nextEvt);
+    void next_(void);
+    void rewind_(void);
     const cmRecord* _record = 0;
     int _threadId = -1;
     int _nestingLevel = -1;
     u32 _lIdx = 0;
+    bool _isJustInitialized = true;
 };
 
 
 void cmGetRecordPosition(const cmRecord* record, int threadId, s64 targetTimeNs, int& outNestingLevel, u32& outLIdx);
+
+u64 cmGetParentDurationNs(const cmRecord* record, int threadId, int nestingLevel, u32 lIdx);

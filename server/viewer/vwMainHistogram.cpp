@@ -743,11 +743,7 @@ vwMain::drawHistogram(int histogramIdx)
             s64 scopeDurationNs = 0;
             if     (hd.lIdx==PL_INVALID) { } // Marker case (we do not know the parent, so no duration)
             else if(elem.nameIdx==elem.hlNameIdx) scopeDurationNs = (s64)(h.absMinValue+yDelta*highlightedIdx); // For scopes, the value is the duration
-            else {
-                // For "flat" items, the duration is the one of the parent
-                cmRecordIteratorHierarchy it(_record,hd.threadId, elem.nestingLevel, hd.lIdx);
-                scopeDurationNs = it.getParentDurationNs();
-            }
+            else scopeDurationNs = cmGetParentDurationNs(_record,hd.threadId, elem.nestingLevel, hd.lIdx); // For "flat" items, the duration is the one of the parent
             if(ImGui::IsMouseDoubleClicked(0) && scopeDurationNs>0) newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*scopeDurationNs;
             synchronizeNewRange(h.syncMode, bsMax(hd.timeNs-(s64)(0.5*(newTimeRangeNs-scopeDurationNs)), 0LL), newTimeRangeNs);
 

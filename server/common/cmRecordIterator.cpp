@@ -1486,10 +1486,23 @@ cmRecordIteratorHierarchy::getParents(bsVec<Parent>& parents)
 
 
 bool
-cmRecordIteratorHierarchy::getItem(int& nestingLevel, u32& lIdx, cmRecord::Evt& evt, s64& scopeEndTimeNs)
+cmRecordIteratorHierarchy::getItem(int& nestingLevel, u32& lIdx, cmRecord::Evt& evt, s64& scopeEndTimeNs, bool noMoveToNext)
 {
     // Get location infos
     plgScope(ITTEXT, "getItem");
+
+    // Do not go to the next one if the iterator has just been constructed
+    if(!noMoveToNext && !_isJustInitialized) {
+        // Loop to filters memory events
+        while(1) {
+            next_();
+            if(!getItem(nestingLevel, lIdx, evt, scopeEndTimeNs, true)) return false;
+            int eType = evt.flags&PL_FLAG_TYPE_MASK;
+            if(eType!=PL_FLAG_TYPE_ALLOC && eType!=PL_FLAG_TYPE_DEALLOC) break;
+        }
+    }
+    _isJustInitialized = false;
+
     const cmRecord::Thread& rt = _record->threads[_threadId];
     if(rt.levels.empty()) return false;
     const bsVec<chunkLoc_t>& nonScopeChunkLocs = rt.levels[_nestingLevel].nonScopeChunkLocs;
@@ -1526,19 +1539,8 @@ cmRecordIteratorHierarchy::getItem(int& nestingLevel, u32& lIdx, cmRecord::Evt& 
 }
 
 
-
-bool
-cmRecordIteratorHierarchy::next(bool doSkipChildren, cmRecord::Evt& nextEvt)
-{
-    // Filters memory events
-    bool status = false;
-    while((status=next_(doSkipChildren, nextEvt)) && ((nextEvt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_ALLOC || (nextEvt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_DEALLOC)) ;
-    return status;
-}
-
-
-bool
-cmRecordIteratorHierarchy::next_(bool doSkipChildren, cmRecord::Evt& nextEvt)
+void
+cmRecordIteratorHierarchy::next_(void)
 {
     // Get the current event
     plgScope(ITTEXT, "next");
@@ -1549,9 +1551,9 @@ cmRecordIteratorHierarchy::next_(bool doSkipChildren, cmRecord::Evt& nextEvt)
     const bsVec<cmRecord::Evt>* lastLiveEvtChunk = GET_ISFLAT(_lIdx)? &rt.levels[_nestingLevel].nonScopeLastLiveEvtChunk : &rt.levels[_nestingLevel].scopeLastLiveEvtChunk;
     int mrIdx = GET_LIDX(_lIdx)/cmChunkSize;
     int eIdx  = GET_LIDX(_lIdx)%cmChunkSize;
-    if(mrIdx>=chunkLocs->size()) { plgText(ITTEXT, "IterHierc", "End of record (1)"); return false; }
+    if(mrIdx>=chunkLocs->size()) { plgText(ITTEXT, "IterHierc", "End of record (1)"); return; }
     const bsVec<cmRecord::Evt>& chunkData = _record->getEventChunk((*chunkLocs)[mrIdx], lastLiveEvtChunk);
-    if(eIdx>=chunkData.size()) { plgText(ITTEXT, "IterHierc", "End of record (2)"); return false; }
+    if(eIdx>=chunkData.size()) { plgText(ITTEXT, "IterHierc", "End of record (2)"); return; }
     const cmRecord::Evt& evt = chunkData[eIdx];
 
     // Logging
@@ -1561,7 +1563,7 @@ cmRecordIteratorHierarchy::next_(bool doSkipChildren, cmRecord::Evt& nextEvt)
     if(evt.flags&PL_FLAG_SCOPE_BEGIN) {
         plgScope(ITTEXT, "Item is begin of scope");
         // Downwards to the first child
-        if(!doSkipChildren && _nestingLevel+1<rt.levels.size()) {
+        if(_nestingLevel+1<rt.levels.size()) {
             plgScope(ITTEXT, "Search for first child");
             const bsVec<chunkLoc_t>& cnonScopeChunkLocs = rt.levels[_nestingLevel+1].nonScopeChunkLocs;
             const bsVec<chunkLoc_t>& cscopeChunkLocs    = rt.levels[_nestingLevel+1].scopeChunkLocs;
@@ -1578,22 +1580,20 @@ cmRecordIteratorHierarchy::next_(bool doSkipChildren, cmRecord::Evt& nextEvt)
                     // Update the level and level index
                     plgText(ITTEXT, "IterHierc", "Child matches");
                     ++_nestingLevel;
-                    _lIdx   = evt.linkLIdx;
-                    nextEvt = cchunkData[ceIdx];
-                    return true;
+                    _lIdx = evt.linkLIdx;
+                    return;
                 }
             }
         }
 
         // No or skipped children: next scope is the following one at same level
         if(++eIdx==cmChunkSize) ++mrIdx;
-        if(mrIdx>=scopeChunkLocs.size()) { plgText(ITTEXT, "IterHierc", "End of record (3)"); return false; } // No end scope: current is not valid
+        if(mrIdx>=scopeChunkLocs.size()) { plgText(ITTEXT, "IterHierc", "End of record (3)"); return; } // No end scope: current is not valid
         const bsVec<cmRecord::Evt>& chunkData2 = _record->getEventChunk(scopeChunkLocs[mrIdx], &rt.levels[_nestingLevel].scopeLastLiveEvtChunk);
-        if(eIdx>=chunkData2.size()) { plgText(ITTEXT, "IterHierc", "End of record (4)"); return false; }  // No end scope: current is not valid
+        if(eIdx>=chunkData2.size()) { plgText(ITTEXT, "IterHierc", "End of record (4)"); return; }  // No end scope: current is not valid
         // Update the level index
-        _lIdx   = mrIdx*cmChunkSize+eIdx;
-        nextEvt = chunkData2[eIdx];
-        return true;
+        _lIdx = mrIdx*cmChunkSize+eIdx;
+        return;
     }
 
     // If the next item has the same parent, it is our 'next'
@@ -1607,9 +1607,8 @@ cmRecordIteratorHierarchy::next_(bool doSkipChildren, cmRecord::Evt& nextEvt)
         if(neIdx<nchunkData.size() && nchunkData[neIdx].parentLIdx==evt.parentLIdx) {
             plgText(ITTEXT, "IterHierc", "Same parent");
             // Update the level index
-           _lIdx   = evt.linkLIdx;
-           nextEvt = nchunkData[neIdx];
-            return true;
+           _lIdx = evt.linkLIdx;
+            return;
         }
     }
 
@@ -1617,7 +1616,7 @@ cmRecordIteratorHierarchy::next_(bool doSkipChildren, cmRecord::Evt& nextEvt)
     if(_nestingLevel==0) {
         plgText(ITTEXT, "IterHierc", "Next is end of record at top level)");
         _lIdx = evt.linkLIdx;
-        return false;
+        return;
     }
     plgAssert(ITTEXT, evt.parentLIdx!=PL_INVALID); // Level zero is processed by previous test
 
@@ -1625,22 +1624,31 @@ cmRecordIteratorHierarchy::next_(bool doSkipChildren, cmRecord::Evt& nextEvt)
     plgText(ITTEXT, "IterHierc", "Different parent");
     --_nestingLevel;
     _lIdx = evt.parentLIdx+1;
-    int pmrIdx = GET_LIDX(_lIdx)/cmChunkSize;
-    int peIdx  = GET_LIDX(_lIdx)%cmChunkSize;
-    const bsVec<chunkLoc_t>& pscopeChunkLocs = rt.levels[_nestingLevel].scopeChunkLocs;
-    if(pmrIdx>=pscopeChunkLocs.size() || peIdx>=_record->getEventChunk(pscopeChunkLocs[pmrIdx], &rt.levels[_nestingLevel].scopeLastLiveEvtChunk).size()) {
-        plgText(ITTEXT, "IterHierc", "Next is end of record (weird:no end found)");
-        return false; // The "next item" fails, not the current one
+}
+
+
+bool
+cmRecordIteratorHierarchy::rewind(void)
+{
+    // Filters memory events
+    int nestingLevel;
+    u32 lIdx;
+    s64 scopeEndTimeNs;
+    cmRecord::Evt evt;
+    while(1) {
+        rewind_();
+        if(!getItem(nestingLevel, lIdx, evt, scopeEndTimeNs, true)) return false;
+        int eType = evt.flags&PL_FLAG_TYPE_MASK;
+        if(eType!=PL_FLAG_TYPE_ALLOC && eType!=PL_FLAG_TYPE_DEALLOC) break;
     }
-    nextEvt = _record->getEventChunk(pscopeChunkLocs[pmrIdx], &rt.levels[_nestingLevel].scopeLastLiveEvtChunk)[peIdx];
     return true;
 }
 
 
 void
-cmRecordIteratorHierarchy::rewindOneItem(bool doSkipChildren)
+cmRecordIteratorHierarchy::rewind_(void)
 {
-    plgScope(ITREWIND, "cmRecordIteratorHierarchy::rewindOneItem");
+    plgScope(ITREWIND, "cmRecordIteratorHierarchy::rewind_");
     plgVar(ITREWIND, _nestingLevel, GET_LIDX(_lIdx), GET_ISFLAT(_lIdx));
 
     // Get current item
@@ -1694,7 +1702,7 @@ cmRecordIteratorHierarchy::rewindOneItem(bool doSkipChildren)
         stopIfParentDiffers = _lIdx-1;
         last = current = { _nestingLevel, _lIdx-1 };
         plgAssert(ITTEXT, eIdx>=0);
-        goToChild = !doSkipChildren && (_nestingLevel<rt.levels.size()-1); // Do not go to child if no level below...
+        goToChild = (_nestingLevel<rt.levels.size()-1); // Do not go to child if no level below...
     }
     else if(_nestingLevel>0) {
         // For "begin" and non-scope, we iterate over children (through parent) until we find initial one
@@ -1760,6 +1768,15 @@ cmRecordIteratorHierarchy::rewindOneItem(bool doSkipChildren)
 // ===============================
 // Functions
 // ===============================
+
+u64
+cmGetParentDurationNs(const cmRecord* record, int threadId, int nestingLevel, u32 lIdx)
+{
+    cmRecordIteratorHierarchy it(record, threadId, nestingLevel, lIdx);
+    return it.getParentDurationNs();
+}
+
+
 
 // Used by the text views
 void

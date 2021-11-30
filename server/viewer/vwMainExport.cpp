@@ -219,7 +219,6 @@ vwMain::handleExportCTF(void)
             // Process a batch of events
             int batchSize = 10000;  // Granularity of the time check
             while(--batchSize>=0) {
-                // Get the next item
                 if(!(isIteratorOk=exp.it.getItem(nestingLevel, lIdx, evt, scopeEndTimeNs))) break;
 
                 int eType = (evt.flags&PL_FLAG_TYPE_MASK);
@@ -234,7 +233,6 @@ vwMain::handleExportCTF(void)
                             _record->getString(evt.filenameIdx).value.toChar(), streamId, threadId, evt.vS64);
                     lastDate = evt.vS64;
                 }
-                if(!(isIteratorOk=exp.it.next(false, evt))) break;
             }
 
             // End of batch
@@ -443,7 +441,7 @@ vwMain::handleExportText(void)
             else if(flagsType==PL_FLAG_TYPE_LOCK_NOTIFIED) fprintf(exp.fileHandle, "%-32s [LOCK NOTIFIED]\n", name);
             else fprintf(exp.fileHandle, "%-32s %s\n", name, getValueAsChar(evt));
 
-            if(bsGetClockUs()>endComputationTimeUs || !(isIteratorOk=exp.it.next(false, evt))) break;
+            if(bsGetClockUs()>endComputationTimeUs) break;
             if(exp.dumpedQty>=0 && (--exp.dumpedQty)<0) { isIteratorOk = false; break; }
         }
 

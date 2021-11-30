@@ -25,7 +25,6 @@
 #include "vwConst.h"
 #include "vwConfig.h"
 
-// @#TODO Timestamped standalone even at root shall be displayed too (ex: lock)
 
 #ifndef PL_GROUP_TEXT
 #define PL_GROUP_TEXT 0
@@ -95,17 +94,6 @@ vwMain::prepareText(Text& t)
     it.getParents(csp);
     if(csp.empty()) return;
 
-    // Manage the hide/show states
-    int hiddenNestingLevel = 0, hiddenIdx = csp.size()-1;
-    while(hiddenIdx>=0 && !t.isHidden(hiddenNestingLevel, _record->getString(csp[hiddenIdx].evt.nameIdx).hash)) {
-        --hiddenIdx; ++hiddenNestingLevel;
-    }
-    if(hiddenIdx>=0) { // Truncate the initial start position
-        t.startNLevel = hiddenNestingLevel;
-        t.startLIdx   = csp[hiddenIdx].lIdx;
-        csp.erase(&csp.front(), &csp[hiddenIdx]);
-    }
-
     // Manage the scrollbar and its virtual position
     // Provide the start date to highlight in the timeline. If the current item has no date, we keep the previous one
     int eType = csp[0].evt.flags&PL_FLAG_TYPE_MASK;
@@ -129,7 +117,6 @@ vwMain::prepareText(Text& t)
     // Compute items to display
     const float fontHeight = ImGui::GetTextLineHeightWithSpacing();
     float y = 0.f;
-    cmRecord::Evt nextEvt;
     while(y<winHeight) {
         // Get the next item
         int nestingLevel; u32 lIdx; cmRecord::Evt evt; s64 scopeEndTimeNs;
@@ -162,13 +149,6 @@ vwMain::prepareText(Text& t)
         eType = (flags&PL_FLAG_TYPE_MASK);
         if((flags&PL_FLAG_SCOPE_MASK) || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) t.lastTimeNs = evt.vS64;
 
-        // Next
-        bool isHidden = (flags&PL_FLAG_SCOPE_BEGIN) && t.isHidden(nestingLevel, _record->getString(evt.nameIdx).hash);
-        if(!it.next(isHidden, nextEvt)) break; // Skip children of hidden scopes
-        if(isHidden && (nextEvt.flags&PL_FLAG_SCOPE_END)) {
-            if(!it.next(isHidden, nextEvt)) break; // Skip hidden end scopes
-            --level;
-        }
         y += fontHeight;
     }
 }
@@ -299,8 +279,6 @@ vwMain::drawText(Text& t)
             (int)(ImGui::GetIO().MouseWheel*getConfig().getVWheelInversion()); // No Ctrl key: wheel is for the text
         tlWheelCounter       = (!ImGui::GetIO().KeyCtrl)? 0 :
             (int)(ImGui::GetIO().MouseWheel*getConfig().getHWheelInversion()); // Ctrl key: wheel is for the timeline (processed in highlighted text display)
-        const auto& startEvt = t.cachedStartParents[0].evt;
-        bool isStartItemHidden = (startEvt.flags&PL_FLAG_SCOPE_MASK) && t.isHidden(t.startNLevel, _record->getString(startEvt.nameIdx).hash);
         cmRecord::Evt nextEvt;
         int dragLineQty = 0;
         if(ImGui::IsMouseDragging(2)) {
@@ -317,23 +295,20 @@ vwMain::drawText(Text& t)
         if(ImGui::IsKeyPressed(KC_Down)) {
             plgText(TEXT, "Key", "Down pressed");
             cmRecordIteratorHierarchy it(_record, t.threadId, t.startNLevel, t.startLIdx);
-            if(it.next(isStartItemHidden, nextEvt)) {
-                if(!isStartItemHidden || !(nextEvt.flags&PL_FLAG_SCOPE_END) || it.next(isStartItemHidden, nextEvt)) { // Skip hidden end scopes
-                    t.setStartPosition(it.getNestingLevel(), it.getLIdx());
-                    t.didUserChangedScrollPos = true;
-                }
+            int nestingLevel;
+            u32 lIdx;
+            s64 scopeEndTimeNs;
+            it.getItem(nestingLevel, lIdx, nextEvt, scopeEndTimeNs);
+            if(it.getItem(nestingLevel, lIdx, nextEvt, scopeEndTimeNs)) {
+                t.setStartPosition(it.getNestingLevel(), it.getLIdx());
+                t.didUserChangedScrollPos = true;
             }
         }
 
         if(ImGui::IsKeyPressed(KC_Up)) {
             plgText(TEXT, "Key", " Up pressed");
             cmRecordIteratorHierarchy it(_record, t.threadId, t.startNLevel, t.startLIdx);
-            it.rewindOneItem(false);
-            int prevNLevel; u32 prevLIdx; cmRecord::Evt prevEvt; s64 prevScopeEndTimeNs; bool status;
-            while((status=it.getItem(prevNLevel, prevLIdx, prevEvt, prevScopeEndTimeNs)) && ((prevEvt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_ALLOC || (prevEvt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_DEALLOC)) it.rewindOneItem(false);
-            if(status && (prevEvt.flags&PL_FLAG_SCOPE_END) && t.isHidden(prevNLevel, _record->getString(prevEvt.nameIdx).hash)) {
-                it.rewindOneItem(true); // Skip hidden end scopes
-            }
+            it.rewind();
             t.setStartPosition(it.getNestingLevel(), it.getLIdx());
             t.didUserChangedScrollPos = true;
         }
@@ -341,14 +316,14 @@ vwMain::drawText(Text& t)
         if(textWheelCounter<0 || dragLineQty<0 || ImGui::IsKeyPressed(KC_PageDown)) {
             plgText(TEXT, "Key", "Page Down pressed");
             cmRecordIteratorHierarchy it(_record, t.threadId, t.startNLevel, t.startLIdx);
-            const int steps = (dragLineQty!=0)?-dragLineQty:10;
+            int nestingLevel;
+            u32 lIdx;
+            s64 scopeEndTimeNs;
+            const int steps = 1+((dragLineQty!=0)?-dragLineQty:10);  // +1 as we need to consume the current one
             for(int i=0; i<steps; ++i) {
-                if(!it.next(isStartItemHidden, nextEvt)) break;
-                if(!isStartItemHidden || !(nextEvt.flags&PL_FLAG_SCOPE_END) || it.next(isStartItemHidden, nextEvt)) { // Skip hidden end scopes
-                    t.setStartPosition(it.getNestingLevel(), it.getLIdx());
-                    t.didUserChangedScrollPos = true;
-                }
-                isStartItemHidden = (nextEvt.flags&PL_FLAG_SCOPE_MASK) && t.isHidden(it.getNestingLevel(), _record->getString(nextEvt.nameIdx).hash);
+                if(!it.getItem(nestingLevel, lIdx, nextEvt, scopeEndTimeNs)) break;
+                t.setStartPosition(it.getNestingLevel(), it.getLIdx());
+                t.didUserChangedScrollPos = true;
             }
         }
 
@@ -356,14 +331,7 @@ vwMain::drawText(Text& t)
             plgText(TEXT, "Key", "Page Up pressed");
             cmRecordIteratorHierarchy it(_record, t.threadId, t.startNLevel, t.startLIdx);
             const int steps = (dragLineQty!=0)?dragLineQty:10;
-            int prevNLevel; u32 prevLIdx; cmRecord::Evt prevEvt; s64 prevScopeEndTimeNs; bool status;
-            for(int i=0; i<steps; ++i) {
-                it.rewindOneItem(false);
-                while((status=it.getItem(prevNLevel, prevLIdx, prevEvt, prevScopeEndTimeNs)) && ((prevEvt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_ALLOC || (prevEvt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_DEALLOC)) it.rewindOneItem(false);
-                if(status && (prevEvt.flags&PL_FLAG_SCOPE_END) && t.isHidden(prevNLevel, _record->getString(prevEvt.nameIdx).hash)) {
-                    it.rewindOneItem(true); // Skip hidden end scopes
-                }
-            }
+            for(int i=0; i<steps; ++i) it.rewind();
             t.setStartPosition(it.getNestingLevel(), it.getLIdx());
             t.didUserChangedScrollPos = true;
         }
@@ -435,8 +403,6 @@ vwMain::drawText(Text& t)
         nestingLevel       = tci.nestingLevel;
         int flags          = evt.flags;
         int flagsType      = flags&PL_FLAG_TYPE_MASK;
-        bool isHidden      = (flags&PL_FLAG_SCOPE_MASK) && t.isHidden(nestingLevel, _record->getString(evt.nameIdx).hash);
-        if((flags&PL_FLAG_SCOPE_END) && isHidden) continue; // Already included in the 'begin'
 
         // Build the strings
         timeStr [0] = 0;
@@ -450,7 +416,7 @@ vwMain::drawText(Text& t)
                 snprintf(nameStr, maxMsgSize, "%s", name);
                 snprintf(valueStr, maxMsgSize, "[WAIT FOR LOCK]"); flagsType = PL_FLAG_TYPE_DATA_TIMESTAMP;
             }
-            else snprintf(nameStr, maxMsgSize, "%s %s", isHidden? "<...>" : ">", name);
+            else snprintf(nameStr, maxMsgSize, "> %s", name);
         }
         else if(flags&PL_FLAG_SCOPE_END) {
             if(flagsType==PL_FLAG_TYPE_LOCK_WAIT) {
@@ -517,14 +483,14 @@ vwMain::drawText(Text& t)
             auto& li = levelElems[nestingLevel];
             // Update the mouse time
             if(isWindowHovered && mouseY>y) {
-                if     (flags&PL_FLAG_SCOPE_BEGIN) newMouseTimeNs = isHidden? li.scopeEndTimeNs : li.scopeStartTimeNs;
+                if     (flags&PL_FLAG_SCOPE_BEGIN) newMouseTimeNs = li.scopeStartTimeNs;
                 else if(flags&PL_FLAG_SCOPE_END  ) newMouseTimeNs = li.scopeEndTimeNs;
                 else newMouseTimeNs = evt.vS64;
             }
 
             // Update the best fit for the mouse time display (yellow horizontal line)
             if((flags&PL_FLAG_SCOPE_BEGIN) && _mouseTimeNs>=li.scopeStartTimeNs && li.scopeStartTimeNs>mouseTimeBestTimeNs) {
-                mouseTimeBestTimeNs = isHidden? li.scopeEndTimeNs : li.scopeStartTimeNs;
+                mouseTimeBestTimeNs = li.scopeStartTimeNs;
                 mouseTimeBestY      = y+heightPix;
             }
             else if((flags&PL_FLAG_SCOPE_END) && _mouseTimeNs>=li.scopeEndTimeNs && li.scopeEndTimeNs>mouseTimeBestTimeNs) {
@@ -607,7 +573,7 @@ vwMain::drawText(Text& t)
         ImU32  color1;
         ImU32  color2;
         if(flags&PL_FLAG_SCOPE_MASK) {
-            color1 = isHidden? (ImU32)ImColor(vwConst::grey) : getConfig().getCurveColor(tci.elemIdx, true);
+            color1 = getConfig().getCurveColor(tci.elemIdx, true);
             color2 = levelElems[nestingLevel].color;
             t.lastTimeNs = evt.vS64;
         }
@@ -636,7 +602,6 @@ vwMain::drawText(Text& t)
             levelElems[nestingLevel].yScopeStart = (int)(y+heightPix); // Bottom of current text
             ImVec4 tmp = ImColor(color1).Value;
             levelElems[nestingLevel].color = ImColor(darkCoef*tmp.x, darkCoef*tmp.y, darkCoef*tmp.z, 1.f);
-            if(isHidden) levelElems[nestingLevel].yScopeStart = -1;
         }
         if((flags&PL_FLAG_SCOPE_END) && y-levelElems[nestingLevel].yScopeStart>0) {
             DRAWLIST->AddLine(ImVec2(offsetX, y), ImVec2(offsetX, (float)levelElems[nestingLevel].yScopeStart), color2);
@@ -676,22 +641,6 @@ vwMain::drawText(Text& t)
         if(!(t.ctxFlags&PL_FLAG_SCOPE_END) && ImGui::MenuItem("Go to end of scope")) {
             t.setStartPosition((t.ctxFlags&PL_FLAG_SCOPE_MASK)? t.ctxNestingLevel:t.ctxNestingLevel-1, t.ctxScopeLIdx+1); // End of scope is always start+1
         }
-
-#if 0   // DISABLED HIDE/SHOW (UNSTABLE)
-        // Hide & show menu
-        ImGui::Separator();
-        if(t.ctxFlags&PL_FLAG_SCOPE_MASK) {
-            bool isHidden = t.isHidden(t.ctxNestingLevel, _record->getString(t.ctxNameIdx).hash);
-            if(ImGui::MenuItem(isHidden?"Show":"Hide")) {
-                t.setHidden(!isHidden, t.ctxNestingLevel, _record->getString(t.ctxNameIdx).hash);
-                t.isCacheDirty = true;
-            }
-            if(!t.hiddenSet.empty() && ImGui::MenuItem("Show all")) {
-                t.hiddenSet.clear();
-                t.isCacheDirty = true;
-            }
-        }
-#endif
 
         ImGui::Separator();
         // Plot & histogram menu

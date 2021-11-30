@@ -595,7 +595,6 @@ private:
         s64  firstTimeNs  = 0;
         s64  lastTimeNs   = 0;
         float dragReminder = 0.f;
-        bsHashSet hiddenSet;
         // Contextual menu
         int ctxNestingLevel = 0;
         int ctxScopeLIdx    = 0;
@@ -614,14 +613,6 @@ private:
             startLIdx    = lIdx;
             isCacheDirty = true;
             isWindowSelected = true;
-        }
-        bool isHidden(int nestingLevel, u64 nameHash) {
-            return hiddenSet.find(bsHashStep(((u64)nestingLevel<<32) | nameHash));
-        }
-        void setHidden(bool state, int nestingLevel, u64 nameHash) {
-            u64 key = bsHashStep(((u64)nestingLevel<<32) | nameHash);
-            if(state) hiddenSet.set(key);
-            else      hiddenSet.unset(key);
         }
     };
     bsVec<Text> _texts;
