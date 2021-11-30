@@ -188,7 +188,7 @@ vwMain::drawRecord(void)
         else {
             // Connected case: display the recorded program name and the state
             ImGui::Text("Running"); ImGui::SameLine();
-            ImGui::TextColored(vwConst::gold, "'%s'", _record->appName.toChar());
+            ImGui::TextColored(vwConst::gold, "'%s'", _record? _record->appName.toChar(): "Unknown");
 
             // Kill button
             ImGui::SameLine(ImGui::GetWindowContentRegionWidth()-ImGui::CalcTextSize("Kill").x-2*ImGui::GetStyle().ItemSpacing.x);
