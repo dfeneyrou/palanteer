@@ -2235,7 +2235,7 @@ cmRecording::createDeltaRecord(cmRecord::Delta* delta)
                 lsrc.lastMrScopeSpeckChunksIndexes.push_back(0);
                 ldst.mrScopeSpeckChunks.push_back({});
             }
-            plAssert(ldst.mrScopeSpeckChunks.size()==lsrc.mrScopeSpeckChunks.size());
+            plAssert(ldst.mrScopeSpeckChunks.size()==lsrc.mrScopeSpeckChunks.size(), ldst.mrScopeSpeckChunks.size(), lsrc.mrScopeSpeckChunks.size());
             for(int k=0; k<lsrc.mrScopeSpeckChunks.size(); ++k) {
                 const bsVec<u32>& lmsrc = lsrc.mrScopeSpeckChunks[k];
                 bsVec<u32>&       lmdst = ldst.mrScopeSpeckChunks[k];

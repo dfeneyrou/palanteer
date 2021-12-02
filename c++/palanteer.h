@@ -1386,7 +1386,7 @@ namespace plPriv {
             double   vDouble;
 #endif
         };
-        uint32_t magic;  // Used to detect that the event writing is really done
+        uint32_t writeAck;  // Used to detect that the event writing is really done
         // For 64bits arch, an additional uint32_t padding is implicitely added
     };
 
@@ -1424,7 +1424,6 @@ namespace plPriv {
         bool     enabled                  = false;
         bool     collectEnabled           = false;
         int      collectBufferMaxEventQty = 0;
-        uint32_t prevBankAndIndex         = (1UL<<31);
         std::atomic<int> isBufferSaturated = { 0 };
         std::atomic<int> isDynStringPoolEmpty = { 0 };
         MemoryPool<DynString_t> dynStringPool;
@@ -1539,8 +1538,7 @@ namespace plPriv {
     }
 
     // Some masks
-    constexpr uint32_t EVTBUFFER_MASK_INDEX = 0x00FFFFFF;  // Event index in the current buffer bank
-    constexpr uint32_t EVTBUFFER_MASK_MAGIC = 0x7F000000;  // Magic to ensure that the event is fully written
+    constexpr uint32_t EVTBUFFER_MASK_INDEX = 0x7FFFFFFF;  // Event index in the current buffer bank
     constexpr uint32_t EVTBUFFER_MASK_BANK  = 0x80000000;  // Bank index
 
     inline EventInt& eventLogBase(uint32_t bi, hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_, int lineNbr_, int flags_) {
@@ -1568,7 +1566,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, flags_);
         e.PL_PRIV_RAW_FIELD = v;
-        e.magic = bi;  // Contains the unique magic value that proves that the event is fully written
+        e.writeAck = 1;  // Tells that all previous data have been written
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1578,7 +1576,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, 0, filename_, allocStr, lineNbr_, flags_);
         e.PL_PRIV_RAW_FIELD = v;
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1587,7 +1585,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, name_.hash? name_.hash:1, filename_, name_.value, lineNbr_, flags_);
         e.PL_PRIV_RAW_FIELD = v;
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1597,7 +1595,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, 0, nameHash_? nameHash_:1, allocStr, name_, lineNbr_, flags_);
         e.PL_PRIV_RAW_FIELD = v;
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1611,7 +1609,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, 0, nameHash_? nameHash_:1, allocStr, name_, lineNbr_, flags_);
         e.PL_PRIV_RAW_FIELD = v;
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1620,7 +1618,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filename_.hash? filename_.hash:1, nameHash_? nameHash_:1, filename_.value, name_, lineNbr_, flags_);
         e.PL_PRIV_RAW_FIELD = v;
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1631,19 +1629,19 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), PL_EXTERNAL_STRINGS?0:"", PL_EXTERNAL_STRINGS?0:"", 0, PL_FLAG_TYPE_ALLOC_PART);
         e.extra = size;
         e.PL_PRIV_RAW_FIELD = (bigRawData_t)((uintptr_t)ptr);
-        e.magic = bi;
+        e.writeAck = 1;
         // Second part: location name and date
         ThreadContext_t* tCtx = &threadCtx;
         bi = globalCtx.bankAndIndex.fetch_add(1);
         if(tCtx->memLocQty==0) {
             EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), "", "", 0, PL_FLAG_TYPE_ALLOC);
             e2.PL_PRIV_RAW_FIELD = PL_GET_CLOCK_TICK_FUNC();
-            e2.magic = bi;
+            e2.writeAck = 1;
         } else {
             const MemLocation& ml = tCtx->memLocStack[tCtx->memLocQty-1];
             EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), ml.memHash, "", ml.memStr, 0, PL_FLAG_TYPE_ALLOC);
             e2.PL_PRIV_RAW_FIELD = PL_GET_CLOCK_TICK_FUNC();
-            e2.magic = bi;
+            e2.writeAck = 1;
         }
         eventCheckOverflow(bi);
     }
@@ -1655,19 +1653,19 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), PL_EXTERNAL_STRINGS?0:"", PL_EXTERNAL_STRINGS?0:"", 0, PL_FLAG_TYPE_DEALLOC_PART);
         e.extra = 0;
         e.PL_PRIV_RAW_FIELD  = (bigRawData_t)((uintptr_t)ptr);
-        e.magic = bi;
+        e.writeAck = 1;
         // Second part: location name and date
         ThreadContext_t* tCtx = &threadCtx;
         bi = globalCtx.bankAndIndex.fetch_add(1);
         if(tCtx->memLocQty==0) {
             EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), PL_STRINGHASH(""), "", "", 0, PL_FLAG_TYPE_DEALLOC);
             e2.PL_PRIV_RAW_FIELD = PL_GET_CLOCK_TICK_FUNC();
-            e2.magic = bi;
+            e2.writeAck = 1;
         } else {
             const MemLocation& ml = tCtx->memLocStack[tCtx->memLocQty-1];
             EventInt& e2 = eventLogBase(bi, PL_STRINGHASH(""), ml.memHash, "", ml.memStr, 0,PL_FLAG_TYPE_DEALLOC);
             e2.PL_PRIV_RAW_FIELD = PL_GET_CLOCK_TICK_FUNC();
-            e2.magic = bi;
+            e2.writeAck = 1;
         }
         eventCheckOverflow(bi);
     }
@@ -1687,7 +1685,7 @@ namespace plPriv {
         e.flags        = PL_FLAG_TYPE_CSWITCH;
         e.extra        = sysThreadId_;
         e.PL_PRIV_RAW_FIELD = (clockType_t)timestamp_;
-        e.magic        = bi;  // Contains the unique magic value that proves that the event is fully written
+        e.writeAck     = 1;
         eventCheckOverflow(bi);
     }
 
@@ -1696,7 +1694,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_S32);
         e.vInt  = v;
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1705,7 +1703,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U32);
         e.vU32  = v;
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1719,7 +1717,7 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_S64);
         e.vS64  = v;
 #endif
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1733,7 +1731,7 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64);
         e.vU64  = v;
 #endif
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1742,7 +1740,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_FLOAT);
         e.vFloat = v;
-        e.magic  = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1756,7 +1754,7 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_DOUBLE);
         e.vDouble = v;
 #endif
-        e.magic   = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1769,7 +1767,7 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_U64);
 #endif
         e.PL_PRIV_RAW_FIELD  = (bigRawData_t)((uintptr_t)v);
-        e.magic = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1778,7 +1776,7 @@ namespace plPriv {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_STRING);
         e.vString = v;
-        e.magic   = bi;
+        e.writeAck = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -1789,7 +1787,7 @@ namespace plPriv {
         EventInt& e = eventLogBase(bi, filenameHash_? filenameHash_:1, nameHash_? nameHash_:1, filename_, name_, lineNbr_, PL_FLAG_TYPE_DATA_STRING);
         e.vString.hash  = 0;
         e.vString.value = allocStr;
-        e.magic         = bi;
+        e.writeAck      = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
 
@@ -2514,10 +2512,11 @@ namespace plPriv {
         clockType_t   bankPreDateTick   [2] = {0, 0};
         uint32_t      bankPreDateWrapQty[2] = {0, 0};
 #endif
-        EventInt*     allocCollectBuffer = 0;
+        uint8_t*      allocCollectBuffer = 0;
+        uint8_t*      sendBuffer = 0;
         FlatHashTable<uint32_t> lkupStringToIndex;
         uint32_t      stringUniqueId = 0;
-        uint32_t      magic = 1;
+        uint32_t      prevBankAndIndex = 1UL<<31;
         double        maxSendingLatencyNs = 100000000.;
         // Automatic instrumentation
 #if PL_IMPL_AUTO_INSTRUMENT==1
@@ -2527,11 +2526,9 @@ namespace plPriv {
 #if PL_NOCONTROL==0
         uint8_t reqBuffer[PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY];
         uint8_t rspBuffer[PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY];
-        uint8_t sndBuffer[PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY]; // For notifications and lock free sending
 #else
         uint8_t reqBuffer[1];
         uint8_t rspBuffer[1];
-        uint8_t sndBuffer[1];
 #endif
         Array<uint8_t, PL_IMPL_STRING_BUFFER_BYTE_QTY> strBuffer;   // For batched strings sending
         std::atomic<int> rspBufferSize = { 0 };
@@ -3201,14 +3198,14 @@ namespace plPriv {
             }                                                           \
             int sOffset = sBuf.size();                                  \
             sBuf.resize(sBuf.size()+8+l);                               \
-            sBuf[sOffset+0] = (((uint64_t)(h))>>56)&0xFF;                 \
-            sBuf[sOffset+1] = (((uint64_t)(h))>>48)&0xFF;                 \
-            sBuf[sOffset+2] = (((uint64_t)(h))>>40)&0xFF;                 \
-            sBuf[sOffset+3] = (((uint64_t)(h))>>32)&0xFF;                 \
-            sBuf[sOffset+4] = (((uint64_t)(h))>>24)&0xFF;                 \
-            sBuf[sOffset+5] = (((uint64_t)(h))>>16)&0xFF;                 \
-            sBuf[sOffset+6] = (((uint64_t)(h))>> 8)&0xFF;                 \
-            sBuf[sOffset+7] = (((uint64_t)(h))>> 0)&0xFF;                 \
+            sBuf[sOffset+0] = (((uint64_t)(h))>>56)&0xFF;               \
+            sBuf[sOffset+1] = (((uint64_t)(h))>>48)&0xFF;               \
+            sBuf[sOffset+2] = (((uint64_t)(h))>>40)&0xFF;               \
+            sBuf[sOffset+3] = (((uint64_t)(h))>>32)&0xFF;               \
+            sBuf[sOffset+4] = (((uint64_t)(h))>>24)&0xFF;               \
+            sBuf[sOffset+5] = (((uint64_t)(h))>>16)&0xFF;               \
+            sBuf[sOffset+6] = (((uint64_t)(h))>> 8)&0xFF;               \
+            sBuf[sOffset+7] = (((uint64_t)(h))>> 0)&0xFF;               \
             if(s) memcpy(&sBuf[sOffset+8], s, l);                       \
             else  sBuf[sOffset+8] = 0;                                  \
             ic.lkupStringToIndex.insert(h, ic.stringUniqueId);          \
@@ -3232,9 +3229,9 @@ namespace plPriv {
             // Send
             plgBegin (PL_VERBOSE, "Response: sending buffer");
             plgData(PL_VERBOSE, "size", rspBufferSize);
-            memcpy(ic.sndBuffer, ic.rspBuffer, rspBufferSize); // Copy into the "send" buffer to avoid the race condition (at "send" moment) with the command reception
+            memcpy(ic.sendBuffer, ic.rspBuffer, rspBufferSize); // Copy into the "send" buffer to avoid the race condition (at "send" moment) with the command reception
             ic.rspBufferSize.store(0);
-            palComSend(ic.sndBuffer, rspBufferSize);
+            palComSend(ic.sendBuffer, rspBufferSize);
             plgEnd(PL_VERBOSE, "Response: sending buffer");
         }
 
@@ -3260,7 +3257,7 @@ namespace plPriv {
             plAssert(8+2+2*3*cliQty<PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY,
                      "The CLI qty exceeds the capacity of the response buffer to declare them on server side",
                      PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY, 10/*header*/ + 6/*bytes per CLI*/*cliQty);
-            uint8_t* br = helperFillResponseBufferHeader(PL_NTF_DECLARE_CLI, 2+2*3*cliQty, ic.sndBuffer);
+            uint8_t* br = helperFillResponseBufferHeader(PL_NTF_DECLARE_CLI, 2+2*3*cliQty, ic.sendBuffer);
             br[10] = (cliQty>>8)&0xFF;
             br[11] = (cliQty>>0)&0xFF;
 
@@ -3292,7 +3289,7 @@ namespace plPriv {
         if(bitmapChange) {
             // Build the notification from the changes
             uint64_t newBitmap = bitmapLast ^ bitmapChange;
-            uint8_t* br = helperFillResponseBufferHeader(PL_NTF_FROZEN_THREAD, 8, ic.sndBuffer);
+            uint8_t* br = helperFillResponseBufferHeader(PL_NTF_FROZEN_THREAD, 8, ic.sendBuffer);
             br[10] = (newBitmap>>56)&0xFF;
             br[11] = (newBitmap>>48)&0xFF;
             br[12] = (newBitmap>>40)&0xFF;
@@ -3309,7 +3306,7 @@ namespace plPriv {
             // Send the notification from the last bitmap, if different from the "change" version
             // This 2-step scheme is solving the ABA problem on server side (ABABA is equivalent to ABA)
             if(newBitmap!=ic.frozenLastThreadBitmap) {
-                br = helperFillResponseBufferHeader(PL_NTF_FROZEN_THREAD, 8, ic.sndBuffer);
+                br = helperFillResponseBufferHeader(PL_NTF_FROZEN_THREAD, 8, ic.sendBuffer);
                 br[10] = (ic.frozenLastThreadBitmap>>56)&0xFF;
                 br[11] = (ic.frozenLastThreadBitmap>>48)&0xFF;
                 br[12] = (ic.frozenLastThreadBitmap>>40)&0xFF;
@@ -3351,7 +3348,7 @@ namespace plPriv {
         if(!isAux) {
 #if PL_SHORT_DATE==1
             // Get the right pre-date for this bank
-            int bankNbr = (globalCtx.prevBankAndIndex&EVTBUFFER_MASK_BANK)? 1:0;
+            int bankNbr = (implCtx.prevBankAndIndex&EVTBUFFER_MASK_BANK)? 1:0;
             uint32_t preDateWrapQty = implCtx.bankPreDateWrapQty[bankNbr];
             clockType_t preDateTick = implCtx.bankPreDateTick   [bankNbr];
             // Wrap qty & timestamp
@@ -3424,10 +3421,9 @@ namespace plPriv {
         // The destination buffer is the same as the source buffer, shifted by 1 input event. This ok because the collection buffers
         //   are shifted by 1 event vs the allocation, in order to allow this. This is memory efficient, cache friendly and safe as
         //   the output event is smaller than the input one
-        uint32_t eventQty         = globalCtx.prevBankAndIndex&EVTBUFFER_MASK_INDEX;
-        uint32_t magic            = globalCtx.prevBankAndIndex&EVTBUFFER_MASK_MAGIC;
-        uint8_t* srcBuffer        = (uint8_t*)(globalCtx.collectBuffers[(globalCtx.prevBankAndIndex>>31)&1]);
-        uint8_t* dstBuffer        = srcBuffer-sizeof(EventInt); // Ok, as allocation is shifted accordingly
+        uint32_t eventQty         = implCtx.prevBankAndIndex&EVTBUFFER_MASK_INDEX;
+        uint8_t* srcBuffer        = (uint8_t*)(globalCtx.collectBuffers[(implCtx.prevBankAndIndex>>31)&1]);
+        uint8_t* dstBuffer        = implCtx.sendBuffer;
         uint32_t srcByteToCopyQty = eventQty*sizeof(EventInt);
         uint32_t stringQty        = 0;
         if(srcByteToCopyQty>ic.stats.collectBufferMaxUsageByteQty) {
@@ -3445,14 +3441,15 @@ namespace plPriv {
         for(uint32_t evtIdx=0; evtIdx<eventQty; ++evtIdx) {
             // We convert in-place the EventInt into EventExt, which is cache friendly.
             // There is no overlap thanks to the src/dst buffer start shift and smaller size of EventExt
-            const EventInt& src = ((EventInt*)srcBuffer)[evtIdx];
-            EventExt&       dst = ((EventExt*)(dstBuffer+16))[evtIdx]; // 16B header offset, the header will be filled before sending
+            EventInt& src = ((EventInt*)srcBuffer)[evtIdx];
+            EventExt& dst = ((EventExt*)(dstBuffer+16))[evtIdx]; // 16B header offset, the header will be filled before sending
 
-            // Check the magic
-            if((src.magic&EVTBUFFER_MASK_MAGIC)!=magic) {
+            // Check the write acknowledgement byte, to ensure that the event is fully written
+            if(src.writeAck==0) {
                 volatile const EventInt& waitSrc = ((EventInt*)srcBuffer)[evtIdx];
-                while((waitSrc.magic&EVTBUFFER_MASK_MAGIC)!=magic) std::this_thread::yield();
+                while(waitSrc.writeAck==0) std::this_thread::yield();
             }
+            src.writeAck = 0; // Clean the write acknowledgement, for the next cycle
 
             // Memory case (special because many infos to fit)
             if(src.flags==PL_FLAG_TYPE_ALLOC_PART || src.flags==PL_FLAG_TYPE_DEALLOC_PART) {
@@ -3509,16 +3506,9 @@ namespace plPriv {
 
         if(eventQty) plgEnd(PL_VERBOSE, "parsing");
 
-        // Write (file case) or send (socket case) the buffer
-        if(eventQty || stringQty) plgBegin(PL_VERBOSE, "sending scopes");
-        if(stringQty) sendStrings(stringQty);
-        sendEvents (eventQty, dstBuffer);  // Event buffer is sent even without events. No event is an information by itself ("a collection loop was done")
-        if(eventQty || stringQty) plgEnd(PL_VERBOSE, "sending scopes");
-        plgEnd(PL_VERBOSE, "collectEvents");
-
-        // Swap the banks: Toggle the bank bit + put the next magic + reset the index
+        // Swap the banks: Toggle the bank bit and reset the index
         std::atomic<uint32_t>& bi = globalCtx.bankAndIndex;
-        uint32_t  newBankAndIndex = ((bi.load()^EVTBUFFER_MASK_BANK)&EVTBUFFER_MASK_BANK) | (((ic.magic++)&0x7F)<<24);
+        uint32_t  newBankAndIndex = (bi.load()^EVTBUFFER_MASK_BANK)&EVTBUFFER_MASK_BANK;
 #if PL_SHORT_DATE==1
         {
             // Store the date before the bank starts being filled
@@ -3527,13 +3517,20 @@ namespace plPriv {
             implCtx.bankPreDateTick   [bankNbr] = implCtx.lastWrapCheckDateTick;
         }
 #endif
-        globalCtx.prevBankAndIndex = bi.exchange(newBankAndIndex);
+        implCtx.prevBankAndIndex = bi.exchange(newBankAndIndex);
 
         // Some saturation are detected?
         int isSaturated = globalCtx.isBufferSaturated.exchange(0);
         if(isSaturated) plMarker("SATURATION", "EVENT BUFFER IS FULL. PLEASE INCREASE ITS SIZE FOR VALID MEASUREMENTS");
         isSaturated = globalCtx.isDynStringPoolEmpty.exchange(0);
         if(isSaturated) plMarker("SATURATION", "DYNAMIC STRING POOL IS EMPTY. PLEASE INCREASE ITS SIZE FOR VALID MEASUREMENTS");
+
+        // Write (file case) or send (socket case) the buffer
+        if(eventQty || stringQty) plgBegin(PL_VERBOSE, "sending scopes");
+        if(stringQty) sendStrings(stringQty);
+        sendEvents (eventQty, dstBuffer);  // Event buffer is sent even without events. No event is an information by itself ("a collection loop was done")
+        if(eventQty || stringQty) plgEnd(PL_VERBOSE, "sending scopes");
+        plgEnd(PL_VERBOSE, "collectEvents");
 
         return (eventQty ||
                 globalCtx.dynStringPool.getUsed()>=globalCtx.dynStringPool.getSize()/8); // Recollection is needed if some dynamic strings are used
@@ -3847,7 +3844,7 @@ namespace plPriv {
                 e.threadId     = (uint8_t)tId;  // We are obliged to expand the event building due to this field...
                 e.flags        = PL_FLAG_TYPE_THREADNAME;
                 e.PL_PRIV_RAW_FIELD = 0;
-                e.magic  = bi;
+                e.writeAck     = 1;
                 ++tId;
             }
 #endif
@@ -4029,6 +4026,14 @@ namespace plPriv {
 void
 plCrash(const char* message)
 {
+#if PL_NOCONTROL==0 || PL_NOEVENT==0
+    // Do not log if the crash is located inside the Palanteer transmisison thread
+    if(plPriv::implCtx.threadServerTx && (int)PL_GET_SYS_THREAD_ID()==plPriv::implCtx.txThreadId) {
+        plPriv::globalCtx.enabled = false;
+        plPriv::globalCtx.collectEnabled = false;
+    }
+#endif
+
     // Log and display the crash message
     plMarkerDyn("CRASH", message);
 #if PL_IMPL_STACKTRACE_COLOR==1
@@ -4261,20 +4266,27 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, int serv
 #endif
 
     // Allocate the 2 collection banks (in one chunk, with a slight shift for a more efficient collectEvents())
+    //   aligned on 64 bytes to match most cache lines (the internal event representation has also a size of 64 bytes)
     plPriv::globalCtx.collectBufferMaxEventQty = PL_IMPL_COLLECTION_BUFFER_BYTE_QTY/sizeof(plPriv::EventInt);
 #if PL_NOEVENT==0
     plAssert((uint32_t)plPriv::globalCtx.collectBufferMaxEventQty<plPriv::EVTBUFFER_MASK_INDEX, "The collection buffer is too large");
 #endif
     const int realBufferEventQty = plPriv::globalCtx.collectBufferMaxEventQty + (1+PL_MAX_THREAD_QTY)+64; // 64=margin for the collection thread
-    ic.allocCollectBuffer = new plPriv::EventInt[2*realBufferEventQty];
-    memset(ic.allocCollectBuffer, 0, 2*realBufferEventQty*sizeof(plPriv::EventInt));
-    plPriv::globalCtx.collectBuffers[0] = &ic.allocCollectBuffer[                   1]; // So that we can write also in [-1] (see collectEvents)
-    plPriv::globalCtx.collectBuffers[1] = &ic.allocCollectBuffer[realBufferEventQty+1]; // We can (and will) write [-1] too
+    int sendBufferSize = sizeof(plPriv::EventExt)*realBufferEventQty;
+    if(sendBufferSize<PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY) sendBufferSize = PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY;
+    ic.sendBuffer = new uint8_t[sendBufferSize+64];  // 64 = sent header margin
+    ic.allocCollectBuffer = new uint8_t[sizeof(plPriv::EventInt)*2*realBufferEventQty+64];
+    memset(ic.allocCollectBuffer, 0, sizeof(plPriv::EventInt)*2*realBufferEventQty+64);
+    uint8_t* alignedAllocCollectBuffer = (uint8_t*)((((uintptr_t)ic.allocCollectBuffer)+64)&(uintptr_t)(~0x3F));
+    plPriv::globalCtx.collectBuffers[0] = (plPriv::EventInt*)alignedAllocCollectBuffer;
+    plPriv::globalCtx.collectBuffers[1] = plPriv::globalCtx.collectBuffers[0] + realBufferEventQty;
 
     // Initialize some fields
     memset(&ic.stats, 0, sizeof(plStats));
     ic.stats.collectBufferSizeByteQty = PL_IMPL_COLLECTION_BUFFER_BYTE_QTY;
     ic.stats.collectDynStringQty      = PL_IMPL_DYN_STRING_QTY;
+    plPriv::globalCtx.bankAndIndex.store(0);
+    ic.prevBankAndIndex = 1UL<<31;
 
     plPriv::palComInit(serverConnectionTimeoutMsec);
     if(ic.mode==PL_MODE_INACTIVE) return;
@@ -4573,11 +4585,12 @@ plStopAndUninit(void)
 
     // Restore the initial global state
     ic.threadServerFlagStop.store(0);
-    plPriv::globalCtx.bankAndIndex.store(0);
-    plPriv::globalCtx.prevBankAndIndex = (1UL<<31);
     delete[] ic.allocCollectBuffer; ic.allocCollectBuffer = 0;
+    delete[] ic.sendBuffer; ic.sendBuffer = 0;
     plPriv::globalCtx.collectBuffers[0] = 0;
     plPriv::globalCtx.collectBuffers[1] = 0;
+    plPriv::globalCtx.bankAndIndex.store(0);
+    ic.prevBankAndIndex = 1UL<<31;
     ic.lkupStringToIndex.clear();
     ic.strBuffer.clear();
     ic.stringUniqueId = 0;
@@ -4628,7 +4641,7 @@ plDeclareVirtualThread(uint32_t externalVirtualThreadId, const char* format, ...
         plPriv::ThreadInfo_t& ti = plPriv::globalCtx.threadInfos[newThreadId];
         ti.pid = 0xFFFFFFFF; // Prevent OS thread matching for context switches
         ti.nameHash = plPriv::hashString(name);
-        int nameLength = strlen(name);
+        int nameLength = (int)strlen(name);
         if(nameLength) memcpy(ti.name, name, nameLength+1);
         ti.name[PL_DYN_STRING_MAX_SIZE-1] = 0;
 

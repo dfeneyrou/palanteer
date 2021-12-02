@@ -143,16 +143,14 @@ subTaskUsingSharedResource(int taskNbr, int iterNbr)
 
 // Thread entry point
 void
-controlTask(int groupNbr, const char* groupName, int durationMultipler)
+controlTask(int groupNbr, const char* groupName, int durationMultiplier)
 {
     plString_t compileTimeStrings[2] = { plMakeString("Even"), plMakeString("Odd") };
     (void)compileTimeStrings; // Remove warnings when Palanteer events are not used
 
-    char fullThreadName[64];
-    snprintf(fullThreadName, sizeof(fullThreadName), "%s%sControl", groupName, strlen(groupName)? "/":"");
-    plDeclareThreadDyn(fullThreadName);
+    plDeclareThreadDyn("%s%sControl", groupName, strlen(groupName)? "/":"");
 
-    int   iterationQty = 10*durationMultipler;
+    int   iterationQty = 10*durationMultiplier;
     float dummyValue = 0;
     Synchro& synchro = groupSynchro[groupNbr];
     std::list<int*> allocationList;
@@ -307,7 +305,7 @@ cliHandlerQuit(plCliIo& cio)
 // ==============================
 
 void
-evaluatePerformance(plMode mode, const char* buildName, int durationMultipler, int serverConnectionTimeoutMsec)
+evaluatePerformance(plMode mode, const char* buildName, int durationMultiplier, int serverConnectionTimeoutMsec)
 {
     constexpr int iterationQty = 250000; // 4 events per loop
     (void) mode; (void)buildName; (void)serverConnectionTimeoutMsec;
@@ -320,7 +318,7 @@ evaluatePerformance(plMode mode, const char* buildName, int durationMultipler, i
 
     typedef uint64_t dateNs_t;
     dateNs_t startCollectNs = GET_TIME(nanoseconds);
-    int loopQty = iterationQty*durationMultipler;
+    int loopQty = iterationQty*durationMultiplier;
 
     // Logging in loop, 4 events per cycle
     for(int i=0; i<loopQty; ++i) {
@@ -530,14 +528,14 @@ int
 main(int argc, char** argv)
 {
     // Command line parsing and program behavior selection
+    enum BehaviorType { NONE, COLLECT, PERF } behavior = NONE;
     bool doDisplayUsage  = false;
-    bool doEstimateCost  = false;
     int  crashKind       = -1;  // -1 means no planned crash
 
     // Get the main type of execution
     if(argc>1) {
-        if     (strcasecmp(argv[1], "collect"      )==0)  ;
-        else if(strcasecmp(argv[1], "perf"         )==0)  doEstimateCost = true;
+        if     (strcasecmp(argv[1], "collect"      )==0)  behavior = COLLECT;
+        else if(strcasecmp(argv[1], "perf"         )==0)  behavior = PERF;
         else if(strcasecmp(argv[1], "crash-zerodiv")==0)  crashKind = 0;
         else if(strcasecmp(argv[1], "crash-segv"   )==0)  crashKind = 1;
         else if(strcasecmp(argv[1], "crash-assert" )==0)  crashKind = 2;
@@ -611,7 +609,7 @@ main(int argc, char** argv)
     // Set the record filename (used only in case for file storage mode)
     plSetFilename("example_record.pltraw");
 
-    if(doEstimateCost) {
+    if(behavior==PERF) {
         // Estimate the cost of the logging
         evaluatePerformance(mode, buildName, durationMultiplier, serverConnectionTimeoutMsec);
     }

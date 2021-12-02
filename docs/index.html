@@ -890,7 +890,7 @@ Other dependencies are snapshotted inside this repository (see [dependencies](#t
     - On Ubuntu/Debian, just type: `sudo apt install libunwind-dev libdw-dev`
     - On Windows, stacktrace dump works out of the box
   - Tested processors: x86, x64, armv7l
-  - Tested compilers: gcc8+, clang7+, VS 2019
+  - Tested compilers: gcc8+, clang7+, VS 2019, VS2022
   - MIT License (i.e. no constraint on disclosing your sources).
 
 **Python instrumentation module**
@@ -916,7 +916,7 @@ Other dependencies are snapshotted inside this repository (see [dependencies](#t
   - Internal third party libraries (snapshot inside this repository, so just for your information), in particular:
     - `Dear Imgui` (graphical toolkit)
     - `zstd` (compression library)
-  - Tested compilers: gcc8., clang7+, VS 2019
+  - Tested compilers: gcc8., clang7+, VS 2019, VS 2022
   - AGPLv3+ License  (except the lower level "platform layer" which is under the MIT License)
 
 **Python remote scripting module**
@@ -1074,7 +1074,7 @@ All allocations are freed when `plStopAndUninit` is called.
 The following table provides the effect of the configuration variables related to memory for the `Palanteer` services:
 | Parameter                               | Description                           | Saturation effect                 | Default value | Memory consumption                            | Memory usage with default values |
 | ---------                               | -------                               | ------                            | :-------:     | :----:                                        | :----:                           |
-| PL_IMPL_COLLECTION_BUFFER_BYTE_QTY      | Buffer size for event collection      | Busy wait                         | 5000000       | 2 * `Value`                                   | 10000 KB                         |
+| PL_IMPL_COLLECTION_BUFFER_BYTE_QTY      | Buffer size for event collection      | Busy wait                         | 5000000       | 2.375 * `Value`                               | 11875 KB                         |
 | PL_IMPL_DYN_STRING_QTY                  | Pool size for dynamic string          | Busy wait                         | 1024          | `PL_DYN_STRING_MAX_SIZE` * `Value`            | 512 KB                           |
 | PL_DYN_STRING_MAX_SIZE                  | Max length of dynamic strings         | String truncation                 | 512           | (see above)                                   | -                                |
 | PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY  | Buffer size for command requests (rx) | Assertion failure at reception    | 8192          | 2 * `Value`                                   | 16 KB                            |
@@ -1083,7 +1083,7 @@ The following table provides the effect of the configuration variables related t
 | PL_IMPL_MAX_EXPECTED_STRING_QTY         | Initial size for unique string lookup | Reallocation                      | 4096          | 16 * first power of two above `Value`         | 64 KB                            |
 | PL_IMPL_MAX_CLI_QTY                     | Pool size for registered CLIs         | Assertion failure at registration | 128           | (64+16*`PL_IMPL_CLI_MAX_PARAM_QTY`) * `Value` | 24 KB                            |
 | PL_IMPL_CLI_MAX_PARAM_QTY               | Maximum parameter qty per CLI         | Assertion failure at registration | 8             | (see above)                                   | -                                |
-| **TOTAL**                               |                                       |                                   |               |                                               | 10638 KB                         |
+| **TOTAL**                               |                                       |                                   |               |                                               | 12513 KB                         |
 
 !!! warning
     This table does not take into account:

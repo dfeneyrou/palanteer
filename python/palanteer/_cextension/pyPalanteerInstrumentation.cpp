@@ -218,7 +218,7 @@ pyEventLogRaw(plPriv::hashStr_t filenameHash, plPriv::hashStr_t nameHash, const 
     uint32_t bi = plPriv::globalCtx.bankAndIndex.fetch_add(1);
     plPriv::EventInt& e = plPriv::eventLogBase(bi, filenameHash, nameHash, filenameHash? 0 : allocFileStr, nameHash? 0 : allocNameStr, lineNbr, flags);
     e.vU64  = v;
-    e.magic = bi;
+    e.writeAck = 1;
     plPriv::eventCheckOverflow(bi);
 }
 
@@ -237,7 +237,7 @@ pyEventLogRawString(plPriv::hashStr_t filenameHash, plPriv::hashStr_t nameHash, 
     plPriv::EventInt& e = plPriv::eventLogBase(bi, filenameHash, nameHash, filenameHash? 0 : allocFileStr, nameHash? 0 : allocNameStr, lineNbr, PL_FLAG_TYPE_DATA_STRING);
     e.vString.hash  = valueStrHash;
     e.vString.value = allocValueStr;
-    e.magic = bi;
+    e.writeAck = 1;
     plPriv::eventCheckOverflow(bi);
 }
 
@@ -493,7 +493,7 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
         plPriv::EventInt& e = plPriv::eventLogBase(bi, filenameHash, nameHash, sentFilename, sentName, lineNbr,
                                                    PL_FLAG_TYPE_DATA_TIMESTAMP | (isEnter? PL_FLAG_SCOPE_BEGIN : PL_FLAG_SCOPE_END));
         e.vU64  = PL_GET_CLOCK_TICK_FUNC();
-        e.magic = bi;
+        e.writeAck = 1;
         plPriv::eventCheckOverflow(bi);
     }
 
@@ -588,7 +588,7 @@ profileCallback(PyObject* self, PyFrameObject* frame, int what, PyObject* arg)
     case PyTrace_RETURN:
         logFunctionEvent(self, frame, arg, false, false); break;
 
-    // C calls below are generated only in case of using "setprofile"
+        // C calls below are generated only in case of using "setprofile"
     case PyTrace_C_CALL:
         if(gWithCCalls && PyCFunction_Check(arg)) { logFunctionEvent(self, frame, arg, true , true); } break;
     case PyTrace_C_RETURN:

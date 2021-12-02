@@ -234,11 +234,11 @@ def subTaskUsingSharedResource(taskNbr, iterNbr):
 
 # Thread entry point
 @plFunction
-def controlTask(synchro, durationMultipler):
+def controlTask(synchro, durationMultiplier):
     someStrings = ["Even", "Odd"]
     plDeclareThread(threading.current_thread().name)
 
-    iterationQty = 10 * durationMultipler
+    iterationQty = 10 * durationMultiplier
     dummyValue = 0
     allocationList = []
 
@@ -542,7 +542,7 @@ def collectInterestingData(
 # =========================
 
 
-def evaluatePerformance(mode, buildName, durationMultipler, serverPort):
+def evaluatePerformance(mode, buildName, durationMultiplier, serverPort):
 
     # Start the logging
     if mode != "inactive":
@@ -557,7 +557,7 @@ def evaluatePerformance(mode, buildName, durationMultipler, serverPort):
     plDeclareThread("Main")
 
     iterationQty = 250000  # 4 events per loop
-    loopQty = iterationQty * durationMultipler
+    loopQty = iterationQty * durationMultiplier
     startCollectSec = time.time()
 
     # Logging in loop, 4 events per cycle
