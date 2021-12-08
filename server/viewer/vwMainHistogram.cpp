@@ -17,9 +17,10 @@
 // This file implements the histogram view
 
 // System
-#include <cmath>
 #include <cinttypes>
 
+// Internal
+#include "bsKeycode.h"
 #include "cmRecord.h"
 #include "vwConst.h"
 #include "vwMain.h"

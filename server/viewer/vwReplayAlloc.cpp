@@ -17,12 +17,8 @@
 // This file implements a virtual memory allocator in order to nicely represent the program memory allocations
 // See http://gee.cs.oswego.edu/dl/html/malloc.html
 
-// System
-#include <cmath>
-
 // Internal
 #include "vwReplayAlloc.h"
-#include "vwConst.h"
 
 
 #ifndef PL_GROUP_RALLOC

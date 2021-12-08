@@ -23,6 +23,8 @@
 #include "imgui_internal.h" // For ImGui::BringWindowToDisplayFront
 
 // Internal
+#include "bsKeycode.h"
+#include "bsOs.h"
 #include "cmRecord.h"
 #include "vwMain.h"
 #include "vwConst.h"

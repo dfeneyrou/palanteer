@@ -16,16 +16,13 @@
 
 #pragma once
 
-// System
-#include <mutex>
-
 // Internal
 #include "palanteer.h"
 #include "bs.h"
 #include "bsVec.h"
-#include "bsString.h"
 
 // Forward declarations
+class bsString;
 class cmInterface;
 class cmCnx;
 

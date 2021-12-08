@@ -20,6 +20,7 @@
 #include <cinttypes>
 
 // Internal
+#include "bsKeycode.h"
 #include "cmRecord.h"
 #include "vwMain.h"
 #include "vwConst.h"

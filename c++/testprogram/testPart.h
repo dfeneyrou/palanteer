@@ -22,10 +22,14 @@
 
 #pragma once
 
+#include <cstdint>
 #include <vector>
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+
+#include "palanteer.h"
+
 
 
 // Synchronization

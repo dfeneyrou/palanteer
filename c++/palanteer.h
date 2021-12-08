@@ -322,6 +322,7 @@
 #include <cstddef>   // For size_t
 #include <cstdlib>   // For abort(), quick_exit...
 #include <cinttypes> // For platform independent printf/scanf
+#include <csignal> // For raising signals in crash handler
 
 #ifdef __unix__
 #include <unistd.h>  // For getpid() in the display of the gdb helper
@@ -341,7 +342,6 @@
 #include <chrono>  // For time_since_epoch()
 #include <cassert> // For static_assert()
 #include <cstring> // For string copy (dynamic strings)
-#include <csignal> // For raising signals in crash handler
 #if defined(__unix__)
 #include <unistd.h>     // For syscall(SYS_gettid)
 #include <sys/syscall.h>

@@ -25,11 +25,13 @@
 // Internal
 #include "bs.h"
 #include "bsVec.h"
-#include "bsTime.h"
 #include "bsString.h"
 #include "bsNetwork.h"
 #include "bsLockFree.h"
-#include "cmInterface.h"
+#include "cmConst.h"
+#include "cmRecord.h"
+
+class cmInterface;
 
 #define MAX_REMOTE_COMMAND_BYTE_SIZE (32*1024)
 

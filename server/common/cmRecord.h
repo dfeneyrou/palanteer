@@ -25,7 +25,6 @@
 #include "bsList.h"
 #include "bsString.h"
 #include "bsHashMap.h"
-#include "cmConst.h"
 
 
 // Constants

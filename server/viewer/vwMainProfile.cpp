@@ -22,6 +22,8 @@
 #include <cinttypes>
 
 // Internal
+#include "bsOs.h"
+#include "bsKeycode.h"
 #include "cmRecord.h"
 #include "vwMain.h"
 #include "vwConst.h"

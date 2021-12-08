@@ -23,7 +23,6 @@
 #include "bs.h"
 #include "bsTime.h"
 #include "bsOs.h"
-#include "bsVec.h"
 #include "bsKeycode.h"
 
 #define VW_REDRAW_PER_NTF 5

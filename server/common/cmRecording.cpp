@@ -19,12 +19,12 @@
 // System
 #include <cstring>
 #include <cstdio>
-#include <chrono>
 #include <algorithm>
 
 // Internal
 #include "bsOs.h"
 #include "bsVec.h"
+#include "cmConst.h"
 #include "cmInterface.h"
 #include "cmRecording.h"
 #include "cmCompress.h"

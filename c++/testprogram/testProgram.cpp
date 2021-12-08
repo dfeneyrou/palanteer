@@ -36,7 +36,6 @@
 #include <list>
 #include <thread>
 #include <chrono>
-#include <csignal>
 
 #ifdef _WIN32
 #include "windows.h"

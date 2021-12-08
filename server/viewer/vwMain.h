@@ -25,11 +25,9 @@
 
 // Internal
 #include "bs.h"
-#include "bsOs.h"
 #include "bsString.h"
 #include "bsTime.h"
 #include "bsLockFree.h"
-#include "bsHashSet.h"
 #include "cmInterface.h"
 #include "cmRecord.h"
 #include "cmRecordIterator.h"
@@ -43,7 +41,6 @@ class  cmRecording;
 class  cmLiveControl;
 class  vwPlatform;
 class  vwFileDialog;
-struct TimelineDrawHelper;
 
 
 class vwMain : public cmInterface {

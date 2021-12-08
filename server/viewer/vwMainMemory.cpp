@@ -17,11 +17,10 @@
 // This file implements the memory timeline view
 
 // System
-#include <cmath>
-#include <cinttypes>
 #include <algorithm>
 
 // Internal
+#include "bsKeycode.h"
 #include "cmRecord.h"
 #include "vwMain.h"
 #include "vwConst.h"

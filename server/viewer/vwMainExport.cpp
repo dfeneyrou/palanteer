@@ -16,8 +16,6 @@
 // This file implements the functions and automata for all kinds of export
 
 // System
-#include <algorithm>
-#include <math.h>
 #include <inttypes.h>
 
 // External

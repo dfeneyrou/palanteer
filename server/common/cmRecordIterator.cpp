@@ -17,6 +17,7 @@
 // This file implements some iterators on a record in order to read its different parts
 
 #include "bsOs.h"
+#include "cmConst.h"
 #include "cmRecord.h"
 #include "cmRecordIterator.h"
 

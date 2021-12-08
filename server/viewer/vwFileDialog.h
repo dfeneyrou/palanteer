@@ -16,11 +16,7 @@
 
 #pragma once
 
-// External
-#include "imgui.h"
-
 // Internal
-#include "bsOs.h"
 #include "bsString.h"
 
 

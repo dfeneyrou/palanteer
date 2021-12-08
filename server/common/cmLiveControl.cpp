@@ -18,6 +18,7 @@
 
 
 // Internal
+#include "bsString.h"
 #include "cmLiveControl.h"
 #include "cmCnx.h"
 #include "cmInterface.h"

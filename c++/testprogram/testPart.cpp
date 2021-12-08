@@ -28,6 +28,8 @@
 // System includes
 #include <cmath>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 
 // Local includes
 #include "palanteer.h"

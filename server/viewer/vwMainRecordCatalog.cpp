@@ -27,7 +27,6 @@
 // Internal
 #include "bsOs.h"
 #include "cmLiveControl.h"
-#include "cmRecording.h"
 #include "vwConst.h"
 #include "vwMain.h"
 #include "vwConfig.h"

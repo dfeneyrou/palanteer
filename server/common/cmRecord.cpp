@@ -22,6 +22,7 @@
 
 // Internal
 #include "bsOs.h"
+#include "cmConst.h"
 #include "cmRecord.h"
 #include "cmCompress.h"
 

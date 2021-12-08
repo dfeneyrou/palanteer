@@ -24,11 +24,10 @@
 #include <iterator>
 
 // Internal
-#include "bsOs.h"
 #include "bsVec.h"
 #include "cmCnx.h"
 #include "cmConst.h"
-#include "cmCompress.h"
+#include "cmInterface.h"
 
 #ifndef PL_GROUP_CLIENTRX
 #define PL_GROUP_CLIENTRX 1

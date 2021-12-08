@@ -24,8 +24,8 @@
 #include "bsHashMap.h"
 #include "bsString.h"
 #include "cmRecord.h"
-#include "cmInterface.h"
 
+class cmInterface;
 
 class cmRecording {
 public:
