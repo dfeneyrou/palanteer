@@ -772,6 +772,7 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
         if(rt.streamId<0 || rt.streamId>=record->streams.size()) LOAD_ERROR("handle the abnormal thread stream ID");
         READ_INT(rt.nameIdx,           "read the thread name idx");
         if((int)fread(&rt.threadHash, 8, 1, recFd)!=1) LOAD_ERROR("read the thread hash");
+        rt.threadUniqueHash = rt.threadHash;
         if((int)fread(&rt.durationNs, 8, 1, recFd)!=1) LOAD_ERROR("read the thread end date");
         if(rt.durationNs>record->durationNs) record->durationNs = rt.durationNs;
         READ_INT(rt.elemEventQty,      "read the thread elem event quantity");
