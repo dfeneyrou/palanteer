@@ -484,7 +484,6 @@ vwMain::drawLog(LogView& lv)
 
         // Drag on-going: display the selection box with transparency and range
         if(lv.rangeSelStartNs>=0 && lv.rangeSelStartNs<mouseTimeBestTimeNs) {
-            char tmpStr[128];
             float y1 = lv.rangeSelStartY-fontHeight;
             float y2 = mouseTimeBestY;
             constexpr float arrowSize = 4.f;

@@ -1946,9 +1946,11 @@ namespace plPriv {
             e.flags     = PL_FLAG_TYPE_LOG_PARAM;
             eventLogStoreParam(bi, 0, 0, 0, args...); // Recursive storage of provided parameters
         }
+#if PL_EXTERNAL_STRINGS==0
         if(level>=globalCtx.minLogLevelConsole) {
             eventLogConsoleDisplay(level, category_, format_, args...);
         }
+#endif
     }
 
 
@@ -1958,9 +1960,11 @@ namespace plPriv {
         if(PL_IS_ENABLED_() && level>=globalCtx.minLogLevelRecord) {
             eventLogRaw(formatHash_, categoryHash_, format_, category_, 0x8000 | (int)level, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_LOG, PL_GET_CLOCK_TICK_FUNC());
         }
+#if PL_EXTERNAL_STRINGS==0
         if(level>=globalCtx.minLogLevelConsole) {
             eventLogConsoleDisplay(level, category_, format_);
         }
+#endif
     }
 
 
@@ -2754,7 +2758,7 @@ namespace plPriv {
     // [PRIVATE IMPLEMENTATION] Misc. functions
     //-----------------------------------------------------------------------------
 
-#if PL_NOEVENT==0
+#if PL_NOEVENT==0 && PL_EXTERNAL_STRINGS==0
 
     template<typename... Args>
     void
@@ -2789,7 +2793,7 @@ namespace plPriv {
         }
     }
 
-#endif // if PL_NOEVENT==0
+#endif // if PL_NOEVENT==0 && PL_EXTERNAL_STRINGS==0
 
 
     //-----------------------------------------------------------------------------

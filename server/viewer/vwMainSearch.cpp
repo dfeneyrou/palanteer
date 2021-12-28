@@ -606,7 +606,6 @@ vwMain::drawSearch(void)
 
         // Drag on-going: display the selection box with transparency and range
         if(s.rangeSelStartNs>=0 && s.rangeSelStartNs<mouseTimeBestTimeNs) {
-            char tmpStr[128];
             float y1 = s.rangeSelStartY-fontHeight;
             float y2 = mouseTimeBestY;
             constexpr float arrowSize = 4.f;
