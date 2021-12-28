@@ -2506,12 +2506,10 @@ namespace plPriv {
         // Data collection
         double        tickToNs = 1.;
         clockType_t   lastSentEventBufferTick = 0;
-#if PL_SHORT_DATE==1
         clockType_t   lastWrapCheckDateTick = 0;
         uint32_t      lastDateWrapQty       = 0;
         clockType_t   bankPreDateTick   [2] = {0, 0};
         uint32_t      bankPreDateWrapQty[2] = {0, 0};
-#endif
         uint8_t*      allocCollectBuffer = 0;
         uint8_t*      sendBuffer = 0;
         FlatHashTable<uint32_t> lkupStringToIndex;
@@ -3328,68 +3326,42 @@ namespace plPriv {
 #if PL_NOEVENT==0
 
     static void
-    sendEvents(int eventQty, uint8_t* eventBuffer, bool isAux=false)
+    sendEvents(int eventQty, uint8_t* eventBuffer, DataType dataType, uint64_t preDateTick)
     {
         // Initialize the pre-allocated header
         eventBuffer[0] = 'P'; // For desynchronization/problem detection
         eventBuffer[1] = 'L';
-        if(isAux) {
-            eventBuffer[2] = ((int)PL_DATA_TYPE_EVENT_AUX>>8)&0xFF; // Auxiliary data block type
-            eventBuffer[3] = ((int)PL_DATA_TYPE_EVENT_AUX>>0)&0xFF;
-        } else {
-            eventBuffer[2] = ((int)PL_DATA_TYPE_EVENT>>8)&0xFF; // Main data block type
-            eventBuffer[3] = ((int)PL_DATA_TYPE_EVENT>>0)&0xFF;
-        }
+        eventBuffer[2] = ((int)dataType>>8)&0xFF; // Auxiliary data block type
+        eventBuffer[3] = ((int)dataType>>0)&0xFF;
         eventBuffer[4] = (eventQty>>24)&0xFF; // Event qty
         eventBuffer[5] = (eventQty>>16)&0xFF;
         eventBuffer[6] = (eventQty>> 8)&0xFF;
         eventBuffer[7] = (eventQty>> 0)&0xFF;
 
-        if(!isAux) {
-#if PL_SHORT_DATE==1
-            // Get the right pre-date for this bank
-            int bankNbr = (implCtx.prevBankAndIndex&EVTBUFFER_MASK_BANK)? 1:0;
-            uint32_t preDateWrapQty = implCtx.bankPreDateWrapQty[bankNbr];
-            clockType_t preDateTick = implCtx.bankPreDateTick   [bankNbr];
-            // Wrap qty & timestamp
-            eventBuffer[ 8] = (preDateWrapQty>>24)&0xFF;
-            eventBuffer[ 9] = (preDateWrapQty>>16)&0xFF;
-            eventBuffer[10] = (preDateWrapQty>> 8)&0xFF;
-            eventBuffer[11] = (preDateWrapQty>> 0)&0xFF;
-            eventBuffer[12] = (preDateTick   >>24)&0xFF;
-            eventBuffer[13] = (preDateTick   >>16)&0xFF;
-            eventBuffer[14] = (preDateTick   >> 8)&0xFF;
-            eventBuffer[15] = (preDateTick   >> 0)&0xFF;
-#else
-            // Timestamp
-            clockType_t dateTick = PL_GET_CLOCK_TICK_FUNC();
-            eventBuffer[ 8] = (dateTick>>56)&0xFF;
-            eventBuffer[ 9] = (dateTick>>48)&0xFF;
-            eventBuffer[10] = (dateTick>>40)&0xFF;
-            eventBuffer[11] = (dateTick>>32)&0xFF;
-            eventBuffer[12] = (dateTick>>24)&0xFF;
-            eventBuffer[13] = (dateTick>>16)&0xFF;
-            eventBuffer[14] = (dateTick>> 8)&0xFF;
-            eventBuffer[15] = (dateTick>> 0)&0xFF;
-#endif
-        } else {
-            // No date infos for "aux"
-            memset(eventBuffer+8, 0, 8);
-        }
+        // Timestamp
+        eventBuffer[ 8] = (preDateTick>>56)&0xFF;
+        eventBuffer[ 9] = (preDateTick>>48)&0xFF;
+        eventBuffer[10] = (preDateTick>>40)&0xFF;
+        eventBuffer[11] = (preDateTick>>32)&0xFF;
+        eventBuffer[12] = (preDateTick>>24)&0xFF;
+        eventBuffer[13] = (preDateTick>>16)&0xFF;
+        eventBuffer[14] = (preDateTick>> 8)&0xFF;
+        eventBuffer[15] = (preDateTick>> 0)&0xFF;
 
         palComSend(eventBuffer, 16+eventQty*sizeof(EventExt));
         implCtx.stats.sentEventQty += eventQty;
         if(eventQty) plgData(PL_VERBOSE, "sent events",  eventQty);
     }
 
-#if PL_SHORT_DATE==1
-    static void
+
+    static inline void
     updateDateWrap(clockType_t dateTick)
     {
+        // Useful only with short date. With long dates, wrap is always zero and server ignores the info anyway
         if(dateTick<implCtx.lastWrapCheckDateTick) ++implCtx.lastDateWrapQty;
         implCtx.lastWrapCheckDateTick = dateTick;
     }
-#endif
+
 
     static bool
     collectEvents(bool doForce)
@@ -3400,10 +3372,7 @@ namespace plPriv {
 
         auto& ic = implCtx;
         clockType_t dateTick =  PL_GET_CLOCK_TICK_FUNC();
-
-#if PL_SHORT_DATE==1
         updateDateWrap(dateTick);
-#endif
 
         // Rate limit the sending calls (only if the induced latency is tolerated and
         //  1/8 filling of the current buffer is not reached and less than 1/8 of the dynamic
@@ -3509,14 +3478,19 @@ namespace plPriv {
         // Swap the banks: Toggle the bank bit and reset the index
         std::atomic<uint32_t>& bi = globalCtx.bankAndIndex;
         uint32_t  newBankAndIndex = (bi.load()^EVTBUFFER_MASK_BANK)&EVTBUFFER_MASK_BANK;
+        int bankNbr = (newBankAndIndex&EVTBUFFER_MASK_BANK)? 1 : 0;
+
+        // Get the date before any event from this batch
+        uint64_t preDateTick = implCtx.bankPreDateTick[bankNbr];
 #if PL_SHORT_DATE==1
-        {
-            // Store the date before the bank starts being filled
-            int bankNbr = (newBankAndIndex&EVTBUFFER_MASK_BANK)? 1 : 0;
-            implCtx.bankPreDateWrapQty[bankNbr] = implCtx.lastDateWrapQty;
-            implCtx.bankPreDateTick   [bankNbr] = implCtx.lastWrapCheckDateTick;
-        }
+        preDateTick |= ((uint64_t)implCtx.bankPreDateWrapQty[bankNbr])<<32;
 #endif
+
+        // Store the date before the bank starts being filled
+        implCtx.bankPreDateWrapQty[bankNbr] = implCtx.lastDateWrapQty;
+        implCtx.bankPreDateTick   [bankNbr] = implCtx.lastWrapCheckDateTick;
+
+        // Swap!
         implCtx.prevBankAndIndex = bi.exchange(newBankAndIndex);
 
         // Some saturation are detected?
@@ -3528,7 +3502,8 @@ namespace plPriv {
         // Write (file case) or send (socket case) the buffer
         if(eventQty || stringQty) plgBegin(PL_VERBOSE, "sending scopes");
         if(stringQty) sendStrings(stringQty);
-        sendEvents (eventQty, dstBuffer);  // Event buffer is sent even without events. No event is an information by itself ("a collection loop was done")
+        // Event buffer is sent even without events. No event is an information by itself ("a collection loop was done")
+        sendEvents (eventQty, dstBuffer, PL_DATA_TYPE_EVENT, preDateTick);
         if(eventQty || stringQty) plgEnd(PL_VERBOSE, "sending scopes");
         plgEnd(PL_VERBOSE, "collectEvents");
 
@@ -3686,7 +3661,7 @@ namespace plPriv {
             plgBegin(PL_VERBOSE, "sending ctx switches");
             ic.stats.sentEventQty += dstEventQty;
             if(stringQty)   sendStrings(stringQty);
-            if(dstEventQty) sendEvents (dstEventQty, (uint8_t*)(ic.cswitchPollBuffer), true);
+            if(dstEventQty) sendEvents (dstEventQty, (uint8_t*)(ic.cswitchPollBuffer), PL_DATA_TYPE_EVENT_AUX, 0);
             plgEnd(PL_VERBOSE, "sending ctx switches");
 
             if(!doForce && dstEventQty<16) break; // No need to iterate if very few events collected
@@ -3806,7 +3781,7 @@ namespace plPriv {
             // Wait that the process is unfrozen by the server
             std::unique_lock<std::mutex> lk(ic.threadInitMx);
             while(!ic.threadInitCvTx.wait_for(lk, std::chrono::milliseconds(50), [&] { return ic.rxIsStarted; })) {
-#if PL_SHORT_DATE==1
+#if PL_NOEVENT==0
                 updateDateWrap(PL_GET_CLOCK_TICK_FUNC());
 #endif
                 collectResponse();
@@ -3815,7 +3790,7 @@ namespace plPriv {
 #endif
 
         // Start the collection
-#if PL_SHORT_DATE==1
+#if PL_NOEVENT==0
         updateDateWrap(PL_GET_CLOCK_TICK_FUNC());
         implCtx.bankPreDateTick   [1] = implCtx.lastWrapCheckDateTick;  // Before any dated event
         implCtx.bankPreDateWrapQty[1] = implCtx.lastDateWrapQty;
