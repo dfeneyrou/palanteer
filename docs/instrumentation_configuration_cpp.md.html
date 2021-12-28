@@ -126,10 +126,10 @@ They fully define the [memory usage](index.html#c++memoryusage) of the library.
 
 <br/>
 
-| Crash and stacktrace                                  | Description                                              | Default                   |
-| ---------                                             | -----------                                              | :-----:                   |
-| [PL_IMPL_STACKTRACE](#pl_impl_stacktrace)             | Enables the stacktrace dump if a crash occurs            | Windows: 1 <br/> Linux: 0 |
-| [PL_IMPL_STACKTRACE_COLOR](#pl_impl_stacktrace_color) | Enable the color display of the built-in stacktrace dump | 1                         |
+| Crash and stacktrace                            | Description                                   | Default                   |
+|-------------------------------------------------|-----------------------------------------------|:-------------------------:|
+| [PL_IMPL_STACKTRACE](#pl_impl_stacktrace)       | Enables the stacktrace dump if a crash occurs | Windows: 1 <br/> Linux: 0 |
+| [PL_IMPL_CONSOLE_COLOR](#pl_impl_console_color) | Enable the color display of all console dumps | 1                         |
 
 <br/>
 
@@ -176,10 +176,10 @@ This base address shall thus be retrieved at runtime and substracted from the fu
 
 **Excluding some functions**
 
-Any functions used inside the low level `Palanteer` event logging **must not** be auto-instrumented. Else an infinite call recursion is created and the program crashes due to a stack overflow. <br/>
-As the library uses small inlined functions during logging for efficiency reasons, this means that the following parts shall be excluded from the auto-instrumentation:
-  1. the file `palanteer.h` (because "header only" library so it contains functions during event logging)
-  2. all inlined standard library functions used during logging, directly or indirectly
+Any functions used inside the low level `Palanteer` event tracing **must not** be auto-instrumented. Else an infinite call recursion is created and the program crashes due to a stack overflow. <br/>
+As the library uses small inlined functions during tracing for efficiency reasons, this means that the following parts shall be excluded from the auto-instrumentation:
+  1. the file `palanteer.h` (because "header only" library so it contains functions during event tracing)
+  2. all inlined standard library functions used during tracing, directly or indirectly
 
 Thanks to the GCC flag `-finstrument-functions-exclude-file-list` excluding file by substring pattern matching, enforcing (1) is straighforward. <br/>
 The (2) depends on the GCC installation paths.
@@ -188,18 +188,18 @@ On a Debian 11, the exclusion parameter value `-finstrument-functions-exclude-fi
 A more fine grained working exclusion set (Debian 11 at least) is: `-finstrument-functions-exclude-file-list=palanteer.h,atomic,chrono,/bits/ -finstrument-functions-exclude-function-list=atomic,thread,operator,condition_variable`
 
   - it uses also the `-finstrument-functions-exclude-function-list` flag which excludes function based on a substring pattern matching.
-  - it excludes more precisely the part of the standard library used in the event logging, letting some parts of it auto-instrumented (compared to the version (1))
+  - it excludes more precisely the part of the standard library used in the event tracing, letting some parts of it auto-instrumented (compared to the version (1))
   - it was not easily found as any function called internally shall also be excluded, which means that the standard library structure and internals shall be taken into account.
 
 !!!
     The recommended exclusion set is to use `-finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/` (to adapt to the GCC installation if needed) <br/>
     Indeed, the fine-grained exclusion method is much trickier to set properly and:
       - does not bring any real value as the standard library is heavily templatized and the function names get very long and are unreadable.
-      - create an heavy logging which affects the reliability of the performance measures.
+      - create an heavy tracing which affects the reliability of the performance measures.
 
 !!! tip
     If you quickly encounter a `segmentation fault` specifically with automatic function instrumentation, this is probably due to an incorrect exclusion list. This can be checked under a debugger by looking at the stack trace. <br/>
-    Beware that 2 code paths shall be considered: the event logging itself (using `atomic`, `thread`...), and the contention resolution in case of buffer saturation which additionally uses `std::this_thread::yield()` with many sub function calls.
+    Beware that 2 code paths shall be considered: the event tracing itself (using `atomic`, `thread`...), and the contention resolution in case of buffer saturation which additionally uses `std::this_thread::yield()` with many sub function calls.
 
 ### PL_IMPL_CATCH_SIGNALS
 
@@ -243,7 +243,7 @@ Their maximum size and their quantity per collection cycle shall be known from t
     Dynamic strings are more flexible than static strings but have a performance price and some constraints due to preallocation.
 
 This constant defines the maximum quantity of strings per collection cycle. <br/>
-If this pool of dynamic strings is depleted during a collection cycle, the logging thread will *busy-wait* until the pool is refilled after the collection process. Refer to the description of the [collection mechanism](base_concepts.md.html#baseconcepts/c++specific/eventcollectionmechanism) for details.
+If this pool of dynamic strings is depleted during a collection cycle, the tracing thread will *busy-wait* until the pool is refilled after the collection process. Refer to the description of the [collection mechanism](base_concepts.md.html#baseconcepts/c++specific/eventcollectionmechanism) for details.
 
 The default value is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -404,13 +404,13 @@ If your system meets the requirements, just set `PL_IMPL_STACKTRACE` to 1 in the
     On Windows, the stacktrace will be directly visible only if your program is not graphical.<br/>
     If it is graphical, you need to redirect the "stderr" output in a dialog box. This can be done by overriding the `PL_IMPL_PRINT_STDERR` macro.
 
-### PL_IMPL_STACKTRACE_COLOR
+### PL_IMPL_CONSOLE_COLOR
 
 This parameter simply enables the usage of terminal escape codes to add color into the text messages of the built-in stacktrace handler.
 
 The default value is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
-#define PL_IMPL_STACKTRACE_COLOR 1
+#define PL_IMPL_CONSOLE_COLOR 1
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ### PL_IMPL_STACKTRACE_FUNC
@@ -698,7 +698,7 @@ By giving it another positive value, all hashes are scrambled and collision is l
 **I have a segmentation fault quickly after launching an auto-instrumented program**
 
 Check the list of excluded functions. As explained in [PL_IMPL_AUTO_INSTRUMENT](#pl_impl_auto_instrument), it is crucial to exclude all
-functions that are used during the event logging in order to avoid a deadly infinite call recursion.
+functions that are used during the event tracing in order to avoid a deadly infinite call recursion.
 
 <br/>
 **My auto-instrumented program displays a lot of hexadecimal values instead of function names**

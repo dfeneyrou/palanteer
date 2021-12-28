@@ -114,7 +114,7 @@ bin\testprogram.exe collect  (Windows)
 #define PL_IMPLEMENTATION 1
 #include "palanteer.h"
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  1. Initialize it to start the logging: <br/>
+  1. Initialize it to start the tracing: <br/>
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
 plInitAndStart("my program name");
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -160,11 +160,11 @@ import palanteer  # Keep the namespace
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
 from palanteer import *
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  1. Initialize it to start the logging: <br/>
+  1. Initialize it to start the tracing: <br/>
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
-plInitAndStart("my program name")  # Add ", with_functions=False" to disable the automatic functions enter/leave logging
+plInitAndStart("my program name")  # Add ", with_functions=False" to disable the automatic functions enter/leave tracing
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     From this point, the automatic logging is started, if activated (it is the case with previous example initialization).
+     From this point, the automatic tracing is started, if activated (it is the case with previous example initialization).
   1. Instrument the parts of the code that you want to observe
      - As a start, try to mark some scope starts using `plBegin("a name here")` and `plEnd("a name here")` (do not forget to "end" each "begin").
      - Inside a scope (important), log some named data with `plData("data name", value)`
@@ -190,6 +190,72 @@ plStopAndUninit()
     The example program `./python/testprogram/testprogram.py` covers many instrumentation topics. <br/>
     Looking at its documented source code and its behavior in front of the viewer, is definitely a good quick starter.
 
+
+## Quick C++ logging usage
+
+If you are interested in the logging facility (i.e. timestamped printf-like messages with a level and category) without any recording, the console display service is available even when the service is not started or inactive. <br/>
+In this case, the following steps are enough:
+
+**1) "Install" the C++ instrumentation library in your program**
+
+  1. Copy the file `c++/palanteer.h` inside your sources so that it is accessible.
+
+  1. As most single header libraries, it needs to be "implemented" once, just by adding `#define PL_IMPLEMENTATION 1` before the include in one of your files:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPLEMENTATION 1
+#include "palanteer.h"
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**2) Use the logging service**
+
+1. Configure the minimum console display level
+
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Available levels are PL_LOG_LEVEL_ALL=PL_LOG_LEVEL_DEBUG, PL_LOG_LEVEL_INFO, PL_LOG_LEVEL_WARN (default), PL_LOG_LEVEL_ERROR or PL_LOG_LEVEL_NONE
+plSetLogLevelConsole(level);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This can be done dynamically at any time.
+
+2. Instrument your code with the simple logging API
+
+The complete list of API is:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Logging APIs
+plLogDebug("category", "printf-like format string", ...);
+plLogInfo ("category", "printf-like format string", ...);
+plLogWarn ("category", "printf-like format string", ...);
+plLogError("category", "printf-like format string", ...);
+
+// "Group" versions exists also
+plgLogDebug(GROUP_NAME, "category", "printf-like format string", ...);
+...
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some examples of calls:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plLogInfo("attack", "Monster %s was hit with damages %d", monsterNames[monsterId], damageQty);
+
+plgLogError(DETAILS, "recovery", "File %s could not be opened. Error code is %08x", filename, errorCode);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+!!! warning
+    Console display is not a "nanosecond" operation. It requires parsing and formatting of all parameters, plus the console output. <br/>
+    For heavy logging, disabling the console display and recording is recommended. The viewer can display the logs in real-time if needed.
+
+!!! warning
+    Console output is implemented with a simple printf. Under Windows, GUI application shall redirect the output to see the logs.
+
+!!!
+    To add the recording to the steps above, just call `plInitAndStart` in connected or file mode. <br/>
+    Console output and log recording are independant, and the minimum recording level can be configured dynamically with:
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+// Available levels are PL_LOG_LEVEL_ALL=PL_LOG_LEVEL_DEBUG (default), PL_LOG_LEVEL_INFO, PL_LOG_LEVEL_WARN, PL_LOG_LEVEL_ERROR or PL_LOG_LEVEL_NONE
+plSetLogLevelRecord(level);
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    Recorded logs can be visualized and exported in text form through the viewer.
+
+
 ## Quick C++ automatic functions instrumentation
 
 The automatic C++ functions instrumentation feature is a quick and easy way to profile or observe your program.
@@ -213,7 +279,7 @@ This `Palanteer` flag activates the collection the virtual base address at runti
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 These flags add the debug symbols in the executable (whatever the optimization level), enable the addition of the hooks and exclude some files from the auto-instrumentation (the provided exclusion list fits a Debian distribution). <br/>
-Indeed, it is important to not instrument the functions used during the low level event logging to avoid a "Larsen effect". <br/>
+Indeed, it is important to not instrument the functions used during the low level event tracing to avoid a "Larsen effect". <br/>
 The [PL_IMPL_AUTO_INSTRUMENT section](instrumentation_configuration_cpp.md.html#pl_impl_auto_instrument) discusses this important point with more details.
 
 **3) Add the "-ldl" to the linker command line**
@@ -272,7 +338,7 @@ add_custom_command(TARGET "testprogram" POST_BUILD
 
 !!! tip
     Clang contains also the same mechanism but unfinished and cannot be used in the context of `Palanteer`. Indeed, it is not possible to exclude any files or functions. <br/>
-    And all functions used during the low level event logging shall be excluded to avoid a fatal "Larsen effect". <br/>
+    And all functions used during the low level event tracing shall be excluded to avoid a fatal "Larsen effect". <br/>
     Clang support will be added as soon as a usable way is available.
 
 ## Quick C++ external string configuration
@@ -330,7 +396,7 @@ In conjunction with the instrumented program, it enables dynamic thread control,
 **2) Have your instrumented program ready**
 
 Without manual instrumentation (case of an unmodified Python script), the only possibility is to observe some automatically instrumented events, without any control on the program. <br/>
-CLIs, freeze points, variable content logging... are what makes scripting reliable and powerful...
+CLIs, freeze points, variable content tracing... are what makes scripting reliable and powerful...
 
 **3) Write the python script**
 
@@ -348,7 +414,7 @@ palanteer_scripting.process_launch("myProgram.exe", [ &lt;parameters...&gt; ])
   1. Interact with it<br/>
      * Define some [events of interest](scripting_api.md.html#data_configure_events) through event specs:
        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
-# Define your event/lock/marker capture specifications
+# Define your event/lock/log capture specifications
 my_selection = palanteer_scripting.EvtSpec(thread="MyThread", events=["first event", "top event/**/child event", ...])
 # Apply a selection of the event specifications
 palanteer_scripting.data_configure_events(my_selection)

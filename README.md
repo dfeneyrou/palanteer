@@ -8,10 +8,12 @@ Palanteer is a set of lean and efficient tools to improve the quality of softwar
 
 Simple code instrumentation, mostly automatic in Python, delivers powerful features:
   - **Collection of meaningful atomic events** on timings, memory, locks wait and usage, context switches, data values..
+  - **Efficient logging** with a printf-compatible interface
   - **Visual and interactive observation** of records: hierarchical logs, timeline, plot, histogram, flame graph...
   - **Remote command call and events observation can be scripted in Python**: deep testing has never been simpler
   - **C++**:
     - ultra-light single-header cross-platform instrumentation library
+    - [printf-like nanosecond logging](https://dfeneyrou.github.io/palanteer/index.html#easyandefficientlogging) with level, category and graphable arguments
     - compile time selection of [groups of instrumentation](https://dfeneyrou.github.io/palanteer/base_concepts.md.html#c++specific/groups)
     - compile-time hashing of [static strings](https://dfeneyrou.github.io/palanteer/base_concepts.md.html#staticanddynamicstrings) to minimize their cost
     - compile-time striping of [all instrumentation static strings](https://dfeneyrou.github.io/palanteer/getting_started.md.html#quickc++externalstringconfiguration)
@@ -229,6 +231,30 @@ Maximum : 500
 
 Details can be found [here](https://dfeneyrou.github.io/palanteer/index.html#overview/commonfeatures/remotecontrol).
 
+## Logging
+
+Logs are timestamped printf-like messages that contain a severity level and a category for easier filtering.
+
+Nanosecond efficiency is reached by leveraging compile-time pre-computations and deferring formatting on the viewer side. <br/>
+Console display can also be enabled dynamically, for easy local debugging.
+
+Example:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plLogDebug("input", "Key '%c' pressed", pressedKeyChar);
+
+plLogInfo("computation result", "The resulting value of the phase %-20s is %g with the code 0x%08x",
+          phaseStr, floatResult, errorCode);
+
+plLogWarn("phase", "End of a computation");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An [internal comparison](https://dfeneyrou.github.io/palanteer/index.html#easyandefficientlogging) with the popular `spdlog` and the performant `Nanolog` (Standford) shows that`Palanteer`:
+  - is ~50x faster at runtime than `spdlog` and only twice slower than `Nanolog`
+  - is 6x faster for compiling a log call than `spdlog` and 10x faster than `Nanolog`
+  - provides more flexiblity on the log selection at compile time, and the possibility to obfuscate all static strings.
+  - can provide more context around logs, like simultaneous tracing, and a powerful viewer for filtering and visualizing (all log arguments can be graphed)
+
+
 ## Documentation
 
 The complete documentation is accessible inside the repository, and online:
@@ -272,7 +298,7 @@ Other dependencies are snapshotted inside this repository, so for information on
 |----------------------------------|-----------------------------|------------------------------------------------|
 | Khronos OpenGL API and Extension | MIT                         | https://www.khronos.org/registry/OpenGL/api/GL |
 | Dear ImGui                       | MIT                         | https://github.com/ocornut/imgui               |
-| stb_image                        | Public domain               | https://github.com/nothings/stb                |
+| stb                              | Public domain               | https://github.com/nothings/stb                |
 | Fonts 'Roboto-Medium.ttf'        | Apache License, Version 2.0 | https://fonts.google.com/specimen/Roboto       |
 | ZStandard                        | BSD                         | https://facebook.github.io/zstd                |
 | Markdeep                         | BSD                         | https://casual-effects.com/markdeep            |

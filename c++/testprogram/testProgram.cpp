@@ -46,7 +46,8 @@
 #endif
 
 #define PL_IMPLEMENTATION 1
-#define PL_IMPL_COLLECTION_BUFFER_BYTE_QTY 60000000  // Dimensioned for the demanding "performance" evaluation
+#define PL_IMPL_COLLECTION_BUFFER_BYTE_QTY 70000000  // Dimensioned for the demanding "performance" evaluation
+#define PL_IMPL_DYN_STRING_QTY 100*1024
 #include "palanteer.h"
 
 #include "testPart.h"
@@ -54,6 +55,9 @@
 // Instrumentation group to test the group API
 #ifndef PL_GROUP_TESTGROUP
 #define PL_GROUP_TESTGROUP 1
+#endif
+#ifndef PL_GROUP_TESTGROUP2
+#define PL_GROUP_TESTGROUP2 0
 #endif
 
 
@@ -144,9 +148,6 @@ subTaskUsingSharedResource(int taskNbr, int iterNbr)
 void
 controlTask(int groupNbr, const char* groupName, int durationMultiplier)
 {
-    plString_t compileTimeStrings[2] = { plMakeString("Even"), plMakeString("Odd") };
-    (void)compileTimeStrings; // Remove warnings when Palanteer events are not used
-
     plDeclareThreadDyn("%s%sControl", groupName, strlen(groupName)? "/":"");
 
     int   iterationQty = 10*durationMultiplier;
@@ -177,8 +178,8 @@ controlTask(int groupNbr, const char* groupName, int durationMultiplier)
         plScope("Iteration");
         plVar(iterNbr, iterationQty);
 
-        // Dynamic but still external string compatible markers
-        plMarkerDyn("Count", compileTimeStrings[iterNbr%2]);
+        // Some logging
+        plLogDebug("Count", "Value is %s", (iterNbr%2)? "Odd" : "Even");
 
         int taskQty = globalRandomGenerator.get(1, 4);
         dummyValue += busyWait(globalRandomGenerator.get(500, 2500));
@@ -242,11 +243,11 @@ cliHandlerAsyncAssert(plCliIo& cio)
 
 
 void
-cliHandlerCreateMarker(plCliIo& cio)
+cliHandlerCreateLog(plCliIo& cio)
 {
     const char* msg = cio.getParamString(0);
     if(msg) { // In case Palanteer events are not used
-        plMarkerDyn("test_marker", msg);
+        plLogWarn("test_log", "%s", msg);
     }
 }
 
@@ -306,44 +307,96 @@ cliHandlerQuit(plCliIo& cio)
 void
 evaluatePerformance(plMode mode, const char* buildName, int durationMultiplier, int serverConnectionTimeoutMsec)
 {
-    constexpr int iterationQty = 250000; // 4 events per loop
     (void) mode; (void)buildName; (void)serverConnectionTimeoutMsec;
-
-    // Start the logging
-    plInitAndStart("C++ perf example", mode, buildName, serverConnectionTimeoutMsec);
-
-    // Give a name to this thread (before or after the library initialization)
-    plDeclareThread("Main");
-
+    plSetLogLevelRecord(PL_LOG_LEVEL_DEBUG);  // Record all logs
+    plSetLogLevelConsole(PL_LOG_LEVEL_NONE);  // Displaying on console is out of the scope of this test
     typedef uint64_t dateNs_t;
-    dateNs_t startCollectNs = GET_TIME(nanoseconds);
-    int loopQty = iterationQty*durationMultiplier;
+    plStats s;
+    double bufferUsageRatio, allEventQty;
+    dateNs_t startCollectNs, endCollectNs, endSendingNs;
+
+#define DISPLAY_PERF_RESULT(testTitle, itemName, itemPerLoop)           \
+    s = plGetStats();                                                   \
+    bufferUsageRatio = 100.*(double)s.collectBufferMaxUsageByteQty/(double)((s.collectBufferSizeByteQty>0)? s.collectBufferSizeByteQty:1); \
+    allEventQty = itemPerLoop*loopQty;                                  \
+    printf(testTitle);                                                  \
+    printf("  Collection global duration: %.2f ms for %d " itemName "s\n" \
+           "  Collection unit cost      : %.1f ns per " itemName "\n"   \
+           "  Collection peak rate      : %.1f million " itemName "s/s\n" \
+           "  Processing global duration: %.2f ms (w/ %s)\n"            \
+           "  Average processing rate   : %.3f million " itemName "s/s\n" \
+           "  Max internal buffer usage : %-7d bytes (%5.2f%% of max)\n\n", \
+           (double)(endCollectNs-startCollectNs)/1000000., (int)allEventQty, \
+           (double)(endCollectNs-startCollectNs)/allEventQty,           \
+           1e3*allEventQty/(double)(endCollectNs-startCollectNs),       \
+           (double)(endSendingNs-startCollectNs)/1000000., (mode==PL_MODE_STORE_IN_FILE)? "disk file writing" : "transmission and server processing", \
+           allEventQty/(double)(endSendingNs-startCollectNs)*1e3,       \
+           s.collectBufferMaxUsageByteQty, bufferUsageRatio)
+
+
+    // First test: events
+    // ==================
+    plInitAndStart("C++ perf example", mode, buildName, serverConnectionTimeoutMsec);
+    plDeclareThread("Main");
+    int loopQty = 250000*durationMultiplier;  // 4 events per loop
 
     // Logging in loop, 4 events per cycle
+    startCollectNs = GET_TIME(nanoseconds);
     for(int i=0; i<loopQty; ++i) {
         plBegin("TestLoop");
         plData("Iteration", i);
         plData("Still to go", loopQty-i-1);
         plEnd("TestLoop");
     }
+    endCollectNs = GET_TIME(nanoseconds);
 
-    dateNs_t endCollectNs   = GET_TIME(nanoseconds);
-    plStopAndUninit();
-    dateNs_t endSendingNs   = GET_TIME(nanoseconds);
+    plStopAndUninit();  // Stopping the collection allows taking into account the server processing time
+    endSendingNs = GET_TIME(nanoseconds);
+    DISPLAY_PERF_RESULT("Performance of a loop of events (scope with 2 nested named integer events):\n", "event", 4);
 
-    // Console display
-    plStats  s = plGetStats();
-    double bufferUsageRatio    = 100.*(double)s.collectBufferMaxUsageByteQty/(double)((s.collectBufferSizeByteQty>0)? s.collectBufferSizeByteQty:1);
-    printf("Collection duration : %.2f ms for %d events\n" \
-           "Collection unit cost: %.0f ns\n" \
-           "Processing duration : %.2f ms (w/ %s)\n" \
-           "Processing rate     : %.3f million event/s\n" \
-           "Max buffer usage    : %-7d bytes (%5.2f%% of max)\n",
-           (double)(endCollectNs-startCollectNs)/1000000., loopQty*4,
-           (double)(endCollectNs-startCollectNs)/(double)(loopQty*4),
-           (double)(endSendingNs-startCollectNs)/1000000., (mode==PL_MODE_STORE_IN_FILE)? "disk file writing" : "transmission and server processing",
-           4e3*loopQty/(double)(endSendingNs-startCollectNs),
-           s.collectBufferMaxUsageByteQty, bufferUsageRatio);
+
+    // Second test: simple logs
+    // ========================
+    plInitAndStart("C++ perf simple log example", mode, buildName, serverConnectionTimeoutMsec);
+    plDeclareThread("Main");
+
+    // Logging in loop, 1 log per cycle
+    loopQty *= 4;
+    startCollectNs = GET_TIME(nanoseconds);
+    for(int i=0; i<loopQty; ++i) {
+        plLogInfo("Benchmark", "Simple log message with 0 parameters");
+    }
+    endCollectNs = GET_TIME(nanoseconds);
+
+    plStopAndUninit();  // Stopping the collection allows taking into account the server processing time
+    endSendingNs = GET_TIME(nanoseconds);
+    DISPLAY_PERF_RESULT("Performance of a loop of logs without parameter:\n", "log", 1);
+
+
+    // Third test: logs with parameters
+    // ================================
+    plInitAndStart("C++ perf log example", mode, buildName, serverConnectionTimeoutMsec);
+    plDeclareThread("Main");
+
+    // Logging in loop, 1 log per cycle
+    loopQty /= 2;  // Not to saturate the buffer, as parameters double the required space
+    startCollectNs = GET_TIME(nanoseconds);
+    for(int i=0; i<loopQty; ++i) {
+        plLogInfo("Benchmark", "Simple log message with 4 parameters %d %f %d %d ", i, 14., 2*i, 4*i);
+    }
+    endCollectNs = GET_TIME(nanoseconds);
+
+    plStopAndUninit();  // Stopping the collection allows taking into account the server processing time
+    endSendingNs = GET_TIME(nanoseconds);
+    DISPLAY_PERF_RESULT("Performance of a loop of logswith 4 parameters:\n", "log", 1);
+
+    printf("\nSome notes:\n");
+    printf("1) 'Collection' means: program side item storage in the internal collection buffer (thread-safe).\n");
+    printf("      It does not include the file storage (in file storage mode) or transmission to server, which are done in a dedicated Palanteer thread.\n");
+    printf("      These figures represent a 'peak rate' that can be sustained until the internal collection buffer is full (for this particular kind of test).\n");
+    printf("2) 'Processing' means: 'collection' and all processing.\n");
+    printf("      In connected mode, it includes transmission and server processing storage with indexation. In file storage mode, it includes the local file storage.\n");
+    printf("      These figures represent the expected sustainable rate of the full system (for this particular kind of test).\n");
 }
 
 
@@ -358,9 +411,9 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
     (void) mode; (void)buildName; (void)serverConnectionTimeoutMsec;
 
     // Register a CLI before the initialization (this should be the nominal case)
-    plRegisterCli(cliHandlerCreateMarker, "test::marker",
+    plRegisterCli(cliHandlerCreateLog, "test::log",
                   "msg=string",
-                  "Create a marker with the provided string");
+                  "Create a log with the provided string");
 
     // Give a name to this thread (before or after the library initialization)
     plDeclareThread("Main");
@@ -397,6 +450,31 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
         plText("Freeze", "After second freeze");
     }
 
+    // Some logs
+    const char* testString = "rabbit\nand fox";  // multi-line
+
+    // Some logs not recorded but displayed on console
+    plSetLogLevelConsole(PL_LOG_LEVEL_DEBUG);
+    plSetLogLevelRecord (PL_LOG_LEVEL_NONE);
+    plLogDebug("Not recorded", "An integer value %d", 1234);
+    plLogInfo ("Not recorded", "Several other values %d, %.3f, %lg and %" PRId64 ".", 1234, -0.1234f, 3.14e200, 1234567891234567);
+    plLogWarn ("Not recorded", "Some values %08d and some strings: '%-10s'.", 1234, testString);
+    plLogError("Not recorded", "A pointer %p with the address of the string", (void*)testString);
+
+    // Recorded logs not seen on console
+    plSetLogLevelConsole(PL_LOG_LEVEL_NONE);
+    plSetLogLevelRecord (PL_LOG_LEVEL_DEBUG);
+    plLogDebug("Log test", "An integer value %d", 1234);
+    plLogInfo ("Log test", "Several other values %d, %.3f, %lg and %" PRId64 ".", 1234, -0.1234f, 3.14e200, 1234567891234567);
+    plLogWarn ("Log test", "Some values %08d and some strings %-10s.", 1234, testString);
+    plLogError("Log test", "A pointer %p with the address of the string", (void*)testString);
+
+    // Some not compiled logs
+    plgLogDebug(TESTGROUP2, "Log test", "An integer value %d", 1234);
+    plgLogInfo (TESTGROUP2, "Log test", "Several other values %d, %.3f, %lg and %" PRId64 ".", 1234, -0.1234f, 3.14e200, 1234567891234567);
+    plgLogWarn (TESTGROUP2, "Log test", "Some values %08d and some strings: '%-10s'.", 1234, testString);
+    plgLogError(TESTGROUP2, "Log test", "A pointer %p with the address of the string", (void*)testString);
+
     // Launch some active threads
     const char* threadGroupNames[9] = { "", "Workers", "Real time", "Database Cluster", "Helpers", "Engine", "Compute Grid", "Hub", "Idlers" };
     std::vector<std::thread> threads;
@@ -418,9 +496,9 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
         plgBegin(TESTGROUP, "Group begin/end test");
         plgData(TESTGROUP, "Group variable a", a);
         plgVar(TESTGROUP, a);
-        plgMarker(TESTGROUP, "test", "this is a group marker test");
-        plgMarkerDyn(TESTGROUP, "test", "this is a group marker test");
-        plgMarkerDyn(TESTGROUP, "test", "this is another group marker test");
+        plgLogWarn(TESTGROUP, "test", "this is a group log test");
+        plgLogWarn(TESTGROUP, "test", "this is a group log test");
+        plgLogWarn(TESTGROUP, "test", "this is another group log test");
         plgEnd(TESTGROUP, "Group begin/end test");
     }
     {
@@ -466,7 +544,7 @@ collectInterestingData(plMode mode, const char* buildName, int durationMultiplie
     // Wait for threads completion
     plLockWait("Global Synchro");
     for(std::thread& t : threads) t.join();
-    plMarker("threading", "All tasks are completed! Joy!");
+    plLogInfo("threading", "All tasks are completed! Joy!");
     plLockState("Global Synchro", false); // End of waiting, no lock used
 
     // Stop the recording

@@ -47,7 +47,7 @@ private:
 };
 
 
-// This iterator requires an associated threads and the scope/non-scope attribute,
+// This iterator works on the hierarchical tree data (and the scope/non-scope attributes)
 //   which is not the case of the "simple plot" iterator below
 class cmRecordIteratorElem {
 public:
@@ -146,13 +146,15 @@ private:
 };
 
 
-class cmRecordIteratorMarker : public cmRecordIteratorTimePlotBase {
+// This iterator is dedicated to the compound logs, which have a particular structure:
+//  1 "log" event with a date, followed by associated 0..N "log param" events without date
+class cmRecordIteratorLog : public cmRecordIteratorTimePlotBase {
 public:
-    cmRecordIteratorMarker(void) = default;
-    cmRecordIteratorMarker(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix);
-    cmRecordIteratorMarker(const cmRecord* record, int threadId, u32 nameIdx, s64 timeNs, double nsPerPix);
+    cmRecordIteratorLog(void) = default;
+    cmRecordIteratorLog(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix);
+    cmRecordIteratorLog(const cmRecord* record, int threadId, u32 nameIdx, int logLevel, s64 timeNs, double nsPerPix);
     void init(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix);
-    bool getNextMarker(bool& isCoarse, cmRecord::Evt& e);
+    bool getNextLog(bool& isCoarse, cmRecord::Evt& eOut, bsVec<cmLogParam>& params);
     s64  getTimeRelativeIdx(int offset); // Works only for full res
 };
 

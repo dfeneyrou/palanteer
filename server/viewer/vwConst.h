@@ -56,6 +56,7 @@ class vwConst {
     static const ImVec4 yellow;
     static const ImVec4 cyan;
     static const ImVec4 darkBlue;
+    static const ImVec4 darkOrange;
 
     static const ImU32 uWhite     = IM_COL32(255, 255, 255, 255);
     static const ImU32 uBlack     = IM_COL32(0,     0,   0, 255);

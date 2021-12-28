@@ -34,7 +34,7 @@ constexpr static int cmElemChunkSize = 32/4*cmChunkSize; // Chunk elem quantity.
 constexpr static int cmMRElemSize    = 16;    // Size of the elem pyramid subsampling (in memory)
 constexpr static u32 PL_INVALID      = 0xFFFFFFFF;
 constexpr static int PL_MEMORY_SNAPSHOT_EVENT_INTERVAL = 10000; // Smaller value consumes disk space, bigger value increases reactivity time when accessing detailed allocations
-constexpr static int PL_RECORD_FORMAT_VERSION = 4;
+constexpr static int PL_RECORD_FORMAT_VERSION = 5;
 
 // Chunk location (=offset and size) in the big event file
 typedef u64 chunkLoc_t;
@@ -45,6 +45,19 @@ struct cmStreamInfo {
     bsString buildName;
     bsString langName;
     u64 tlvs[PL_TLV_QTY];
+};
+
+struct cmLogParam {
+    int paramType; // See PL_FLAG_TYPE_... up to PL_FLAG_TYPE_DATA_QTY
+    union {
+        int32_t  vInt;
+        uint32_t vU32;
+        int64_t  vS64;
+        uint64_t vU64;
+        float    vFloat;
+        double   vDouble;
+        uint32_t vStringIdx;
+    };
 };
 
 
@@ -76,6 +89,14 @@ public:
             };
         };
 
+        // Event fields
+        u8  threadId;
+        u8  flags;
+        u16 lineNbr;
+        u8  level;
+        u8  reserved1;
+        u16 reserved2;  // Explicit padding (present anyway due to u64 alignment and constraint on the full struct size as multiple of 8)
+
         // Name of the event (semantic depends on the event kind)
         u32 nameIdx;
 
@@ -85,14 +106,6 @@ public:
             u32 memDetailNameIdx;  // Memory event
             u32 coreId;            // Context switch event
         };
-
-        // Event fields
-        u8  threadId;
-        u8  level;
-        u8  flags;
-        u8  reserved1;
-        u16 lineNbr;
-        u16 reserved2;  // Explicit padding (present anyway due to u64 alignment and constraint on the full struct size as multiple of 8)
 
         // Event value
         union {
@@ -158,11 +171,12 @@ public:
         u32 allocMIdx;
     };
 
-    // Marker category
-    struct MarkerElem {
+    // Log category
+    struct LogElem {
         int elemIdx;
         int threadId;
-        int categoryId;  // Corresponding nameIdx can be retrieved with the field 'markerCategories'
+        int logLevel;    // 0=Debug, 1=Info, 2=Warn, 3=Error
+        int categoryId;  // Corresponding nameIdx can be retrieved with the field 'logCategories'
     };
 
 #define LOC_STORAGE(name)                      \
@@ -207,7 +221,7 @@ public:
         u32 memEventQty;
         u32 ctxSwitchEventQty;
         u32 lockEventQty;
-        u32 markerEventQty;
+        u32 logEventQty;
         bsVec<NestingLevel> levels;
         LOC_STORAGE(memAlloc);
         LOC_STORAGE(memDealloc);
@@ -255,18 +269,18 @@ public:
         u32 memEventQty;
         u32 ctxSwitchEventQty;
         u32 lockEventQty;
-        u32 markerEventQty;
+        u32 logEventQty;
         u32 errorQty;
         // Delta buffers
         LOC_STORAGE(coreUsage);
-        LOC_STORAGE(marker);
+        LOC_STORAGE(log);
         LOC_STORAGE(lockNtf);
         LOC_STORAGE(lockUse);
         bsVec<cmStreamInfo> streams;  // Full list of stream infos
         bsVec<Lock>   locks;   // Full lock structure
         bsVec<Thread> threads; // Full list of threads but with only delta buffers
         bsVec<Elem>   elems;   // Full list of elems   but with only delta buffers
-        bsVec<int>    markerCategories; // Full structure
+        bsVec<int>    logCategories; // Full list
         bsVec<String> strings; // With recomputation of alphabetical order
         bsVec<DeltaString> updatedStrings; // Only the delta
         bsVec<int>    updatedThreadIds;
@@ -281,7 +295,7 @@ public:
     bool updateFromDelta(Delta* delta);
 
     // Others
-    void buildMarkerCategories(void);
+    void buildLogCategories(void);
 
     // Fields
     bsString appName;
@@ -296,18 +310,18 @@ public:
     u32      memEventQty  = 0;
     u32      ctxSwitchEventQty  = 0;
     u32      lockEventQty  = 0;
-    u32      markerEventQty = 0;
+    u32      logEventQty = 0;
     u32      errorQty = 0;
     LOC_STORAGE(coreUsage);
-    LOC_STORAGE(marker);
+    LOC_STORAGE(log);
     LOC_STORAGE(lockNtf);
     LOC_STORAGE(lockUse);
     bsVec<cmStreamInfo> streams;
     bsVec<Lock>        locks;
     bsVec<Thread>      threads;
     bsVec<Elem>        elems;
-    bsVec<int>         markerCategories;
-    bsVec<MarkerElem>  markerElems;
+    bsVec<int>         logCategories;
+    bsVec<LogElem>     logElems;
     bsHashMap<int,int> elemPathToId;
     RecError errors[MAX_REC_ERROR_QTY];
 

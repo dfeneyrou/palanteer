@@ -127,7 +127,7 @@ vwMain::drawRecord(void)
                 }
 
                 // Event list
-                u32 totalEventQty = bsMax((u32)1, _record->elemEventQty+_record->memEventQty+_record->ctxSwitchEventQty+_record->lockEventQty+_record->markerEventQty);
+                u32 totalEventQty = bsMax((u32)1, _record->elemEventQty+_record->memEventQty+_record->ctxSwitchEventQty+_record->lockEventQty+_record->logEventQty);
                 ImGui::TableNextColumn();
                 bool isEventNodeOpen = ImGui::TreeNodeEx("Events", ImGuiTreeNodeFlags_SpanFullWidth);
                 ImGui::TableNextColumn(); ImGui::TextColored(vwConst::grey, "%s", getNiceBigPositiveNumber(totalEventQty));
@@ -140,7 +140,7 @@ vwMain::drawRecord(void)
                     DUMP_STAT_EVENT("Generic",    _record->elemEventQty);
                     DUMP_STAT_EVENT("Memory",     _record->memEventQty);
                     DUMP_STAT_EVENT("Lock",       _record->lockEventQty);
-                    DUMP_STAT_EVENT("Marker",     _record->markerEventQty);
+                    DUMP_STAT_EVENT("Log",        _record->logEventQty);
                     DUMP_STAT_EVENT("Ctx switch", _record->ctxSwitchEventQty);
                     ImGui::TreePop();
                 }
@@ -157,7 +157,7 @@ vwMain::drawRecord(void)
                         ImGui::TableNextColumn();
                         ImGui::Text("%s", getFullThreadName(ti.threadId));
                         const auto& t = _record->threads[ti.threadId];
-                        u32 threadEventQty = t.elemEventQty+t.memEventQty+t.ctxSwitchEventQty+t.lockEventQty+t.markerEventQty;
+                        u32 threadEventQty = t.elemEventQty+t.memEventQty+t.ctxSwitchEventQty+t.lockEventQty+t.logEventQty;
                         ImGui::TableNextColumn();
                         ImGui::TextColored(vwConst::grey, "%s events (%d%%)", getNiceBigPositiveNumber(threadEventQty),
                                            (int)((100LL*threadEventQty+totalEventQty/2)/totalEventQty));
@@ -190,7 +190,7 @@ vwMain::drawRecord(void)
             ImGui::TextColored(vwConst::gold, "'%s'", _record? _record->appName.toChar(): "Unknown");
 
             // Kill button
-            ImGui::SameLine(ImGui::GetWindowContentRegionWidth()-ImGui::CalcTextSize("Kill").x-2*ImGui::GetStyle().ItemSpacing.x);
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x-ImGui::CalcTextSize("Kill").x-2*ImGui::GetStyle().ItemSpacing.x);
             if(ImGui::Button("Kill")) ImGui::OpenPopup("Kill program");
             if(ImGui::BeginPopupModal("Kill program", 0, ImGuiWindowFlags_AlwaysAutoResize)) {
                 ImGui::Text("Really kill the running program?\n\n");
@@ -199,7 +199,7 @@ vwMain::drawRecord(void)
                     for(int streamId=0; streamId<_newStreamQty; ++streamId) {
                         _live->remoteKillProgram(streamId);
                     }
-                    plMarker("menu", "Kill program");
+                    plLogInfo("menu", "Kill program");
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::SetItemDefaultFocus();
@@ -316,7 +316,7 @@ vwMain::drawRecord(void)
 
                     // File and line number
                     ImGui::TableNextColumn();
-                    ImGui::Text("%s", (e.filenameIdx==PL_INVALID)? "N/A (marker)" : _record->getString(e.filenameIdx).value.toChar());
+                    ImGui::Text("%s", (e.filenameIdx==PL_INVALID)? "N/A (log)" : _record->getString(e.filenameIdx).value.toChar());
                     if(e.filenameIdx!=PL_INVALID && ImGui::IsItemHovered()) ImGui::SetTooltip("%s", _record->getString(e.filenameIdx).value.toChar());
                     ImGui::TableNextColumn();
                     ImGui::Text("%d", e.lineNbr);
@@ -440,7 +440,7 @@ vwMain::drawCatalog(void)
                     if(ImGui::MenuItem("Load record")) {
                         _msgRecordLoad.t1GetFreeMsg()->recordPath = ri.path;
                         _msgRecordLoad.t1Send();
-                        plMarker("menu", "Load record");
+                        plLogInfo("menu", "Load record");
                         ImGui::CloseCurrentPopup();
                     }
 
@@ -476,7 +476,7 @@ vwMain::drawCatalog(void)
                                 fclose(fh);
                             }
                         }
-                        plMarker("menu", "Changed record nickname");
+                        plLogInfo("menu", "Changed record nickname");
                         ImGui::CloseCurrentPopup();
                         openedRecord = 0;
                         dirty();
@@ -507,7 +507,7 @@ vwMain::drawCatalog(void)
                     ImGui::Separator();
                     if(ImGui::Button("OK", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
                         _recordsToDelete.push_back(ri.path);
-                        plMarker("menu", "Delete one record");
+                        plLogInfo("menu", "Delete one record");
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::SetItemDefaultFocus();
@@ -609,7 +609,7 @@ vwMain::drawCatalog(void)
             ImGui::Separator();
             if(ImGui::Button("OK", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
                 for(RecordInfos& ri : appInfo.records) _recordsToDelete.push_back(ri.path);
-                plMarker("menu", "Delete all records");
+                plLogInfo("menu", "Delete all records");
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SetItemDefaultFocus();
@@ -625,7 +625,7 @@ vwMain::drawCatalog(void)
             ImGui::Separator();
             if(ImGui::Button("OK", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
                 for(RecordInfos& ri : appInfo.records) if(ri.nickname[0]==0) _recordsToDelete.push_back(ri.path);
-                plMarker("menu", "Delete all records without nickname");
+                plLogInfo("menu", "Delete all records without nickname");
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SetItemDefaultFocus();
@@ -643,7 +643,7 @@ vwMain::drawCatalog(void)
                 int skipQty = keepOnlyLastRecordQty;
                 for(RecordInfos& ri : appInfo.records)
                     if(ri.nickname[0]==0 && --skipQty<0) _recordsToDelete.push_back(ri.path);
-                plMarker("menu", "Delete last N records");
+                plLogInfo("menu", "Delete last N records");
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SetItemDefaultFocus();

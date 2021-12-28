@@ -57,6 +57,8 @@ class vwConfig {
     bool setVWheelInversion(bool state);
     float getTimelineVSpacing(void) const { return _vTimelineSpacing; } // In fontHeight
     bool  setTimelineVSpacing(float vSpacing);
+    int  getTimeFormat(void) const { return _timeFormat; }
+    bool setTimeFormat(int timeFormat);
     bool setWindowCatalogVisibility(bool state);
     bool getWindowCatalogVisibility(void) const { return _winVisiCatalog; }
     bool setWindowRecordVisibility(bool state);
@@ -226,6 +228,7 @@ class vwConfig {
     int _hWheelInversion = 0;
     int _vWheelInversion = 0;
     float _vTimelineSpacing = 0.3f;
+    int  _timeFormat     = 0;
     int _winVisiCatalog  = true;
     int _winVisiRecord   = true;
     int _winVisiSearch   = false;

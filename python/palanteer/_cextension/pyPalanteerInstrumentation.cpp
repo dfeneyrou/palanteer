@@ -622,17 +622,18 @@ traceCallback(PyObject* Py_UNUSED(self), PyFrameObject* frame, int what, PyObjec
     // Only the bottom of the exception stack is processed
     pyCommonThreadCtx_t& ctc = gThreads[plPriv::threadCtx.id];
     if(ctc.nextExceptionFrame!=frame && ctc.stackDepth<ctc.filterOutDepth) {
-        // Log a marker with the line number (function is the current scope) and the exception text
+        // Add a log with the line number (function is the current scope) and the exception text
         PyObject* exceptionRepr = PyObject_Repr(PyTuple_GET_ITEM(arg, 1)); // Representation of the exception "value"
         char msg[256];
-        snprintf(msg, sizeof(msg), "line %d: %s", PyFrame_GetLineNumber(frame), PyUnicode_AsUTF8(exceptionRepr));
+        snprintf(msg, sizeof(msg), "In %s (%d): %s", PyUnicode_AsUTF8(frame->f_code->co_filename), PyFrame_GetLineNumber(frame), PyUnicode_AsUTF8(exceptionRepr));
         plPriv::hashStr_t palanteerCategoryStrHash, palanteerMsgStrHash, strHash;
 
         gGlobMutex.lock();
         CACHE_STRING("Exception", palanteerCategoryStrHash);
         CACHE_STRING(msg,         palanteerMsgStrHash);
         gGlobMutex.unlock();
-        pyEventLogRaw(palanteerMsgStrHash, palanteerCategoryStrHash, msg, "Exception", 0, PL_FLAG_TYPE_MARKER, PL_GET_CLOCK_TICK_FUNC());
+        pyEventLogRaw(palanteerMsgStrHash, palanteerCategoryStrHash, msg, "Exception",0x8000 | (int)PL_LOG_LEVEL_WARN,
+                      PL_FLAG_TYPE_LOG, PL_GET_CLOCK_TICK_FUNC());
         Py_XDECREF(exceptionRepr);
     }
 
@@ -745,7 +746,7 @@ pyPlData(PyObject* Py_UNUSED(self), PyObject* args)
 
 
 static PyObject*
-pyPlMarker(PyObject* Py_UNUSED(self), PyObject* args)
+pyPlLog(plLogLevel level, PyObject* args)
 {
     if(!PL_IS_ENABLED_()) Py_RETURN_NONE;
     if(plPriv::threadCtx.id>=PL_MAX_THREAD_QTY) Py_RETURN_NONE;
@@ -762,10 +763,16 @@ pyPlMarker(PyObject* Py_UNUSED(self), PyObject* args)
     CACHE_STRING(msg,      palanteerMsgStrHash);
     gGlobMutex.unlock();
 
-    pyEventLogRaw(palanteerMsgStrHash, palanteerCategoryStrHash, msg, category, 0, PL_FLAG_TYPE_MARKER, PL_GET_CLOCK_TICK_FUNC());
+    pyEventLogRaw(palanteerMsgStrHash, palanteerCategoryStrHash, msg, category, 0x8000 | level,
+                  PL_FLAG_TYPE_LOG, PL_GET_CLOCK_TICK_FUNC());
 
     Py_RETURN_NONE;
 }
+
+static PyObject* pyPlLogDebug(PyObject* Py_UNUSED(self), PyObject* args) { return pyPlLog(PL_LOG_LEVEL_DEBUG, args); }
+static PyObject* pyPlLogInfo (PyObject* Py_UNUSED(self), PyObject* args) { return pyPlLog(PL_LOG_LEVEL_INFO , args); }
+static PyObject* pyPlLogWarn (PyObject* Py_UNUSED(self), PyObject* args) { return pyPlLog(PL_LOG_LEVEL_WARN , args); }
+static PyObject* pyPlLogError(PyObject* Py_UNUSED(self), PyObject* args) { return pyPlLog(PL_LOG_LEVEL_ERROR, args); }
 
 
 static PyObject*
@@ -1078,6 +1085,40 @@ pyPlFreezePoint(PyObject* Py_UNUSED(self), PyObject* args)
 }
 
 
+static PyObject*
+pyPlSetLogLevelConsole(PyObject* Py_UNUSED(self), PyObject* args)
+{
+    // Parse arguments
+    int level = 0;
+    if(!PyArg_ParseTuple(args, "i", &level)) { Py_RETURN_NONE; }
+
+    if(level<0 || level>4) {
+        PyErr_SetString(PyExc_TypeError, "Log level shall be LOG_LEVEL_ALL=LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_WARN, LOG_LEVEL_ERROR, or LOG_LEVEL_NONE.");
+        return 0;
+    }
+    plSetLogLevelConsole((plLogLevel)level);
+
+    Py_RETURN_NONE;
+}
+
+
+static PyObject*
+pyPlSetLogLevelRecord(PyObject* Py_UNUSED(self), PyObject* args)
+{
+    // Parse arguments
+    int level = 0;
+    if(!PyArg_ParseTuple(args, "i", &level)) { Py_RETURN_NONE; }
+
+    if(level<0 || level>4) {
+        PyErr_SetString(PyExc_TypeError, "Log level shall be LOG_LEVEL_ALL=LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_WARN, LOG_LEVEL_ERROR, or LOG_LEVEL_NONE.");
+        return 0;
+    }
+    plSetLogLevelRecord((plLogLevel)level);
+
+    Py_RETURN_NONE;
+}
+
+
 // Memory wrappers
 // ===============
 
@@ -1221,7 +1262,10 @@ static PyMethodDef module_methods[] = {
     {"_profiling_bootstrap_callback", _profiling_bootstrap_callback, METH_VARARGS, 0},
     {"plDeclareThread", pyPlDeclareThread, METH_VARARGS, 0},
     {"plData",          pyPlData,          METH_VARARGS, 0},
-    {"plMarker",        pyPlMarker,        METH_VARARGS, 0},
+    {"plLogDebug",      pyPlLogDebug,      METH_VARARGS, 0},
+    {"plLogInfo",       pyPlLogInfo,       METH_VARARGS, 0},
+    {"plLogWarn",       pyPlLogWarn,       METH_VARARGS, 0},
+    {"plLogError",      pyPlLogError,      METH_VARARGS, 0},
     {"plLockWait",      pyPlLockWait,      METH_VARARGS, 0},
     {"plLockState",     pyPlLockState,     METH_VARARGS, 0},
     {"plLockNotify",    pyPlLockNotify,    METH_VARARGS, 0},
@@ -1229,6 +1273,8 @@ static PyMethodDef module_methods[] = {
     {"plEnd",           pyPlEnd,           METH_VARARGS, 0},
     {"plRegisterCli",   pyPlRegisterCli,   METH_VARARGS, 0},
     {"plFreezePoint",   pyPlFreezePoint,   METH_NOARGS,  0},
+    {"plSetLogLevelRecord",  pyPlSetLogLevelRecord,  METH_VARARGS, 0},
+    {"plSetLogLevelConsole", pyPlSetLogLevelConsole, METH_VARARGS, 0},
 
     {0, 0, 0, 0} // End of list
 };

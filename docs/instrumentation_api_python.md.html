@@ -53,11 +53,11 @@ Options for case (2):
  -s &lt;server IP address&gt; Set the server IP address (default is 127.0.0.1)
  -p &lt;server TCP port&gt;   Set the server port       (default is 59059)
  -f &lt;filename.pltraw&gt;   Save the profiling data into a file to be imported in the Palanteer viewer (default=remote connection)
- -nf                    Do not automatically log the functions              (default=log functions)
- -ne                    Do not automatically log the exceptions             (default=log exception)
- -nm                    Do not log the memory allocations                   (default=log memory allocations)
- -ng                    Do not automatically log the garbage collector runs (default=log gc)
- -c                     Do automatically log the C functions                (default=only python functions)
+ -nf                    Do not automatically trace the functions              (default=trace functions)
+ -ne                    Do not automatically trace the exceptions             (default=trace exception)
+ -nm                    Do not trace the memory allocations                   (default=trace memory allocations)
+ -ng                    Do not automatically trace the garbage collector runs (default=trace gc)
+ -c                     Do automatically trace the C functions                (default=only python functions)
  -w                     Wait for server connection (Palanteer viewer or scripting module). Applicable only in case of remote connection.
  -m                     Run the app as a module (similar to python's "-m" option)
 
@@ -83,10 +83,10 @@ def plInitAndStart(app_name,                                   # Name of the pro
                    server_port     = 59059,                    # Server port
                    do_wait_for_server_connection = False,      # If True, this call blocks until a remote connection is established
                    with_functions  = True,                     # If True, function entering and leaving are automatically instrumented (Python and C)
-                   with_exceptions = True,                     # If True, exception are automatically instrumented (as a marker)
-                   with_memory     = True,                     # If True, the memory allocations/deallocations are logged
+                   with_exceptions = True,                     # If True, exception are automatically instrumented (as a log)
+                   with_memory     = True,                     # If True, the memory allocations/deallocations are traced
                    with_gc         = True,                     # If True, garbage collection is automatically instrumented (as a lock)
-                   with_c_calls    = False                      # If True, the C calls are logged. Set it to False if builtins calls are too verbose
+                   with_c_calls    = False                      # If True, the C calls are traced. Set it to False if builtins calls are too verbose
                    )
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -96,7 +96,7 @@ plInitAndStart("Tetris", do_wait_for_server_connection=True)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In case of monitoring a program in production, it is recommended to:
-  - disable the automatic function instrumentation `with_functions=False` in order to remove most of the logging performance impact
+  - disable the automatic function instrumentation `with_functions=False` in order to remove most of the tracing performance impact
   - manually instrument the important scopes and data
   - use scripting to implement or pipe into your monitoring tool
 
@@ -108,7 +108,7 @@ Almost all memory allocations of the `Palanteer` services are done in this funct
     All resources are freed when calling the associated function `plStopAndUninit` below.
 
 !!! warning Important
-    The `with_c_calls` variable controls the automatic logging of functions implemented in C, which includes many intensively used builtin ones like `print`, list `append` etc... <br/>
+    The `with_c_calls` variable controls the automatic tracing of functions implemented in C, which includes many intensively used builtin ones like `print`, list `append` etc... <br/>
     If not really useful, it may be worth considering keeping it off, to reduce the resource usage (CPU, network and record size).
 
 
@@ -130,7 +130,7 @@ def plStopAndUninit()
     This behavior ensures that all last events are properly recorded, which is critical in case of crash.
 
 
-## Structure logging
+## Structure tracing
 
 ### plDeclareThread
 
@@ -225,9 +225,9 @@ Example:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-## Data logging
+## Data tracing
 
-The instrumentation in this chapter logs string or data of any numeric type inside the current scope.
+The instrumentation in this chapter traces string or data of any numeric type inside the current scope.
 
 !!! warning Important
     Such events **must** be located inside a scope, never at the tree root. <br/>
@@ -248,13 +248,13 @@ Ex: `"Duration##nanosecond"`,  `"pointer##hexa"`, `"Banana##fruit"`
 
 ### plData
 
-This function logs a named numerical value.
+This function traces a named numerical value.
 
 The type of the value can be any integral types plus float, double and string (processed as dynamic string).
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
-# Logs a named string or numerical value
+# Traces a named string or numerical value
 plData(name, value)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -268,44 +268,118 @@ plData("Truncated PI", 3.14159265359)
 plData("Dynamic string", c)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+## Logs
 
-### plMarker
+Logs are timestamped messages associated to a category and a level.
 
-This function logs a marker in the form of a timestamped message associated to a category.
+For instance, Python exceptions are logged with `plLogWarn` on the category "Exception".
 
-A marker refers to an outstanding event that shall be highlighted and searchable. <br/>
-Markers also possess an user-defined attribute "category" for efficient filtering. <br/>
+In the viewer:
 
-!!! warning
-    To be effective, markers shall be used with moderation. All depends on your definition of "outstanding event". <br/>
-    Beware that too many of them might mask the truly important ones.
+ - a dedicated log window provides filtering capabilities on threads, levels and categories
+ - an indicator is visible for each log on top of the timeline for the associated thread (configurable level)
+
+Four log levels are defined, in this order:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+LOG_LEVEL_ALL   = 0  # Just for code clarity
+LOG_LEVEL_DEBUG = 0
+LOG_LEVEL_INFO  = 1
+LOG_LEVEL_WARN  = 2
+LOG_LEVEL_ERROR = 3
+LOG_LEVEL_NONE  = 4
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+### plSetLogLevelRecord
+
+This function dynamically sets the minimum log level to be recorded. All logs with a level strictly below the provided level are dynamically filtered out from the record. <br/>
+The default value is `LOG_LEVEL_ALL`.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
-# Add a marker with a string message
-plMarker(category, msg)
+plSetLogLevelRecord(level)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A level of `LOG_LEVEL_ALL` (equivalent to `LOG_LEVEL_DEBUG`) includes all logs in the record.
+
+A level of `LOG_LEVEL_NONE` removes all logs from the record.
+
+!!! warning
+    This function does not force any recording, it just dynamically configures the log filtering on the program side.
+
+
+### plSetLogLevelConsole
+
+This function dynamically sets the minimum log level to be displayed on console. All logs with a level strictly below the provided level are dynamically filtered out from the console display. <br/>
+The default value is `LOG_LEVEL_WARN`.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+plSetLogLevelConsole(level)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A level of `LOG_LEVEL_ALL` (equivalent to `LOG_LEVEL_DEBUG`) displays all logs on the console.
+
+A level of `LOG_LEVEL_NONE` does not display any log on the console.
+
+!!!
+    The console display is active even if the Palanteer service is not initialized nor enabled. Its configuration is fully independent of the log recording.
+
+!!! warning
+    The typical usage of the console display is to troubleshoot easily a problem. <br/>
+    As its run-time performance is poor due to the extra formatting and console output, it is not recommended to activate it in a context of performance observation.
+
+
+### plLogDebug
+
+This function traces a log in the form of a timestamped message associated to a category and a `debug` level.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+# Add a timestamped log with a string message
+plLogDebug(category, msg)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Example of usage:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
 # String message
-plMarker("error", "Very weird but recoverable case occured")
+plLogDebug("error", "Very weird but recoverable case occured")
 
 # Another message
-plMarker("input", "Key '%c' pressed" % c)
+plLogDebug("input", "Key '%c' pressed" % c)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Markers are typically displayed so that they are easily visible. <br/>
-In the viewer:
 
- - a dedicated marker window provides filtering capabilities both on threads and categories, so that it is easy to jump to the marker context
- - an indicator is visible for each marker on top of the timeline for the associated thread
-
+!!! warning Limitation
+    Unlike the C++ version, no format string argument are accepted so no parameter can be graphed. <br/>
+    This may evolve in the future
 
 
-## Lock logging
+### plLogInfo
 
-The instrumentation in this chapter logs actions performed on locks (as a general term).
+This function is similar to the [`plLogDebug`](#pllogdebug) function but logs with the level `info`.
+
+
+### plLogWarn
+
+This function is similar to the [`plLogDebug`](#pllogdebug) function but logs with the level `warn`.
+
+
+### plLogError
+
+This function is similar to the [`plLogDebug`](#pllogdebug) function but logs with the level `error`.
+
+
+### plMarker (deprecated)
+
+Markers are superseded by the previous `log` APIs, which are a kind of generalization. The `plMarker` APIs will be removed in a future release.
+
+At the moment, they are mapped to a call to `plLogWarn`.
+
+
+## Lock tracing
+
+The instrumentation in this chapter traces actions performed on locks (as a general term).
 
 The usage of locks in multithreaded environment can deeply modify the dynamic behavior. <br/>
 Visualizing them becomes critical in complex programs, that is why a specific diagram in the viewer helps identifying the bottlenecks across threads.
@@ -320,7 +394,7 @@ The lock API is "low level" so that it adapts to many existing lock primitives (
 ### plLockWait
 
 The locking process usually starts with waiting for the lock. <br/>
-This function logs this first step.
+This function traces this first step.
 
 When the wait ends, `plLockState(...)` or `plLockScopeState(...)` **must** be called to set both:
 
@@ -365,19 +439,19 @@ plLockState(lock_name, lockUseState);
     `plLockState` **must** be called just after the end of the waiting phase, if any, to mark its end
 
 !!! tip
-    `plLockState` shall be placed just **before** "unlock" call, so that there is no race condition on the logging which inverse events chronology.
+    `plLockState` shall be placed just **before** "unlock" call, so that there is no race condition on the tracing which inverse events chronology.
 
 Example of usage:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
 ...
 # Lock is released
-plLockState("Database access", False); # Lock is released (log before the release call)
+plLockState("Database access", False); # Lock is released (trace before the release call)
 database_lock.release()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ### plLockNotify
 
-This function logs a notification or a "post" on a lock. <br/>
+This function traces a notification or a "post" on a lock. <br/>
 It has no direct effect on the lock state.
 
 It typically matches the behavior of a `threading.Event.set()` call, or a semaphore post.
@@ -385,12 +459,12 @@ It typically matches the behavior of a `threading.Event.set()` call, or a semaph
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
-# Log a lock notification
+# Trace a lock notification
 plLockNotify(lock_name)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! tip
-    `plLockNotify` shall be placed just **before** "notification" call, so that there is no race condition on the logging which inverse events chronology.
+    `plLockNotify` shall be placed just **before** "notification" call, so that there is no race condition on the tracing which inverse events chronology.
 
 Example of usage:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
@@ -412,7 +486,7 @@ if shall_wake_the_task:
 This function registers a CLI. <br/>
 It requires a [CLI handler](#clihandler), the name of the CLI, the [CLI parameter specification](base_concepts.md.html#cliparameterspecification) and a user description.
 
-The name of the command shall not contain spaces. The user description is purely for documentation purpose. 
+The name of the command shall not contain spaces. The user description is purely for documentation purpose.
 
 !!!
     CLIs can be registered before the instrumentation service is initialized. <br/>
@@ -523,13 +597,13 @@ If the user has the privileges to do so (i.e. root or administrator), `pip` inst
 The built wheel package location is displayed in the `make` output.
 
 <br/>
-**Automatic logging really slows down my program, how can I improve this?**
+**Automatic tracing really slows down my program, how can I improve this?**
 
 There is at least 2 things to try:
  1. Maybe the automatic instrumentation of C functions is enabled (`with_c_calls=True` in the call to `plInitAndStart`, or usage of the `-c` option in the command line). <br/>
-    As they are widely used in builtins (`print`, `list.append`...), they may lead to heavy logging. <br/>
+    As they are widely used in builtins (`print`, `list.append`...), they may lead to heavy tracing. <br/>
     If this information is not critical, disabling the C functions instrumentation can help.
- 1. To get a full control and very low overhead, typically for long run monitoring in production, just disable the automatic logging of functions with `with_functions=False` in the call to `plInitAndStart`. <br/>
+ 1. To get a full control and very low overhead, typically for long run monitoring in production, just disable the automatic tracing of functions with `with_functions=False` in the call to `plInitAndStart`. <br/>
     Then manually instrument your program on the interesting locations with `plBegin`, `plEnd` and `@plFunction` decorator.
 
 <br/>

@@ -30,85 +30,9 @@
 #include "vwConst.h"
 #include "vwConfig.h"
 
-
 #ifndef PL_GROUP_SEARCH
 #define PL_GROUP_SEARCH 0
 #endif
-
-
-void
-vwMain::SearchAggregatedIterator::init(cmRecord* record, u32 selectedNameIdx, u64 threadBitmap, s64 initStartTimeNs, int itemMaxQty,
-                                       bsVec<SearchCacheItem>& items)
-{
-    // Loop on elems
-    itElems.clear();
-    itElemsEvts.clear();
-    startTimeNs = initStartTimeNs;
-    s64    timeNs = 0;
-    u32    lIdx   = 0;
-    double value  = 0.;
-    cmRecord::Evt e;
-    for(int elemIdx=0; elemIdx<record->elems.size(); ++elemIdx) {
-        const cmRecord::Elem& elem = record->elems[elemIdx];
-        if(elem.isPartOfHStruct && elem.nameIdx==selectedNameIdx &&               // From H-structure and with our target name
-           (elem.threadBitmap&threadBitmap) && elem.threadId<cmConst::MAX_THREAD_QTY) { // Only those with a valid non-filtered thread ID
-            // Store the iterator
-            itElems.push_back(cmRecordIteratorElem(record, elemIdx, startTimeNs, 0.));
-            // and the first element after the date
-            while((lIdx=itElems.back().getNextPoint(timeNs, value, e))!=PL_INVALID && timeNs<startTimeNs) { }
-            itElemsEvts.push_back({e, (lIdx!=PL_INVALID)? timeNs : -1, value, elemIdx, lIdx });
-        }
-    }
-
-    // Get a working copy of the iterators (so that stored iterators are still relative to the start date and we can go 'backward')
-    bsVec<cmRecordIteratorElem> itElems2 = itElems;
-
-    // Get all items to display
-    items.clear();
-    while(items.size()<itemMaxQty) {
-        // Store the earliest event
-        int earliestIdx    = -1;
-        for(int i=0; i<itElemsEvts.size(); ++i) {
-            if(itElemsEvts[i].timeNs>=0 && (earliestIdx==-1 || itElemsEvts[i].timeNs<itElemsEvts[earliestIdx].timeNs)) earliestIdx = i;
-        }
-        if(earliestIdx<0) break;
-        items.push_back(itElemsEvts[earliestIdx]);
-
-        // Refill the used iterator
-        lIdx = itElems2[earliestIdx].getNextPoint(timeNs, value, e);
-        itElemsEvts[earliestIdx] = {e, (lIdx!=PL_INVALID)? timeNs : -1, value, itElemsEvts[earliestIdx].elemIdx, lIdx };
-    }
-}
-
-
-s64
-vwMain::SearchAggregatedIterator::getPreviousTime(int itemQty)
-{
-    // Initialize the return in time by getting the time for each event just before the start date
-    bsVec<int> offsets(itElems.size());
-    for(int i=0; i< itElems.size(); ++i) {
-        offsets[i]            = -1; // One event before the start date (iterator was post incremented once, hence the -1)
-        itElemsEvts[i].timeNs = itElems[i].getTimeRelativeIdx(offsets[i]); // Result is -1 if none
-        if(itElemsEvts[i].timeNs>=startTimeNs) { // This case should happen all the time, except when reaching the end of the recorded info
-            itElemsEvts[i].timeNs = itElems[i].getTimeRelativeIdx(--offsets[i]);
-        }
-    }
-
-    s64 previousTimeNs = -1;
-    while((itemQty--)>0) {
-        // Store the earliest time
-        int latestIdx = -1;
-        for(int i=0; i<itElemsEvts.size(); ++i) {
-            if(itElemsEvts[i].timeNs>=0 && (latestIdx==-1 || itElemsEvts[i].timeNs>itElemsEvts[latestIdx].timeNs)) latestIdx = i;
-        }
-        if(latestIdx<0) return previousTimeNs;
-        previousTimeNs = itElemsEvts[latestIdx].timeNs;
-
-        // Refill the used iterator
-        itElemsEvts[latestIdx].timeNs = itElems[latestIdx].getTimeRelativeIdx(--offsets[latestIdx]); // Result is -1 if none
-    }
-    return previousTimeNs;
-}
 
 
 void
@@ -135,6 +59,17 @@ vwMain::prepareSearch(void)
         if(length>s.maxThreadNameLength) s.maxThreadNameLength = length;
     }
 
+    // Compute matching H-tree Elements (only those with a valid non-filtered thread ID)
+    bsVec<int> logElemIdxArray;
+    bsVec<int> elemIdxArray;
+    for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
+        const cmRecord::Elem& elem = _record->elems[elemIdx];
+        if(elem.nameIdx==s.selectedNameIdx && (elem.threadBitmap&threadBitmap) && elem.threadId<cmConst::MAX_THREAD_QTY) {
+            if     (elem.isPartOfHStruct)         elemIdxArray.push_back(elemIdx);
+            else if(elem.flags==PL_FLAG_TYPE_LOG) logElemIdxArray.push_back(elemIdx);
+        }
+    }
+
     // Resynchronization on a date?
     if(s.forceTimeNs>=0) {
         s.startTimeNs = s.forceTimeNs;
@@ -142,8 +77,17 @@ vwMain::prepareSearch(void)
     }
 
     // Get the data
+    s.cachedItems.clear();
+    s.aggregatedIt.init(_record, s.startTimeNs, 0., logElemIdxArray, elemIdxArray);
     int maxLineQty = bsMax(10, 1+winHeight/ImGui::GetTextLineHeightWithSpacing()); // 10 minimum for the page down
-    s.aggregatedIt.init(_record, s.selectedNameIdx, threadBitmap, s.startTimeNs, maxLineQty, s.cachedItems);
+    AggCacheItem aggrEvt;
+    while((maxLineQty--)>=0 && s.aggregatedIt.getNextEvent(aggrEvt)) {
+        if(aggrEvt.evt.flags==PL_FLAG_TYPE_LOG) {
+            s.cachedItems.push_back({aggrEvt.evt, aggrEvt.evt.vS64, 0., aggrEvt.elemIdx, PL_INVALID, aggrEvt.message, aggrEvt.lineQty});
+        } else {
+            s.cachedItems.push_back({aggrEvt.evt, aggrEvt.timeNs, aggrEvt.value, aggrEvt.elemIdx, aggrEvt.lIdx, "", 1});
+        }
+    }
 
     // Compute the scroll ratio (for the scroll bar indication) from the dates
     s.cachedScrollRatio = (float)bsMinMax((double)s.startTimeNs/(double)bsMax(_record->durationNs, 1), 0., 1.);
@@ -314,6 +258,7 @@ vwMain::drawSearch(void)
                 s.completionNameIdxs.clear();
                 s.isCompletionDirty = false;
                 s.completionIdx     = -1;
+
                 for(int nameIdx=0; s.completionNameIdxs.size()<30 && nameIdx<_record->getStrings().size(); ++nameIdx) {
                     const cmRecord::String& name = _record->getString(nameIdx);
                     if(name.value.size()<=1 || !(name.threadBitmapAsName&threadBitmap)) continue; // Only non-empty strings related to user instrumentation for selected threads
@@ -335,8 +280,9 @@ vwMain::drawSearch(void)
                     s.isInputPopupOpen = false;
                     s.selectedNameIdx  = s.completionNameIdxs[i];
                     s.isCacheDirty     = true;
+                    s.startTimeNs      = 0;
                     for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(s.selectedNameIdx);
-                    plMarker("user", "New search");
+                    plLogInfo("user", "New search");
                 }
                 // Mouse, as up & down arrows,  drives selection too
                 else if((ImGui::IsItemHovered() && ImGui::GetMousePos().y!=s.lastMouseY) ||
@@ -352,8 +298,9 @@ vwMain::drawSearch(void)
                 s.isInputPopupOpen = false;
                 s.selectedNameIdx  = s.completionNameIdxs[0];
                 s.isCacheDirty     = true;
+                s.startTimeNs      = 0;
                 for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(s.selectedNameIdx);
-                plMarker("user", "New search");
+                plLogInfo("user", "New search");
             }
             // Keep track of the mouse move to detect change
             s.lastMouseY = ImGui::GetMousePos().y;
@@ -370,15 +317,17 @@ vwMain::drawSearch(void)
 
     // Some init
     ImGui::BeginChild("Search", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar |
-                      ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
+                      ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
     prepareSearch(); // Ensure cache is up to date, even after window creation
     const float winX = ImGui::GetWindowPos().x;
     const float winY = ImGui::GetWindowPos().y;
     const float winWidth      = ImGui::GetWindowContentRegionMax().x;
     const float winHeight     = ImGui::GetWindowSize().y;
     const float fontHeight    = ImGui::GetTextLineHeightWithSpacing();
+    const float fontHeightIntra = ImGui::GetTextLineHeight();
+    const float mouseX        = ImGui::GetMousePos().x;
     const float mouseY        = ImGui::GetMousePos().y;
-    const bool   isWindowHovered = ImGui::IsWindowHovered();
+    const bool  isWindowHovered = ImGui::IsWindowHovered();
 
     const float charWidth = ImGui::CalcTextSize("0").x;
     constexpr int maxMsgSize = 256;
@@ -389,12 +338,13 @@ vwMain::drawSearch(void)
 
     // Did the user click on the scrollbar? (detection based on an unexpected position change)
     const double normalizedScrollHeight = 1000000.; // Value does not really matter, it just defines the granularity
-    float curScrollPos = ImGui::GetScrollY();
-    if(!s.didUserChangedScrollPos && bsAbs(curScrollPos-s.lastScrollPos)>=1.) {
+    float curScrollPosX = ImGui::GetScrollX();
+    float curScrollPosY = ImGui::GetScrollY();
+    if(!s.didUserChangedScrollPos && bsAbs(curScrollPosY-s.lastScrollPos)>=1.) {
         plgScope(SEARCH, "New user scroll position from ImGui");
         plgData(SEARCH, "expected pos", s.lastScrollPos);
-        plgData(SEARCH, "new pos", curScrollPos);
-        s.cachedScrollRatio = (float)(curScrollPos/normalizedScrollHeight);
+        plgData(SEARCH, "new pos", curScrollPosY);
+        s.cachedScrollRatio = (float)(curScrollPosY/normalizedScrollHeight);
         s.setStartPosition((s64)(s.cachedScrollRatio*_record->durationNs));
         s.didUserChangedScrollPos = false;
     }
@@ -472,39 +422,37 @@ vwMain::drawSearch(void)
         plgData(SEARCH, "Set new scroll pos from user", s.cachedScrollRatio*normalizedScrollHeight);
         ImGui::SetScrollY((float)(s.cachedScrollRatio*normalizedScrollHeight));
     }
-    // Mark the virtual total size
-    s.lastScrollPos = ImGui::GetScrollY();
-    ImGui::SetCursorPosY(normalizedScrollHeight);
-    plgData(SEARCH, "Current scroll pos", s.lastScrollPos);
-
-
 
     // Draw the text
     // =============
+    int timeFormat = getConfig().getTimeFormat();
     float y = winY;
-    float mouseTimeBestY = -1.;
-    s64 mouseTimeBestTimeNs = -1;
-    s64 newMouseTimeNs = -1;
+    float mouseTimeBestY      = -1.;
+    float maxOffsetX          =  0.;
+    s64   mouseTimeBestTimeNs = -1;
+    s64   newMouseTimeNs      = -1;
     for(const auto& sci : s.cachedItems) {
         // Get the cached item
         const cmRecord::Elem& elem = _record->elems[sci.elemIdx];
         const cmRecord::Evt&  evt  = sci.evt;
         int flags = evt.flags;
         int v = flags&PL_FLAG_TYPE_MASK;
+        int lineQty = _record->getString(evt.nameIdx).lineQty;
 
         // Build the strings
         nameStr [0] = 0;
         valueStr[0] = 0;
-        snprintf(timeStr, maxMsgSize, "%f s", 0.000000001*sci.timeNs);
+        snprintf(timeStr, maxMsgSize, "%.9f s", 0.000000001*sci.timeNs);
         snprintf(nameStr, maxMsgSize, "%s", _record->getString(evt.nameIdx).value.toChar());
         if(flags&PL_FLAG_SCOPE_BEGIN) {
             if (v==PL_FLAG_TYPE_LOCK_WAIT) { snprintf(valueStr, maxMsgSize, "<lock wait>  { %s }", getNiceDuration((s64)sci.value)); v = PL_FLAG_TYPE_DATA_TIMESTAMP; }
             else snprintf(valueStr, maxMsgSize, "{ %s }", getNiceDuration((s64)sci.value));
         }
-        else if(v==PL_FLAG_TYPE_MARKER) {
-            // For markers, category is stored instead of name and message instead of filename
-            snprintf(valueStr, maxMsgSize, "<marker '%s'>", _record->getString(evt.nameIdx).value.toChar());
-            snprintf(nameStr, maxMsgSize, "%s", _record->getString(evt.filenameIdx).value.toChar());
+        else if(v==PL_FLAG_TYPE_LOG) {
+            // For logs, category is stored instead of name and message instead of filename
+            snprintf(valueStr, maxMsgSize, "<log '%s'>", _record->getString(evt.nameIdx).value.toChar());
+            snprintf(nameStr, maxMsgSize, "%s", sci.message.toChar());
+            lineQty = bsMax(lineQty, sci.messageLineQty);
             v = PL_FLAG_TYPE_DATA_TIMESTAMP;
         }
         else if(v==PL_FLAG_TYPE_LOCK_ACQUIRED) { snprintf(valueStr, maxMsgSize, "<lock acquired>  { %s }", getNiceDuration((s64)sci.value)); v = PL_FLAG_TYPE_DATA_TIMESTAMP; }
@@ -521,9 +469,13 @@ vwMain::drawSearch(void)
         case PL_FLAG_TYPE_DATA_U64:       snprintf(valueStr, maxMsgSize, "%" PRIu64, evt.vU64); break;
         case PL_FLAG_TYPE_DATA_FLOAT:     snprintf(valueStr, maxMsgSize, "%f",  evt.vFloat);  break;
         case PL_FLAG_TYPE_DATA_DOUBLE:    snprintf(valueStr, maxMsgSize, "%f",  evt.vDouble); break;
-        case PL_FLAG_TYPE_DATA_STRING:    snprintf(valueStr, maxMsgSize, "%s",  _record->getString(evt.vStringIdx).value.toChar()); break;
+        case PL_FLAG_TYPE_DATA_STRING:
+            snprintf(valueStr, maxMsgSize, "%s",  _record->getString(evt.vStringIdx).value.toChar());
+            lineQty = bsMax(lineQty, _record->getString(evt.vStringIdx).lineQty);
+            break;
         default:                          snprintf(valueStr, maxMsgSize, "<BAD TYPE %d>", v);
         };
+        float heightPix = fontHeight+fontHeightIntra*(lineQty-1);
 
         // Update the mouse time
         if(isWindowHovered && mouseY>y) {
@@ -533,11 +485,11 @@ vwMain::drawSearch(void)
         // Update the best fit for the mouse time display (yellow horizontal line)
         if(_mouseTimeNs>=sci.timeNs && sci.timeNs>mouseTimeBestTimeNs) {
             mouseTimeBestTimeNs = sci.timeNs;
-            mouseTimeBestY      = y+fontHeight;
+            mouseTimeBestY      = y+heightPix;
         }
 
         // Manage hovering: highlight and clicks
-        if(isWindowHovered && mouseY>=y && mouseY<y+fontHeight) {
+        if(isWindowHovered && mouseY>=y && mouseY<y+heightPix) {
             // This section shall be highlighted
             if(elem.nameIdx!=elem.hlNameIdx) // "Flat" event, so we highlight its block scope
                 setScopeHighlight(elem.threadId, sci.timeNs, PL_FLAG_SCOPE_BEGIN|PL_FLAG_TYPE_DATA_TIMESTAMP, elem.nestingLevel-1, elem.hlNameIdx);
@@ -550,7 +502,7 @@ vwMain::drawSearch(void)
                 getSynchronizedRange(s.syncMode, syncStartTimeNs, syncTimeRangeNs);
 
                 // Click: set timeline position at middle screen only if outside the center third of screen
-                if((ImGui::IsMouseReleased(0) && ImGui::GetMousePos().x<winX+winWidth) || tlWheelCounter) {
+                if((ImGui::IsMouseReleased(0)) || tlWheelCounter) {
                     synchronizeNewRange(s.syncMode, bsMax(sci.timeNs-(s64)(0.5*syncTimeRangeNs), 0LL), syncTimeRangeNs);
                     ensureThreadVisibility(s.syncMode, evt.threadId);
                     synchronizeText(s.syncMode, evt.threadId, elem.nestingLevel, sci.lIdx, sci.timeNs, s.uniqueId);
@@ -578,11 +530,11 @@ vwMain::drawSearch(void)
                     s.ctxNameIdx      = evt.nameIdx;
                     ImGui::OpenPopup("Search menu");
                     _plotMenuItems.clear(); // Reset the popup menu state
-                    if((evt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_MARKER) {
-                        // Find the marker elemIdx suitable for plot/histo
-                        u64  itemHashPath = bsHashStepChain(_record->threads[evt.threadId].threadHash, evt.nameIdx, cmConst::MARKER_NAMEIDX);
-                        int* elemIdx      = _record->elemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
-                        if(elemIdx) prepareGraphContextualMenu(*elemIdx, 0LL, _record->durationNs, false, false);
+                    if(evt.flags==PL_FLAG_TYPE_LOG) {
+                        // Find the log elemIdx suitable for plot/histo
+                        u64 itemHashPath = bsHashStepChain(_record->threads[evt.threadId].threadHash, _record->getString(evt.filenameIdx).hash, cmConst::LOG_NAMEIDX);
+                        int* elemIdxPtr  = _record->elemPathToId.find(itemHashPath, cmConst::LOG_NAMEIDX);
+                        if(elemIdxPtr) prepareGraphLogContextualMenu(*elemIdxPtr, 0LL, _record->durationNs, false);
                     } else {
                         prepareGraphContextualMenu(s.ctxThreadId, s.ctxNestingLevel, s.ctxScopeLIdx, 0, _record->durationNs);
                     }
@@ -612,13 +564,18 @@ vwMain::drawSearch(void)
 
         // Display the text background if highlighted
         if(doHighlight) {
-            DRAWLIST->AddRectFilled(ImVec2(winX, y), ImVec2(winX+winWidth, y+fontHeight), vwConst::uGrey48);
+            DRAWLIST->AddRectFilled(ImVec2(winX, y), ImVec2(winX+curScrollPosX+winWidth, y+heightPix), vwConst::uGrey48);
         }
 
         // Display the date
-        float offsetX = winX+textPixMargin;
-        DRAWLIST->AddText(ImVec2(offsetX, y), vwConst::uWhite, timeStr);
-        offsetX += charWidth*14;
+        float offsetX = winX-curScrollPosX+textPixMargin;
+        const char* formTimeStr = getFormattedTimeString(sci.timeNs, timeFormat);
+        DRAWLIST->AddText(ImVec2(offsetX, y), vwConst::uWhite, formTimeStr);
+        int changedOffset = 0;
+        while(formTimeStr[changedOffset] && formTimeStr[changedOffset]==s.lastDateStr[changedOffset]) ++changedOffset;
+        DRAWLIST->AddText(ImVec2(offsetX, y), vwConst::uGrey128, formTimeStr, formTimeStr+changedOffset);
+        snprintf(s.lastDateStr, sizeof(s.lastDateStr),"%s", formTimeStr);
+        offsetX += charWidth*(float)getFormattedTimeStringCharQty(timeFormat);
 
         // Display the thread
         snprintf(tmpStr, maxMsgSize, "[%s]", _record->getString(_record->threads[evt.threadId].nameIdx).value.toChar());
@@ -631,21 +588,63 @@ vwMain::drawSearch(void)
 
         // Display the value
         DRAWLIST->AddText(ImVec2(offsetX, y), color1, valueStr);
+        offsetX += ImGui::CalcTextSize(valueStr).x;
 
         // Next line
+        if(offsetX>maxOffsetX) maxOffsetX = offsetX;
         if(y>winY+winHeight) break;
-        y += fontHeight;
+        y += heightPix;
+    }
+
+    // Drag with middle button
+    if(isWindowHovered && ImGui::IsMouseDragging(1)) {
+        // Start a range selection
+        if(s.rangeSelStartNs<0 && mouseTimeBestTimeNs>=0) {
+            s.rangeSelStartNs = mouseTimeBestTimeNs;
+            s.rangeSelStartY  = mouseTimeBestY;
+        }
+
+        // Drag on-going: display the selection box with transparency and range
+        if(s.rangeSelStartNs>=0 && s.rangeSelStartNs<mouseTimeBestTimeNs) {
+            char tmpStr[128];
+            float y1 = s.rangeSelStartY-fontHeight;
+            float y2 = mouseTimeBestY;
+            constexpr float arrowSize = 4.f;
+            // White background
+            DRAWLIST->AddRectFilled(ImVec2(winX, y1), ImVec2(winX+curScrollPosX+winWidth, y2), IM_COL32(255,255,255,128));
+            // Range line
+            DRAWLIST->AddLine(ImVec2(mouseX, y1), ImVec2(mouseX, y2), vwConst::uBlack, 2.f);
+            // Arrows
+            DRAWLIST->AddLine(ImVec2(mouseX, y1), ImVec2(mouseX-arrowSize, y1+arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(mouseX, y1), ImVec2(mouseX+arrowSize, y1+arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(mouseX, y2), ImVec2(mouseX-arrowSize, y2-arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(mouseX, y2), ImVec2(mouseX+arrowSize, y2-arrowSize), vwConst::uBlack, 2.f);
+            // Text
+            snprintf(tmpStr, sizeof(tmpStr), "{ %s }", getNiceDuration(mouseTimeBestTimeNs-s.rangeSelStartNs));
+            ImVec2 tb = ImGui::CalcTextSize(tmpStr);
+            float x3 = mouseX-0.5f*tb.x;
+            DRAWLIST->AddRectFilled(ImVec2(x3-5.f, mouseY-tb.y-5.f), ImVec2(x3+tb.x+5.f, mouseY-5.f), IM_COL32(255,255,255,192));
+            DRAWLIST->AddText(ImVec2(x3, mouseY-tb.y-5.f), vwConst::uBlack, tmpStr);
+        }
+    }
+    // Drag ended: set the selected range view
+    else if(isWindowHovered && s.rangeSelStartNs>=0) {
+        if(s.rangeSelStartNs<mouseTimeBestTimeNs) {
+            s64 newRangeNs = mouseTimeBestTimeNs-s.rangeSelStartNs;
+            synchronizeNewRange(s.syncMode, s.rangeSelStartNs-(newRangeNs>>4), newRangeNs+(newRangeNs>>3)); // ~12% wider range
+        }
+        s.rangeSelStartNs = -1;
     }
 
     // Display and update the mouse time
     if(mouseTimeBestY>=0) {
-        DRAWLIST->AddLine(ImVec2(winX, mouseTimeBestY), ImVec2(winX+winWidth, mouseTimeBestY), vwConst::uYellow);
+        DRAWLIST->AddLine(ImVec2(winX, mouseTimeBestY), ImVec2(winX+curScrollPosX+winWidth, mouseTimeBestY), vwConst::uYellow);
     }
     if(newMouseTimeNs>=0.) _mouseTimeNs = newMouseTimeNs;
     if(!ImGui::IsMouseDragging(2)) s.isDragging = false;
 
     // Contextual menu
-    if(ImGui::BeginPopup("Search menu", ImGuiWindowFlags_AlwaysAutoResize)) {
+    if(!_plotMenuItems.empty() && ImGui::BeginPopup("Search menu", ImGuiWindowFlags_AlwaysAutoResize)) {
         float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
         ImGui::TextColored(vwConst::grey, "%s", _record->getString(s.ctxNameIdx).value.toChar());
         ImGui::Separator();
@@ -663,6 +662,11 @@ vwMain::drawSearch(void)
         }
         ImGui::EndPopup();
     }
+
+    // Mark the virtual total size
+    s.lastScrollPos = ImGui::GetScrollY();
+    ImGui::SetCursorPos(ImVec2(maxOffsetX+curScrollPosX-winX, normalizedScrollHeight));
+    plgData(SEARCH, "Current scroll pos", s.lastScrollPos);
 
     ImGui::EndChild();
 

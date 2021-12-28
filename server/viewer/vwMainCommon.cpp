@@ -24,6 +24,7 @@
 // Internal
 #include "bsKeycode.h"
 #include "cmRecord.h"
+#include "cmPrintf.h"
 #include "vwConst.h"
 #include "vwMain.h"
 #include "vwConfig.h"
@@ -74,10 +75,43 @@ vwMain::getNiceTime(s64 ns, s64 tickNs, int bank) const
     static char outBuf1[64];
     static char outBuf2[64];
     char* outBuf = (bank==0)? outBuf1 : outBuf2;
-    int   offset = sprintf(outBuf, "%llds", ns/1000000000LL);
-    if(tickNs<60000000000LL) offset += sprintf(outBuf+offset, ":%03lldms", (ns/1000000LL)%1000); // Below 1 mn, always display at least ms
-    if(tickNs<1000000LL)     offset += sprintf(outBuf+offset, ":%03lldµs", (ns/1000LL)%1000);
-    if(tickNs<1000LL)        sprintf(outBuf+offset, ":%03" PRId64 "ns", (ns%1000));
+    int   offset = snprintf(outBuf, sizeof(outBuf1), "%llds", ns/1000000000LL);
+    if(tickNs<60000000000LL) offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, ":%03lldms", (ns/1000000LL)%1000); // Below 1 mn, always display at least ms
+    if(tickNs<1000000LL)     offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, ":%03lldµs", (ns/1000LL)%1000);
+    if(tickNs<1000LL)                  snprintf(outBuf+offset, sizeof(outBuf1)-offset, ":%03" PRId64 "ns", (ns%1000));
+    return outBuf;
+}
+
+
+const char*
+vwMain::getNiceFullTime(s64 ns) const
+{
+    static char outBuf[64];
+    snprintf(outBuf, sizeof(outBuf), "%lldh:%02lldmn:%02llds.%09lld",
+             (ns/3600000000000LL),
+             (ns/60000000000LL)%60,
+             (ns/1000000000LL)%60,
+             (ns%1000000000LL));
+    return outBuf;
+}
+
+
+int
+vwMain::getFormattedTimeStringCharQty(int timeFormat)
+{
+    constexpr int timeStrCharQtyArray[3] = { 16+2, 23+2, 22+2 }; // 2 char of margin
+    plAssert(timeFormat>=0 && timeFormat<3, timeFormat);
+    return timeStrCharQtyArray[timeFormat];
+}
+
+
+const char*
+vwMain::getFormattedTimeString(s64 ns, int timeFormat) const
+{
+    static char outBuf[64];
+    if     (timeFormat==1) return getNiceTime(ns, 0);
+    else if(timeFormat==2) return getNiceFullTime(ns);
+    snprintf(outBuf, sizeof(outBuf), "%.9fs", 0.000000001*(double)ns);
     return outBuf;
 }
 
@@ -158,7 +192,6 @@ vwMain::getValueAsChar(int flags, double value, double displayRange, bool isHexa
         case PL_FLAG_TYPE_DATA_U64:    CONVERT_VALUE_INT(isHexa?"%lX":"%lu", u64); break;
         case PL_FLAG_TYPE_DATA_FLOAT:  CONVERT_VALUE_FLOAT("%f",   float); break;
         case PL_FLAG_TYPE_DATA_DOUBLE: CONVERT_VALUE_FLOAT("%lf", double); break;
-        case PL_FLAG_TYPE_MARKER:        return _record->getString((int)value).value.toChar(); break;
         case PL_FLAG_TYPE_LOCK_NOTIFIED: return _record->getString(_record->threads[(int)value].nameIdx).value.toChar(); break;
         default: plAssert(0, "bug...", flags);
         }
@@ -185,7 +218,6 @@ vwMain::getValueAsChar(const cmRecord::Evt& e) const
         case PL_FLAG_TYPE_DATA_FLOAT:  snprintf(valueStr, sizeof(valueStr), "%f",   e.vFloat);    break;
         case PL_FLAG_TYPE_DATA_DOUBLE: snprintf(valueStr, sizeof(valueStr), "%lf",  e.vDouble);   break;
         case PL_FLAG_TYPE_DATA_STRING:   return _record->getString(e.vStringIdx ).value.toChar(); break;
-        case PL_FLAG_TYPE_MARKER:        return _record->getString(e.filenameIdx).value.toChar(); break;
         case PL_FLAG_TYPE_LOCK_NOTIFIED: return _record->getString(_record->threads[e.threadId].nameIdx).value.toChar(); break;
         default: plAssert(0, "bug...", flags); break;
         }
@@ -200,7 +232,7 @@ vwMain::getUnitFromFlags(int flags) const
     int eType = (flags&PL_FLAG_TYPE_MASK);
     if     (flags&PL_FLAG_SCOPE_BEGIN)         return "Duration";
     else if(eType==PL_FLAG_TYPE_DATA_STRING)   return "<Enum>";
-    else if(eType==PL_FLAG_TYPE_MARKER)        return "<Marker>";
+    else if(eType==PL_FLAG_TYPE_LOG)           return "<Log>";
     else if(eType==PL_FLAG_TYPE_LOCK_ACQUIRED) return "<Lock>";
     else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) return "<Lock notified>";
     return "";
@@ -216,8 +248,8 @@ vwMain::getElemName(const bsString& baseName, int flags)
     case PL_FLAG_TYPE_LOCK_ACQUIRED: snprintf(valueStr, sizeof(valueStr), "<lock acquired> %s", baseName.toChar()); break;
     case PL_FLAG_TYPE_LOCK_RELEASED: snprintf(valueStr, sizeof(valueStr), "<lock released> %s", baseName.toChar()); break;
     case PL_FLAG_TYPE_LOCK_NOTIFIED: snprintf(valueStr, sizeof(valueStr), "<lock notified> %s", baseName.toChar()); break;
-    case PL_FLAG_TYPE_MARKER:        snprintf(valueStr, sizeof(valueStr), "<marker> %s",        baseName.toChar()); break;
-    default:                         snprintf(valueStr, sizeof(valueStr), "%s", baseName.toChar());
+    case PL_FLAG_TYPE_LOG:           snprintf(valueStr, sizeof(valueStr), "<log> %s",           baseName.toChar()); break;
+    default:                         snprintf(valueStr, sizeof(valueStr), "%s",                 baseName.toChar());
     }
     return valueStr;
 }
@@ -287,6 +319,7 @@ vwMain::precomputeRecordDisplay(void)
 void
 vwMain::TimeRangeBase::setView(s64 newStartTimeNs, s64 newTimeRangeNs, bool noTransition)
 {
+    if(newTimeRangeNs<1000) newTimeRangeNs = 1000; // 1 micro second minimum range
     if(animTimeUs>0 && animStartTimeNs2==newStartTimeNs && animTimeRangeNs2==newTimeRangeNs) return; // Already set
     animStartTimeNs1 = startTimeNs; animStartTimeNs2 = newStartTimeNs;
     animTimeRangeNs1 = timeRangeNs; animTimeRangeNs2 = newTimeRangeNs;
@@ -327,6 +360,174 @@ vwMain::TimeRangeBase::updateAnimation(void)
 }
 
 
+// Iterator aggregator
+// ===================
+
+void
+vwMain::AggregatedIterator::init(cmRecord* initRecord, s64 initStartTimeNs, double nsPerPix,
+                                 const bsVec<int>& logElemIdxArray, const bsVec<int>& hTreeElemIdxArray)
+{
+    // Loop on elems
+    logElemIts.clear();
+    logElemsEvts.clear();
+    hTreeElemIts.clear();
+    hTreeElemsEvts.clear();
+    record      = initRecord;
+    startTimeNs = initStartTimeNs;
+
+    cmRecord::Evt e;
+    bsVec<cmLogParam> params;
+    char tmpStr[512];
+    u32  lIdx;
+    int  lineQty;
+    bool isValid, isCoarse;
+    s64  timeNs;
+    double value;
+
+    // Log elems
+    for(int elemIdx : logElemIdxArray) {
+        // Store the iterator
+        logElemIts.push_back(cmRecordIteratorLog(record, elemIdx, startTimeNs, nsPerPix));
+        // And the first element after the date
+        while((isValid=logElemIts.back().getNextLog(isCoarse, e, params)) && e.vS64<startTimeNs) ;
+        if(!isValid) { e.vS64 = -1; tmpStr[0] = 0; lineQty = 1; }
+        else {
+            const cmRecord::String& s = record->getString(e.filenameIdx);
+            cmVsnprintf(tmpStr, sizeof(tmpStr), s.value.toChar(), record, params);
+            lineQty = s.lineQty;
+            for(const cmLogParam& p : params) {
+                if(p.paramType==PL_FLAG_TYPE_DATA_STRING) lineQty += record->getString(p.vStringIdx).lineQty-1;
+            }
+        }
+        plAssert(lineQty>=1);
+        logElemsEvts.push_back({e, elemIdx, 0, 0, 0., tmpStr, lineQty });
+    }
+    logElemStartIts = logElemIts; // So that we can go 'backward' without recomputing the start
+
+    // H-tree elems
+    for(int elemIdx : hTreeElemIdxArray) {
+        hTreeElemIts.push_back(cmRecordIteratorElem(record, elemIdx, startTimeNs, nsPerPix));
+        while((lIdx=hTreeElemIts.back().getNextPoint(timeNs, value, e))!=PL_INVALID && timeNs<startTimeNs) { }
+        if(lIdx==PL_INVALID) { e.vS64 = -1; timeNs = -1; }
+        hTreeElemsEvts.push_back({e, elemIdx, lIdx, timeNs, value, "", 1 });
+    }
+    hTreeElemStartIts = hTreeElemIts;
+}
+
+
+bool
+vwMain::AggregatedIterator::getNextEvent(AggCacheItem& evt)
+{
+    // Get the earliest iterator
+    int earliestIdx  = -1;
+    s64 earliestDate = -1;
+    int itKind = -1;
+    for(int i=0; i<logElemsEvts.size(); ++i) {
+        s64 d = logElemsEvts[i].evt.vS64;
+        if(d>=0 && (earliestIdx==-1 || d<earliestDate)) {
+            earliestIdx  = i;
+            earliestDate = d;
+            itKind       = 0;
+        }
+    }
+    for(int i=0; i<hTreeElemsEvts.size(); ++i) {
+        s64 d = hTreeElemsEvts[i].timeNs;
+        if(d>=0 && (earliestIdx==-1 || d<earliestDate)) {
+            earliestIdx  = i;
+            earliestDate = d;
+            itKind       = 1;
+        }
+    }
+    if(itKind<0) return false;
+
+    // Store the event and refill the used iterator
+    cmRecord::Evt e;
+    if(itKind==0) {
+        evt = logElemsEvts[earliestIdx];
+        bool isValid, isCoarse;
+        int lineQty;
+        char tmpStr[512];
+        bsVec<cmLogParam> params;
+        isValid = logElemIts[earliestIdx].getNextLog(isCoarse, e, params);
+        if(!isValid) { e.vS64 = -1; tmpStr[0] = 0; lineQty = 1; }
+        else {
+            const cmRecord::String& s = record->getString(e.filenameIdx);
+            cmVsnprintf(tmpStr, sizeof(tmpStr), s.value.toChar(), record, params);
+            lineQty = s.lineQty;
+            for(const cmLogParam& p : params) {
+                if(p.paramType==PL_FLAG_TYPE_DATA_STRING) lineQty += record->getString(p.vStringIdx).lineQty-1;
+            }
+        }
+        plAssert(lineQty>=1);
+        logElemsEvts[earliestIdx] = {e, logElemsEvts[earliestIdx].elemIdx, 0, 0, 0., tmpStr, lineQty };
+    }
+    else {
+        evt = hTreeElemsEvts[earliestIdx];
+        double value;
+        s64    timeNs;
+        u32    lIdx = hTreeElemIts[earliestIdx].getNextPoint(timeNs, value, e);
+        if(lIdx==PL_INVALID) { e.vS64 = -1; timeNs = -1; }
+        hTreeElemsEvts[earliestIdx] = {e, hTreeElemsEvts[earliestIdx].elemIdx, lIdx, timeNs, value, "", 1 };
+    }
+
+    return true;
+}
+
+
+s64
+vwMain::AggregatedIterator::getPreviousTime(int rewindItemQty)
+{
+    // Initialize the return in time by getting the time for each event just before the start date
+    bsVec<int> logOffsets(logElemStartIts.size());
+    for(int i=0; i< logElemStartIts.size(); ++i) {
+        logOffsets[i] = -1; // One event before the start date (iterator was post incremented once, hence the -1)
+        logElemsEvts[i].evt.vS64 = logElemStartIts[i].getTimeRelativeIdx(logOffsets[i]); // Result is -1 if none
+        if(logElemsEvts[i].evt.vS64>=startTimeNs) { // This case should happen all the time, except when reaching the end of the recorded info
+            logElemsEvts[i].evt.vS64 = logElemStartIts[i].getTimeRelativeIdx(--logOffsets[i]);
+        }
+    }
+    bsVec<int> hTreeOffsets(hTreeElemStartIts.size());
+    for(int i=0; i< hTreeElemStartIts.size(); ++i) {
+        hTreeOffsets[i] = -1; // One event before the start date (iterator was post incremented once, hence the -1)
+        hTreeElemsEvts[i].timeNs = hTreeElemStartIts[i].getTimeRelativeIdx(hTreeOffsets[i]); // Result is -1 if none
+        if(hTreeElemsEvts[i].timeNs>=startTimeNs) { // This case should happen all the time, except when reaching the end of the recorded info
+            hTreeElemsEvts[i].timeNs = hTreeElemStartIts[i].getTimeRelativeIdx(--hTreeOffsets[i]);
+        }
+    }
+
+    s64 previousTimeNs = -1;
+    while((rewindItemQty--)>0) {
+        // Store the earliest time
+        int latestIdx = -1;
+        s64 latestDate = -1;
+        int itKind = -1;
+        for(int i=0; i<logElemsEvts.size(); ++i) {
+            if(logElemsEvts[i].evt.vS64>=0 && (latestIdx==-1 || logElemsEvts[i].evt.vS64>latestDate)) {
+                latestIdx  = i;
+                latestDate = logElemsEvts[i].evt.vS64;
+                itKind     = 0;
+            }
+        }
+        for(int i=0; i<hTreeElemsEvts.size(); ++i) {
+            if(hTreeElemsEvts[i].timeNs>=0 && (latestIdx==-1 || hTreeElemsEvts[i].timeNs>latestDate)) {
+                latestIdx  = i;
+                latestDate = hTreeElemsEvts[i].timeNs;
+                itKind     = 1;
+            }
+        }
+        if(latestIdx<0) return previousTimeNs;
+        previousTimeNs = latestDate;
+
+        // Refill the used iterator
+        if(itKind==0) {
+            logElemsEvts[latestIdx].evt.vS64 = logElemStartIts[latestIdx].getTimeRelativeIdx(--logOffsets[latestIdx]); // Result is -1 if none
+        } else {
+            hTreeElemsEvts[latestIdx].timeNs = hTreeElemStartIts[latestIdx].getTimeRelativeIdx(--hTreeOffsets[latestIdx]); // Result is -1 if none
+        }
+    }
+    return previousTimeNs;
+}
+
 
 // Synchronisation helpers
 // =======================
@@ -356,6 +557,9 @@ void
 vwMain::synchronizeNewRange(int syncMode, s64 startTimeNs, s64 timeRangeNs)
 {
     if(syncMode<=0) return; // Source is not synchronized
+    if(startTimeNs<0) startTimeNs = 0;
+    if(_record && timeRangeNs>_record->durationNs) timeRangeNs = _record->durationNs;
+
 #define LOOP_SET_RANGE(array)                   \
     for(auto& t : (array)) {                    \
         if(t.syncMode!=syncMode) continue;      \
@@ -384,22 +588,27 @@ vwMain::ensureThreadVisibility(int syncMode, int threadId)
 
 
 void
-vwMain::synchronizeText(int syncMode, int threadId, int level, int lIdx, s64 timeNs, u32 idToIgnore)
+vwMain::synchronizeText(int syncMode, int threadId, int level, u32 lIdx, s64 timeNs, u32 idToIgnore)
 {
     if(syncMode<=0) return; // Source is not synchronized
 
     // Text windows
     for(auto& tw : _texts) {
         if(tw.syncMode==syncMode && tw.threadId==threadId) {
+            // Ensure that nestingLevel and lIdx are correct
+            if(lIdx==PL_INVALID) {
+                cmGetRecordPosition(_record, threadId, timeNs, level, lIdx);
+            }
+            // Set the position
             tw.setStartPosition(level, lIdx, idToIgnore);
             tw.didUserChangedScrollPosExt = true;
         }
     }
 
-    // Marker windows
-    for(auto& mw : _markers) {
-        if(mw.syncMode==syncMode) {
-            mw.setStartPosition(timeNs, idToIgnore);
+    // Log windows
+    for(auto& lv : _logViews) {
+        if(lv.syncMode==syncMode) {
+            lv.setStartPosition(timeNs, idToIgnore);
         }
     }
 
@@ -433,6 +642,7 @@ vwMain::prepareGraphContextualMenu(int elemIdx, s64 startTimeNs, s64 timeRangeNs
     _plotMenuNamesWidth = 0.;
     _plotMenuAddAllNames = addAllNames;
     _plotMenuHasScopeChildren = false;
+    _plotMenuLogParamQty = 0;
 
     // Get plot and its unit
     if(elemIdx<0) return;
@@ -461,6 +671,54 @@ vwMain::prepareGraphContextualMenu(int elemIdx, s64 startTimeNs, s64 timeRangeNs
 }
 
 
+void
+vwMain::prepareGraphLogContextualMenu(int elemIdx, s64 startTimeNs, s64 timeRangeNs, bool withRemoval)
+{
+    // Build the menu if not done already
+    if(!_plotMenuItems.empty()) return;
+
+    _plotMenuNewPlotUnits.clear();
+    _plotMenuNewPlotCount.clear();
+    _plotMenuWithRemoval = withRemoval;
+    _plotMenuNamesWidth = 0.;
+    _plotMenuAddAllNames = false;
+    _plotMenuHasScopeChildren = false;
+    _plotMenuIsPartOfHStruct = false;
+
+    // Get plot and its unit
+    if(elemIdx<0) return;
+    cmRecord::Elem& elem  = _record->elems[elemIdx];
+    if(elem.flags!=PL_FLAG_TYPE_LOG) return;  // Sanity
+
+    cmRecordIteratorLog it(_record, elemIdx, 0, 0.);
+    char name[256];
+    cmRecord::Evt evt;
+    bool isCoarse;
+    bsVec<cmLogParam> params;
+    if(!it.getNextLog(isCoarse, evt, params) || params.empty()) return;  // At least one required for graphs
+    _plotMenuLogParamQty = params.size();
+
+    for(int paramIdx=0; paramIdx<_plotMenuLogParamQty; ++paramIdx) {
+        bsString unit = getUnitFromFlags(params[paramIdx].paramType);
+
+        // Get all the matching existing plot windows, which do not already contain the elemIdx
+        bsVec<int> matchingPwIdxs;
+        for(int pwIdx=0; pwIdx<_plots.size(); ++pwIdx) {
+            if(_plots[pwIdx].unit!=unit) continue;
+            bool isPresent = false;
+            for(const vwMain::PlotCurve& c : _plots[pwIdx].curves) if(c.elemIdx==elemIdx && c.logParamIdx==paramIdx) isPresent = true;
+            if(!isPresent) matchingPwIdxs.push_back(pwIdx);
+        }
+
+        // Add to the ctx menu
+        snprintf(name, sizeof(name), "Parameter #%d", paramIdx);
+        _plotMenuThreadUniqueHash = (elem.threadId>=0)? _record->threads[elem.threadId].threadUniqueHash : 0;
+        _plotMenuItems.push_back( { name, unit, elemIdx, elem.nameIdx, elem.flags, matchingPwIdxs, startTimeNs, timeRangeNs, paramIdx } );
+        _plotMenuNamesWidth = bsMax(_plotMenuNamesWidth, ImGui::CalcTextSize(name).x);
+    }
+}
+
+
 bool
 vwMain::prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64 startTimeNs, s64 timeRangeNs,
                                    bool withChildren, bool withRemoval)
@@ -475,6 +733,7 @@ vwMain::prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64
     _plotMenuAddAllNames = true;
     _plotMenuHasScopeChildren = false;
     _plotMenuIsPartOfHStruct = true;
+    _plotMenuLogParamQty = 0;
 
     // Get parent
     bsVec<cmRecordIteratorHierarchy::Parent> parents;
@@ -536,9 +795,8 @@ vwMain::prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64
     _plotMenuNamesWidth = 0.; // For children only
     bsVec<u64> plotUniqueHashes; // In order to remove duplicates
     for(const cmRecord::Evt& evt : _workDataChildren) {
-        // Skip scopes (only flat ones), markers and lock notifications (because the ones inside the hierarchical tree are not suitable for plot/histo)
+        // Skip scopes (only flat ones) and lock notifications (because the ones inside the hierarchical tree are not suitable for plot/histo)
         if(evt.flags&PL_FLAG_SCOPE_MASK) continue;
-        if((evt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_MARKER)        continue;
         if((evt.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOCK_NOTIFIED) continue;
         // Compute the path
         u64  childHashPath = bsHashStep(_record->getString(evt.nameIdx).hash, hashPath);
@@ -572,14 +830,14 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
         auto& pmi = _plotMenuItems[i];
 
         // Structured menu
-        if(i==1) {
-            if(!ImGui::BeginMenu("Plot inner fields")) break; // No need to display inner fields
+        if((_plotMenuLogParamQty==0 && i==1) || (_plotMenuLogParamQty!=0 && i==0)) {
+            if(!ImGui::BeginMenu(_plotMenuLogParamQty? "Plot log parameters" : "Plot inner fields")) break; // No need to display inner fields
             innerFieldsDisplayed = true;
         }
         ImGui::PushID(i);
 
         // Display the item names
-        if(i==0) {
+        if(_plotMenuLogParamQty==0 && i==0) {
             ImGui::Text("%s", rootText);
             ImGui::SameLine((headerWidth>0.f)? headerWidth : ImGui::GetWindowContentRegionMax().x-comboWidth-spacing);
         } else {
@@ -613,7 +871,7 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
                     pmi.comboSelectionExistingIdx = j;
                     pmi.comboSelectionRemoval     = false;
                     pmi.comboSelectionString      = tmpStr;
-                    if(i==0) rootPlotSelected = true;
+                    if(_plotMenuLogParamQty==0 && i==0) rootPlotSelected = true;
                 }
                 if(isSelected) ImGui::SetItemDefaultFocus();
             }
@@ -631,7 +889,7 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
                     pmi.comboSelectionExistingIdx = -1;
                     pmi.comboSelectionRemoval     = false;
                     pmi.comboSelectionString      = tmpStr;
-                    if(i==0) rootPlotSelected = true;
+                    if(_plotMenuLogParamQty==0 && i==0) rootPlotSelected = true;
                 }
                 if(isSelected) {
                     ImGui::SetItemDefaultFocus();
@@ -655,7 +913,7 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
                 pmi.comboSelectionExistingIdx = -1;
                 pmi.comboSelectionRemoval     = false;
                 pmi.comboSelectionString      = tmpStr;
-                if(i==0) rootPlotSelected = true;
+                if(_plotMenuLogParamQty==0 && i==0) rootPlotSelected = true;
             }
             // Remove the plot
             if(_plotMenuWithRemoval && ImGui::Selectable("Remove", pmi.comboSelectionRemoval)) {
@@ -664,7 +922,7 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
                 pmi.comboSelectionExistingIdx = -1;
                 pmi.comboSelectionRemoval     = true;
                 pmi.comboSelectionString      = "Remove";
-                if(i==0) rootPlotSelected = true;
+                if(_plotMenuLogParamQty==0 && i==0) rootPlotSelected = true;
             }
 
             ImGui::EndCombo();
@@ -687,14 +945,16 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
 
     // Apply the choices
     if(innerFieldsSelected || rootPlotSelected) {
-        // Some exclusive cleaning of the "other" selection
-        plAssert(innerFieldsSelected^rootPlotSelected);
-        for(int i=rootPlotSelected?1:0; i<(rootPlotSelected?_plotMenuItems.size():1); ++i) {
-            auto& pmi = _plotMenuItems[i];
-            if(pmi.comboSelectionNewIdx>=0) _plotMenuNewPlotCount[pmi.comboSelectionNewIdx] -= 1;
-            pmi.comboSelectionNewIdx      = -1;
-            pmi.comboSelectionExistingIdx = -1;
-            pmi.comboSelectionRemoval     = false;
+        if(_plotMenuLogParamQty==0) {
+            // Some exclusive cleaning of the "other" selection
+            plAssert(innerFieldsSelected^rootPlotSelected);
+            for(int i=rootPlotSelected?1:0; i<(rootPlotSelected?_plotMenuItems.size():1); ++i) {
+                auto& pmi = _plotMenuItems[i];
+                if(pmi.comboSelectionNewIdx>=0) _plotMenuNewPlotCount[pmi.comboSelectionNewIdx] -= 1;
+                pmi.comboSelectionNewIdx      = -1;
+                pmi.comboSelectionExistingIdx = -1;
+                pmi.comboSelectionRemoval     = false;
+            }
         }
 
         // Create the non empty new plot windows
@@ -728,11 +988,11 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
                         if((bool)elem.isPartOfHStruct==_plotMenuIsPartOfHStruct && elem.threadId==threadId && elem.nameIdx==pmi.nameIdx && elem.flags==pmi.flags) {
                             bool isPresent = false;  // Need to check if already present due to the "all names"
                             for(const vwMain::PlotCurve& c : _plots[plotWindowIdx].curves) if(c.elemIdx==elemIdx) isPresent = true;
-                            if(!isPresent) _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.partialHashPath, elemIdx, true } );
+                            if(!isPresent) _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.partialHashPath, elemIdx, true, false } );
                         }
                     }
                 }
-                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, pmi.elemIdx, true } );
+                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, pmi.elemIdx, true, false, pmi.logParamIdx } );
             }
             // Case creation of a new plot window
             else if(pmi.comboSelectionNewIdx>=0) {
@@ -744,14 +1004,14 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
                     for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
                         const cmRecord::Elem& elem = _record->elems[elemIdx];
                         if((bool)elem.isPartOfHStruct==_plotMenuIsPartOfHStruct && elem.threadId==threadId && elem.nameIdx==pmi.nameIdx && elem.flags==pmi.flags) {
-                            _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.partialHashPath, elemIdx, true } );
+                            _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, elem.partialHashPath, elemIdx, true, false } );
                         }
                     }
                 }
-                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, pmi.elemIdx, true } );
+                else _plots[plotWindowIdx].curves.push_back( { threadUniqueHash, _record->elems[pmi.elemIdx].partialHashPath, pmi.elemIdx, true, false, pmi.logParamIdx } );
             }
         }
-        plMarker("user", "Add plot(s)");
+        plLogInfo("user", "Add plot(s)");
         return false; // Closes the window
     } // End of case of adding plots
 
@@ -776,14 +1036,14 @@ vwMain::displayHistoContextualMenu(float headerWidth, float comboWidth)
         auto& pmi = _plotMenuItems[i];
 
         // Structured menu
-        if(i==1) {
-            if(!ImGui::BeginMenu("Histo of inner fields")) break; // No need to display inner fields
+        if((_plotMenuLogParamQty==0 && i==1) || (_plotMenuLogParamQty!=0 && i==0)) {
+            if(!ImGui::BeginMenu(_plotMenuLogParamQty? "Histo of log parameters" : "Histo of inner fields")) break; // No need to display inner fields
             innerFieldsDisplayed = true;
         }
         ImGui::PushID(0x700000+i);
 
         // Display the item names
-        if(i==0) {
+        if(_plotMenuLogParamQty==0 && i==0) {
             ImGui::Text("Histogram");
             ImGui::SameLine((headerWidth>0.)? headerWidth : ImGui::GetWindowContentRegionMax().x-comboWidth-spacing);
         } else {
@@ -804,7 +1064,7 @@ vwMain::displayHistoContextualMenu(float headerWidth, float comboWidth)
             if(ImGui::Selectable("Full record", isSelected)) {
                 pmi.comboHistoSelectionString = "Full record";
                 pmi.comboHistoSelectionIdx = 0;
-                if(i==0) rootHistoSelected = true;
+                if(_plotMenuLogParamQty==0 && i==0) rootHistoSelected = true;
             }
             if(isSelected) ImGui::SetItemDefaultFocus();
             // Visible range (only if not full range)
@@ -813,7 +1073,7 @@ vwMain::displayHistoContextualMenu(float headerWidth, float comboWidth)
                 if(ImGui::Selectable("Only visible", isSelected)) {
                     pmi.comboHistoSelectionString = "Only visible";
                     pmi.comboHistoSelectionIdx = 1;
-                    if(i==0) rootHistoSelected = true;
+                    if(_plotMenuLogParamQty==0 && i==0) rootHistoSelected = true;
                 }
                 if(isSelected) ImGui::SetItemDefaultFocus();
             }
@@ -836,17 +1096,19 @@ vwMain::displayHistoContextualMenu(float headerWidth, float comboWidth)
 
     // Apply the choices
     if(innerFieldsSelected || rootHistoSelected) {
-        // Some exclusive cleaning of the "other" selection
-        plAssert(innerFieldsSelected^rootHistoSelected);
-        for(int i=rootHistoSelected?1:0; i<(rootHistoSelected?_plotMenuItems.size():1); ++i) {
-            _plotMenuItems[i].comboHistoSelectionIdx = -1;
+        if(_plotMenuLogParamQty==0) {
+            // Some exclusive cleaning of the "other" selection
+            plAssert(innerFieldsSelected^rootHistoSelected);
+            for(int i=rootHistoSelected?1:0; i<(rootHistoSelected?_plotMenuItems.size():1); ++i) {
+                _plotMenuItems[i].comboHistoSelectionIdx = -1;
+            }
         }
 
         // Create new histograms
         for(auto& pmi : _plotMenuItems) {
             const cmRecord::Elem& elem = _record->elems[pmi.elemIdx];
-            if     (pmi.comboHistoSelectionIdx==0) addHistogram(getId(), _plotMenuThreadUniqueHash, elem.partialHashPath, pmi.elemIdx, 0, _record->durationNs);
-            else if(pmi.comboHistoSelectionIdx==1) addHistogram(getId(), _plotMenuThreadUniqueHash, elem.partialHashPath, pmi.elemIdx, pmi.startTimeNs, pmi.timeRangeNs);
+            if     (pmi.comboHistoSelectionIdx==0) addHistogram(getId(), _plotMenuThreadUniqueHash, elem.partialHashPath, pmi.elemIdx, 0, _record->durationNs, pmi.logParamIdx);
+            else if(pmi.comboHistoSelectionIdx==1) addHistogram(getId(), _plotMenuThreadUniqueHash, elem.partialHashPath, pmi.elemIdx, pmi.startTimeNs, pmi.timeRangeNs, pmi.logParamIdx);
         }
     }
 
@@ -891,7 +1153,7 @@ vwMain::displayColorSelectMenu(const char* title, const int colorIdx, std::funct
             if(ImGui::ColorButton("##color", palette[j], colorButtonFlags, ImVec2(20, 20))) {
                 setter(j);
                 initialColorIdx = -1;
-                plMarker("user", "Change one color");
+                plLogInfo("user", "Change one color");
                 ImGui::CloseCurrentPopup();
             }
             else if(ImGui::IsItemHovered()) {
@@ -1084,7 +1346,7 @@ vwMain::displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& da
             continue;
         }
         // Case non scope elem
-        if(dType>=PL_FLAG_TYPE_DATA_QTY && dType!=PL_FLAG_TYPE_MARKER) continue;
+        if(dType>=PL_FLAG_TYPE_DATA_QTY) continue;
         ++dataQty;
     }
 
@@ -1158,13 +1420,13 @@ vwMain::displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& da
             for(const auto& d : dataChildren) {
                 if(d.flags&PL_FLAG_SCOPE_MASK) continue;
                 int dType = d.flags&PL_FLAG_TYPE_MASK;
-                if(dType>=PL_FLAG_TYPE_DATA_QTY && dType!=PL_FLAG_TYPE_MARKER) continue;
+                if(dType>=PL_FLAG_TYPE_DATA_QTY) continue;
                 ImGui::TableNextColumn();
                 if((++dataCount)==maxDataQty-4) { // Line limit reached?
                     ImGui::Text(". . . "); ImGui::TableNextColumn();
                     break;
                 }
-                else ImGui::Text("%s%s", (dType==PL_FLAG_TYPE_MARKER)?"<Marker> ":"", _record->getString(d.nameIdx).value.toChar());
+                else ImGui::Text("%s", _record->getString(d.nameIdx).value.toChar());
                 ImGui::TableNextColumn();
                 if(dType!=PL_FLAG_TYPE_DATA_NONE) ImGui::TextColored(vwConst::grey, "%s", getValueAsChar(d));
             }
@@ -1197,7 +1459,7 @@ vwMain::drawSynchroGroupCombo(float comboWidth, int* syncModePtr)
 {
     ImGui::PushItemWidth(comboWidth);
     if(ImGui::Combo("##Synchro", syncModePtr, "Isolated\0Group 1\0Group 2\0\0")) {
-        plMarker("user", "Change synchro group");
+        plLogInfo("user", "Change synchro group");
     }
     ImGui::PopItemWidth();
     if(ImGui::IsItemHovered() && getLastMouseMoveDurationUs()>500000) {
@@ -1252,7 +1514,7 @@ vwMain::manageVisorAndRangeSelectionAndBarDrag(TimeRangeBase& trb,
     // Drag ended: set the selected range view
     else if(isWindowHovered && trb.rangeSelEndNs>0.) {
         trb.rangeSelStartNs = bsMax(trb.rangeSelStartNs, 0LL);
-        trb.setView(trb.rangeSelStartNs, bsMax(trb.rangeSelEndNs-trb.rangeSelStartNs, 1000LL), true);
+        trb.setView(trb.rangeSelStartNs, trb.rangeSelEndNs-trb.rangeSelStartNs, true);
         trb.rangeSelStartNs = trb.rangeSelEndNs = 0;
         return  true;
     }
@@ -1580,15 +1842,25 @@ vwMain::displayTimelineHeaderPopup(TimeRangeBase& trb, int tId, bool openAsGroup
         // Thread color menu
         std::function<void(int)> threadSetColor = [tId, this] (int colorIdx) { getConfig().setThreadColorIdx(tId, colorIdx); };
         displayColorSelectMenu("Thread color", getConfig().getThreadColorIdx(tId), threadSetColor);
+
+        // Log level menu
+        if(ImGui::BeginMenu("Level log")) {
+            if(ImGui::RadioButton("Debug", &trb.logLevel, 0)) { trb.isCacheDirty = true; ImGui::CloseCurrentPopup(); }
+            if(ImGui::RadioButton("Info",  &trb.logLevel, 1)) { trb.isCacheDirty = true; ImGui::CloseCurrentPopup(); }
+            if(ImGui::RadioButton("Warn",  &trb.logLevel, 2)) { trb.isCacheDirty = true; ImGui::CloseCurrentPopup(); }
+            if(ImGui::RadioButton("Error", &trb.logLevel, 3)) { trb.isCacheDirty = true; ImGui::CloseCurrentPopup(); }
+            ImGui::EndMenu();
+        }
+
         ImGui::Separator();
     } // End of menu part specific to threads
 
-    if(ImGui::MenuItem("Expand all"))   {
+    if(ImGui::MenuItem("Expand all threads"))   {
         getConfig().setAllExpanded(true);
         synchronizeThreadLayout();
         ImGui::CloseCurrentPopup();
     }
-    if(ImGui::MenuItem("Collapse all")) {
+    if(ImGui::MenuItem("Collapse all threads")) {
         getConfig().setAllExpanded(false);
         synchronizeThreadLayout();
         ImGui::CloseCurrentPopup();

@@ -39,6 +39,29 @@ _old_excepthook = None
 _is_activated = False
 _is_with_functions = True
 
+# Log levels
+LOG_LEVEL_ALL, LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_WARN, LOG_LEVEL_ERROR, LOG_LEVEL_NONE = (
+    0,
+    0,
+    1,
+    2,
+    3,
+    4,
+)
+
+
+# Deprecated function
+from warnings import warn
+
+
+def plMarker(category, msg):
+    warn(
+        "plMarker is deprecated and will be removed soon. Use plLogDebug, plLogInfo, plLogWarn or plLogError instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    plLogWarn(category, msg)
+
 
 # Decorator to identify test functions
 def plFunction(func):
@@ -101,7 +124,7 @@ def plInitAndStart(
 
     def notify_uncaught_exception(exc_type, exc_value, exc_traceback):
         global _old_excepthook
-        palanteer._cextension.plMarker(
+        palanteer._cextension.plLogError(
             "Exception", "Last exception was uncaught, exiting program"
         )
         _old_excepthook(exc_type, exc_value, exc_traceback)

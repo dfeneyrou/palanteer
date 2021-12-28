@@ -146,8 +146,8 @@ associatedTask(int groupNbr, const char* groupName, int crashKind)
             if(controlCount==2) break; // End of thread, command "2" from the control thread means quit the while loop
         }
 
-        // Marker of a great event
-        if(iterationNbr==4) plMarker("important", "5th iteration reached!");
+        // Log of a great event
+        if(iterationNbr==4) plLogWarn("important", "5th iteration reached!");
 
         // Do something
         plScope("SomeWork");
@@ -188,7 +188,7 @@ fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<
     plDeclareThreadDyn("Fiber workers/Fiber worker %d", workerThreadNbr+1);
 
     // Log on the OS thread
-    plMarker("threading", "Fiber worker thread creation");
+    plLogInfo("threading", "Fiber worker thread creation");
 
     // Same job definition on all workers
     constexpr int JOBS_QTY = 6;
@@ -286,7 +286,7 @@ fiberWorkerTask(int workerThreadNbr, std::vector<Fiber>* fiberPool, std::vector<
     } // End of loop on iterations
 
     plDetachVirtualThread(false); // Switch back to the OS thread
-    plMarker("threading", "Fiber worker thread end");
+    plLogInfo("threading", "Fiber worker thread end");
 }
 
 

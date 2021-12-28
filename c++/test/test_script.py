@@ -94,22 +94,30 @@ def test_locks():
 
 
 @declare_test("script")
-def test_markers():
-    """Markers"""
+def test_logs():
+    """Logs"""
 
-    LOG("Configure event to capture markers")
-    data_configure_events([EvtSpec(["threading", "important"])])
+    LOG("Configure event to capture logs")
+    data_configure_events([EvtSpec(["Log test", "Not recorded", "threading", "important"])])
     launch_testprogram(duration=1)
     events = data_collect_events(wanted=["important", "threading"], timeout_sec=10.0)
     # print("\n" + "\n".join([str(e) for e in events]))
     CHECK(
         "important" in [e.path[-1] for e in events],
-        "We received the marker inside the hierarchical tree",
+        "We received the log inside the hierarchical tree",
         "\n".join([str(e) for e in events]),
     )
     CHECK(
         "threading" in [e.path[-1] for e in events],
-        "We received the marker at the root",
+        "We received the log at the root of the tree",
+    )
+    CHECK(
+        "Not recorded" not in [e.path[-1] for e in events],
+        "We did not received any record-disabled log",
+    )
+    CHECK(
+        len([1 for e in events if e.path[-1]=="Log test"])==4,
+        "We received the 4 test log",
     )
     process_stop()
 

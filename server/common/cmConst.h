@@ -29,9 +29,10 @@ public:
     static constexpr int    CHILDREN_MAX  = 200000; // Truncation limit for smooth display of very unbalanced tree
 
     // Storage constants
-    static constexpr int    MAX_THREAD_QTY  = 254;
-    static constexpr int    MAX_LEVEL_QTY   = 254;
-    static constexpr int    MAX_STREAM_QTY  = 8;
+    static constexpr int    MAX_THREAD_QTY   = 254;
+    static constexpr int    MAX_LEVEL_QTY    = 254;
+    static constexpr int    MAX_STREAM_QTY   = 8;
+    static constexpr int    MAX_LOGLEVEL_QTY = 3;  // 0=Debug, 1=Info, 2=Warn, 3=Error
 
     // Built-in name IDs used to identify an Elem (no overlap with the user nameIdx)
     // Memory management specific
@@ -52,5 +53,5 @@ public:
 
     // Other
     static constexpr int    SCOPE_NAMEIDX             = 0x70000010;
-    static constexpr int    MARKER_NAMEIDX            = 0x70000011;
+    static constexpr int    LOG_NAMEIDX               = 0x70000011;
 };

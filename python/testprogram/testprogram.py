@@ -145,9 +145,9 @@ def associatedTask(synchro, crashKind):
         if command == "stop":
             break  # End of thread
 
-        # Marker of a great event
+        # Log of a great event
         if iterationNbr == 4:
-            plMarker("important", "5th iteration reached!")
+            plLogWarn("important", "5th iteration reached!")
 
         # Do something
         plBegin("SomeWork")
@@ -262,8 +262,8 @@ def controlTask(synchro, durationMultiplier):
         plData("iterNbr", iterNbr)
         plData("iterationQty", iterationQty)
 
-        # Dynamic but still external string compatible markers
-        plMarker("Count", someStrings[iterNbr % 2])
+        # Some logging
+        plLogDebug("Count", someStrings[iterNbr % 2])
 
         taskQty = globalRandomGenerator.get(1, 4)
         dummyValue += busyWait(globalRandomGenerator.get(500, 2500))
@@ -377,8 +377,8 @@ def cliHandlerAsyncAssert(condValue):
     return 0
 
 
-def cliHandlerCreateMarker(msg):
-    plMarker("test_marker", msg)
+def cliHandlerCreateLog(msg):
+    plLogWarn("test_log", msg)
     return 0
 
 
@@ -461,10 +461,10 @@ def collectInterestingData(
         "Call asynchronously an assertion with the provided value after a 1s timeout",
     )
     plRegisterCli(
-        cliHandlerCreateMarker,
-        "test::marker",
+        cliHandlerCreateLog,
+        "test::log",
         "msg=string",
-        "Create a marker with the provided string",
+        "Create a log with the provided string",
     )
     plRegisterCli(cliHandlerPoetryGetter, "get_poetry", "", "Returns some poetry.")
     plRegisterCli(cliHandlerQuit, "quit", "", "Exit the program")
@@ -526,7 +526,7 @@ def collectInterestingData(
     for t in controlThreadList:
         t.join()  # Join order does not matter
 
-    plMarker("Threading", "All tasks are completed! Joy!")
+    plLogInfo("Threading", "All tasks are completed! Joy!")
 
     # Stop the recording
     plStopAndUninit()

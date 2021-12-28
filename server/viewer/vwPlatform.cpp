@@ -30,7 +30,7 @@
 #define PL_IMPL_COLLECTION_BUFFER_BYTE_QTY 20000000 // Children iterators are verbose
 #ifdef _WIN32
 #define PL_IMPL_MANAGE_WINDOWS_SOCKET 0
-#define PL_IMPL_STACKTRACE_COLOR 0
+#define PL_IMPL_CONSOLE_COLOR 0
 void crashErrorLogger(const char* msg);
 #define PL_IMPL_PRINT_STDERR(msg, isCrash, isLastFromCrash) crashErrorLogger(msg)
 #endif

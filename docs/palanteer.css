@@ -95,6 +95,9 @@ body {
     color: black;
 }
 
+.md table.table tr, .md table.table td {
+    font-size: 90%;
+}
 
 .md code {
     background: unset;

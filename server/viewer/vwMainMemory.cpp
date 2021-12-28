@@ -660,7 +660,7 @@ vwMain::addMemoryTimeline(int id)
     memset(&mw.valuePerThread[0], 0, sizeof(mw.valuePerThread));
 
     setFullScreenView(-1);
-    plMarker("user", "Add a memory timeline");
+    plLogInfo("user", "Add a memory timeline");
     return true;
 }
 

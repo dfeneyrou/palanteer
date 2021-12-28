@@ -166,6 +166,17 @@ def measure_event_size_and_timing():
         1,
     )
 
+    # Optimized log measures
+    (
+        logO_build_time_sec,
+        logO_program_size,
+        logO_exec_time_sec,
+    ) = _evaluate_perf_program(
+        'plLogInfo("category", "This is a test with 1 parameter %d", 15);',
+        ["-DUSE_PL=1", "-O2"],
+        1,
+    )
+
     # Debug event measures (for build timings only)
     debugOpt = "-Od" if sys.platform == "win32" else "-O0"
     refg_build_time_sec, refg_program_size, refg_exec_time_sec = _evaluate_perf_program(
@@ -179,11 +190,11 @@ def measure_event_size_and_timing():
 
     # Log the KPIs
     KPI(
-        "Compilation speed (-O2)",
+        "Event compilation speed (-O2)",
         "%3d event/s" % (1024.0 / (evtO_build_time_sec - refO_build_time_sec)),
     )
     KPI(
-        "Compilation speed (%s)" % debugOpt,
+        "Event compilation speed (%s)" % debugOpt,
         "%3d event/s" % (1024.0 / (evtg_build_time_sec - refg_build_time_sec)),
     )
     KPI(
@@ -209,6 +220,22 @@ def measure_event_size_and_timing():
     KPI(
         "Assert (simple) code size",
         "%.1f bytes/assert" % ((assertSO_program_size - refSO_program_size) / 1024.0),
+    )
+
+    KPI(
+        "Log compilation speed (-O2) ",
+        "%.1f logs/s" % (1024./(logO_build_time_sec - refO_build_time_sec)),
+    )
+    KPI(
+        "Log with 1 integer param code size ",
+        "%.1f bytes/log" % ((logO_program_size - refO_program_size) / 1024.0),
+    )
+    KPI(
+        "Log with 1 integer param runtime",
+        "%.1f ns"
+        % (
+            1000000000.0 / (1024 * 100000.0) * (logO_exec_time_sec - refO_exec_time_sec)
+        ),
     )
 
     KPI(

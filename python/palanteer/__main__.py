@@ -99,11 +99,11 @@ Options for case (2):
  -s <server IP address> Set the server IP address (default is 127.0.0.1)
  -p <server TCP port>   Set the server port       (default is 59059)
  -f <filename.pltraw>   Save the profiling data into a file to be imported in the Palanteer viewer (default=remote connection)
- -nf                    Do not automatically log the functions              (default=log functions)
- -ne                    Do not automatically log the exceptions             (default=log exception)
- -nm                    Do not log the memory allocations                   (default=log memory allocations)
- -ng                    Do not automatically log the garbage collector runs (default=log gc)
- -c                     Do automatically log the C functions                (default=only python functions)
+ -nf                    Do not automatically trace the functions              (default=trace functions)
+ -ne                    Do not automatically trace the exceptions             (default=trace exception)
+ -nm                    Do not trace the memory allocations                   (default=trace memory allocations)
+ -ng                    Do not automatically trace the garbage collector runs (default=trace gc)
+ -c                     Do automatically trace the C functions                (default=only python functions)
  -w                     Wait for server connection (Palanteer viewer or scripting module). Applicable only in case of remote connection.
  -m                     Run the app as a module (similar to python's "-m" option)
 

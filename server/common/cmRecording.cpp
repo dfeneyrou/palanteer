@@ -54,7 +54,7 @@ cmRecording::cmRecording(cmInterface* itf, const bsString& storagePath, bool doF
 #endif
 
     // Some reserve
-    _recMarkerCategoryNameIdxs.reserve(256);
+    _recLogCategoryNameIdxs.reserve(256);
     _recStreams.reserve(cmConst::MAX_STREAM_QTY);
     _recLocks.reserve(256);
     _recElems.reserve(512);
@@ -97,7 +97,7 @@ cmRecording::beginRecord(const bsString& appName, const cmStreamInfo& infos, s64
         // Open the record file
         _recFd = osFileOpen(_recordPath, "wb"); // Write only
         if(!_recFd) {
-            plMarker("Error", "unable to open the record file for writing");
+            plLogWarn("Error", "unable to open the record file for writing");
             errorMsg = bsString("Unable to open the record file ")+_recordPath+" for writing.\nPlease check the write permissions and existence of directories";
             return 0;
         }
@@ -123,14 +123,14 @@ cmRecording::beginRecord(const bsString& appName, const cmStreamInfo& infos, s64
     _recElemEventQty   = 0;
     _recMemEventQty    = 0;
     _recLockEventQty   = 0;
-    _recMarkerEventQty   = 0;
+    _recLogEventQty    = 0;
     _recCtxSwitchEventQty = 0;
     _recLastIdxErrorQty = 0;
     _recErrorQty        = 0;
     memset(_recCoreIsUsed,   0, sizeof(_recCoreIsUsed));
     _recMemAllocLkup.clear();
     _recElemPathToId.clear();
-    _recMarkerCategoryNameIdxs.clear();
+    _recLogCategoryNameIdxs.clear();
     _recStreams.clear();
     _recStreams.push_back(infos);
     _recLocks.clear();
@@ -139,7 +139,7 @@ cmRecording::beginRecord(const bsString& appName, const cmStreamInfo& infos, s64
     LOC_STORAGE_RESET(_recGlobal.lockUse);
     LOC_STORAGE_RESET(_recGlobal.lockNtf);
     LOC_STORAGE_RESET(_recGlobal.coreUsage);
-    LOC_STORAGE_RESET(_recGlobal.marker);
+    LOC_STORAGE_RESET(_recGlobal.log);
     _recStrings.clear();
     _recErrorLkup.clear();
 
@@ -166,7 +166,7 @@ cmRecording::beginRecord(const bsString& appName, const cmStreamInfo& infos, s64
         // Build the empty live record. It will be incrementally updated in memory, but raw events come from the same 'events' file
         FILE* fdReadEventChunks  = osFileOpen(_recordPath, "rb"); // Read only
         if(!fdReadEventChunks) {
-            plMarker("Error", "unable to open file 'events' for live reading");
+            plLogWarn("Error", "unable to open file 'events' for live reading");
             errorMsg = bsString("Unable to open the record file ")+_recordPath+" for live reading.";
             fclose(_recFd);
             return 0;
@@ -226,59 +226,106 @@ cmRecording::storeNewString(int streamId, const bsString& newString, u64 hash)
 
 
 void
-cmRecording::processMarkerEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int level, bool doForwardEvents)
+cmRecording::processLogEvent(plPriv::EventExt& evtxPart, ThreadBuild& tc)
 {
-    plgScope(REC, "processMarkerEvent");
-    // Store complete chunks
-    if(_recGlobal.markerChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.markerChunkData, _recGlobal.markerChunkLocs);
-    _recGlobal.markerChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, { evtx.filenameIdx },
-                                                         evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                         { (u64)evtx.vS64 } } );
-    ++tc.markerEventQty;
-    ++_recMarkerEventQty;
-    u32 lIdx = _recGlobal.markerChunkLocs.size()*cmChunkSize+_recGlobal.markerChunkData.size()-1;
+    plgScope(REC, "processLogEvent");
 
-    // Update the list of global marker categories
+    // Ensure that the log is complete (need to be stored in a contiguous manner for the iterator)
+    if(evtxPart.flags==PL_FLAG_TYPE_LOG) tc.partialLogs.clear();
+    else if(tc.partialLogs.empty()) return;   // Bad structure, as there is no initial "LOG" event before the parameters
+    tc.partialLogs.push_back(evtxPart);
+    if((evtxPart.lineNbr&0x8000)==0) return;  // Unfinished log, more parameters to come
+
+    // Store the log event and its parameters contiguously
+    u32 lIdx = PL_INVALID;
+    for(int i=0; i<tc.partialLogs.size(); ++i) {
+        const plPriv::EventExt& evtx2 = tc.partialLogs[i];
+        if(_recGlobal.logChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.logChunkData, _recGlobal.logChunkLocs);
+
+        if(i==0) {
+            // Store the log event
+            _recGlobal.logChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx2.threadId, evtx2.flags, evtx2.lineNbr,
+                                                              0, 0,  0, evtx2.nameIdx, { evtx2.filenameIdx }, { (u64)evtx2.vS64 } } );
+            lIdx = _recGlobal.logChunkLocs.size()*cmChunkSize+_recGlobal.logChunkData.size()-1;  // Point to the log event (first)
+        }
+        else {
+            // Store the log parameters event
+            _recGlobal.logChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}} } );  // The rest is raw copied payload
+            memcpy((u8*)&(_recGlobal.logChunkData.back().threadId), (u8*)&evtx2, sizeof(plPriv::EventExt));
+        }
+    }
+    plPriv::EventExt& evtx = tc.partialLogs[0];  // Points to the log event
+    ++tc.logEventQty;
+    ++_recLogEventQty;
+
+    // Update the list of global log categories
     if(_recStrings[evtx.nameIdx].categoryId<0) {
-        _recMarkerCategoryNameIdxs.push_back(evtx.nameIdx);
+        _recLogCategoryNameIdxs.push_back(evtx.nameIdx);
         cmRecord::String& s = _recStrings[evtx.nameIdx];
-        s.categoryId = _recMarkerCategoryNameIdxs.size()-1; // Mark the string as a category name
+        s.categoryId = _recLogCategoryNameIdxs.size()-1; // Mark the string as a category name
         if(!s.isHexa) { // Used as a changed flag, only in this file
             s.isHexa = true;
             _recUpdatedStringIds.push_back(evtx.nameIdx);
         }
     }
+    u64 evtThreadBitmap = (1LL<<evtx.threadId);
+    int evtLevel = bsMinMax(evtx.lineNbr&0x7FFF, 0, cmConst::MAX_LOGLEVEL_QTY); // Debug, Info, Warn, Error
 
-    // Elem 1: Per thread storage, for proper MR per thread (triangles)
-    u64  itemHashPath = bsHashStepChain(tc.threadHash, cmConst::MARKER_NAMEIDX);
-    int* elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
+    // Update the string for the thread usage (used by search)
+    if(!(_recStrings[evtx.filenameIdx].threadBitmapAsName&evtThreadBitmap)) {
+        cmRecord::String& s = _recStrings[evtx.filenameIdx];
+        s.threadBitmapAsName |= evtThreadBitmap;
+        if(!s.isHexa) { // Used as a changed flag, only in this file
+            s.isHexa = true;
+            _recUpdatedStringIds.push_back(evtx.filenameIdx);
+        }
+    }
+
+    // Elem 1: Per thread and format string (i.e filenameIdx), for plot & histogram
+    u64 partialItemHashPath = bsHashStepChain(_recStrings[evtx.filenameIdx].hash, cmConst::LOG_NAMEIDX);
+    u64 itemHashPath = bsHashStep(tc.threadHash, partialItemHashPath);
+    int* elemIdxPtr  = _recElemPathToId.find(itemHashPath, cmConst::LOG_NAMEIDX);
     if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, bsHashStep(cmConst::MARKER_NAMEIDX), 0, cmConst::MARKER_NAMEIDX, (u32)-1, evtx.threadId, -1,
-                evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true, 1., 1. } );
-        _recElemPathToId.insert(itemHashPath, cmConst::MARKER_NAMEIDX, _recElems.size()-1);
+        _recElems.push_back( { itemHashPath, partialItemHashPath, 0, cmConst::LOG_NAMEIDX, (u32)-1, evtx.threadId, -1,
+                evtx.filenameIdx, evtx.filenameIdx, evtx.flags, false, false, true, 1., 1. } );
+        _recElemPathToId.insert(itemHashPath, cmConst::LOG_NAMEIDX, _recElems.size()-1);
     }
     int elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
     ElemBuild& elem  = _recElems[elemIdx];
-    INSERT_IN_ELEM(elem, elemIdx, lIdx, evtx.vS64, 1., 1LL<<evtx.threadId);
+    INSERT_IN_ELEM(elem, elemIdx, lIdx, evtx.vS64, 1., evtThreadBitmap);
 
-    // Elem 2: Per thread and per nameIdx (=category), for plot & histogram
-    u64 partialItemHashPath = bsHashStepChain(evtx.nameIdx, cmConst::MARKER_NAMEIDX);
-    itemHashPath = bsHashStep(tc.threadHash, partialItemHashPath);
-    elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
-    if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
-        _recElems.push_back( { itemHashPath, partialItemHashPath, 0, cmConst::MARKER_NAMEIDX, (u32)-1, evtx.threadId, -1,
-                evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true } );
-        _recElemPathToId.insert(itemHashPath, cmConst::MARKER_NAMEIDX, _recElems.size()-1);
-        if(_doForwardEvents && doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, evtx.flags);
+    for(int level=0; level<=evtLevel; ++level) {
+
+        // Elem 2: Per thread and min level, for proper MR per thread (triangles)
+        itemHashPath = bsHashStepChain(tc.threadHash, level, cmConst::LOG_NAMEIDX);
+        elemIdxPtr   = _recElemPathToId.find(itemHashPath, cmConst::LOG_NAMEIDX);
+        if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
+            _recElems.push_back( { itemHashPath, bsHashStep(cmConst::LOG_NAMEIDX), 0, cmConst::LOG_NAMEIDX, (u32)-1, evtx.threadId, -1,
+                    evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true, 1., 1. } );
+            _recElemPathToId.insert(itemHashPath, cmConst::LOG_NAMEIDX, _recElems.size()-1);
+        }
+        elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
+        ElemBuild& elem2 = _recElems[elemIdx];
+        INSERT_IN_ELEM(elem2, elemIdx, lIdx, evtx.vS64, 1., evtThreadBitmap);
+
+        // Elem 3: Per thread and per nameIdx (=category) and min level, for log view
+        partialItemHashPath = bsHashStepChain(level, _recStrings[evtx.nameIdx].hash, cmConst::LOG_NAMEIDX);
+        itemHashPath = bsHashStep(tc.threadHash, partialItemHashPath);
+        elemIdxPtr  = _recElemPathToId.find(itemHashPath, cmConst::LOG_NAMEIDX);
+        if(!elemIdxPtr) { // If this Elem does not exist yet, let's create it
+            _recElems.push_back( { itemHashPath, partialItemHashPath, 0, cmConst::LOG_NAMEIDX, (u32)-1, evtx.threadId, -1,
+                    evtx.nameIdx, evtx.nameIdx, evtx.flags, false, false, true, 1., 1. } );
+            _recElemPathToId.insert(itemHashPath, cmConst::LOG_NAMEIDX, _recElems.size()-1);
+            if(level==0 && _doForwardEvents) _itf->notifyNewElem(_recStrings[evtx.nameIdx].hash, _recElems.size()-1, -1, evtx.threadId, evtx.flags);
+        }
+        elemIdx = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
+        ElemBuild& elem3 = _recElems[elemIdx];
+        // Update the elem
+        INSERT_IN_ELEM(elem3, elemIdx, lIdx, evtx.vS64, 1., evtThreadBitmap);
+        if(level==0 && _doForwardEvents) _itf->notifyFilteredEvent(elemIdx, evtx.flags, _recStrings[evtx.nameIdx].hash, evtx.vS64, evtx.filenameIdx);
     }
-    elemIdx     = elemIdxPtr? *elemIdxPtr:_recElems.size()-1;
-    ElemBuild& elem2 = _recElems[elemIdx];
-    // Update the elem
-    double value = evtx.filenameIdx;
-    if(elem2.absYMin>value) elem2.absYMin = value;
-    if(elem2.absYMax<value) elem2.absYMax = value;
-    INSERT_IN_ELEM(elem2, elemIdx, lIdx, evtx.vS64, 1., 1LL<<evtx.threadId);
-    if(_doForwardEvents && doForwardEvents) _itf->notifyFilteredEvent(elemIdx, evtx.flags, _recStrings[evtx.nameIdx].hash, evtx.vS64, evtx.filenameIdx);
+
+    tc.partialLogs.clear();
 }
 
 
@@ -312,9 +359,8 @@ cmRecording::processLockNotifyEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int
 
     // Store complete chunks
     if(_recGlobal.lockNtfChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.lockNtfChunkData, _recGlobal.lockNtfChunkLocs);
-    _recGlobal.lockNtfChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, { evtx.filenameIdx },
-                                                          evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                          { (u64)evtx.vS64 } } );
+    _recGlobal.lockNtfChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.threadId, evtx.flags, evtx.lineNbr,
+                                                          (u8)level, 0, 0, evtx.nameIdx, { evtx.filenameIdx }, { (u64)evtx.vS64 } } );
     ++tc.lockEventQty;
     ++_recLockEventQty;
     u32 lIdx = _recGlobal.lockNtfChunkLocs.size()*cmChunkSize+_recGlobal.lockNtfChunkData.size()-1;
@@ -354,9 +400,8 @@ cmRecording::processLockWaitEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int l
 
     // Store complete chunks
     if(tc.lockWaitChunkData.size()==cmChunkSize) writeGenericChunk(tc.lockWaitChunkData, tc.lockWaitChunkLocs);
-    tc.lockWaitChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
-                                                   evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                   { (u64)evtx.vS64 } } );
+    tc.lockWaitChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.threadId, evtx.flags, evtx.lineNbr,
+                                                   (u8)level, 0, 0, evtx.nameIdx, {evtx.filenameIdx}, { (u64)evtx.vS64 } } );
     ++_recLockEventQty;
     ++tc.lockEventQty;
 
@@ -442,9 +487,8 @@ cmRecording::processLockUseEvent(int streamId, plPriv::EventExt& evtx, bool& doI
 
     // Store complete chunks
     if(_recGlobal.lockUseChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.lockUseChunkData, _recGlobal.lockUseChunkLocs);
-    _recGlobal.lockUseChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
-                                                          evtx.threadId, 0, evtx.flags, 0, evtx.lineNbr, 0,
-                                                          { (u64)evtx.vS64 } } );
+    _recGlobal.lockUseChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.threadId, evtx.flags, evtx.lineNbr,
+                                                          0, 0, 0, evtx.nameIdx, {evtx.filenameIdx}, { (u64)evtx.vS64 } } );
 
     if(lock.isInUse) {
         // Lock is acquired, store the information
@@ -499,9 +543,8 @@ cmRecording::processCtxSwitchEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
     plgScope(REC, "processCtxSwitchEvent");
     // Store complete chunks
     if(tc.ctxSwitchChunkData.size()==cmChunkSize) writeGenericChunk(tc.ctxSwitchChunkData, tc.ctxSwitchChunkLocs);
-    tc.ctxSwitchChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
-                                                    evtx.threadId, 0, evtx.flags, 0, 0, 0,
-                                                    { (u64)evtx.vS64 } } );
+    tc.ctxSwitchChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.threadId, evtx.flags, 0,
+                                                    0, 0, 0, evtx.nameIdx, {evtx.newCoreId}, { (u64)evtx.vS64 } } );
     ++_recCtxSwitchEventQty;
     ++tc.ctxSwitchEventQty;
     // Get the elem from the path hash   @#SIMPLIFY The assumption about mandatory thread declaration below is no more true. We can use the threadHash as for all other cases. Iterator shall be updated too
@@ -536,9 +579,8 @@ cmRecording::processSoftIrqEvent(plPriv::EventExt& evtx, ThreadBuild& tc)
 
     // Store complete chunks
     if(tc.softIrqChunkData.size()==cmChunkSize) writeGenericChunk(tc.softIrqChunkData, tc.softIrqChunkLocs);
-    tc.softIrqChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
-                                                  evtx.threadId, 0, evtx.flags, 0, 0, 0,
-                                                  { (u64)evtx.vS64 } } );
+    tc.softIrqChunkData.push_back(cmRecord::Evt { {{PL_INVALID, PL_INVALID}}, evtx.threadId, evtx.flags, 0,
+                                                  0, 0, 0, evtx.nameIdx, {evtx.newCoreId}, { (u64)evtx.vS64 } } );
     ++_recCtxSwitchEventQty;
 
     // Get the elem from the path hash
@@ -587,9 +629,8 @@ cmRecording::processCoreUsageEvent(int streamId, plPriv::EventExt& evtx)
 
     // Store complete chunks
     if(_recGlobal.coreUsageChunkData.size()==cmChunkSize) writeGenericChunk(_recGlobal.coreUsageChunkData, _recGlobal.coreUsageChunkLocs);
-    _recGlobal.coreUsageChunkData.push_back(cmRecord::Evt { {{(u32)_recUsedCoreCount, PL_INVALID}}, evtx.nameIdx, {evtx.newCoreId},
-                                                            evtx.threadId, 0, PL_FLAG_TYPE_CSWITCH, 0, 0, 0,
-                                                            { (u64)evtx.vS64 } } );
+    _recGlobal.coreUsageChunkData.push_back(cmRecord::Evt { {{(u32)_recUsedCoreCount, PL_INVALID}}, evtx.threadId, PL_FLAG_TYPE_CSWITCH, 0,
+                                                            0, 0, 0, evtx.nameIdx, {evtx.newCoreId}, { (u64)evtx.vS64 } } );
     ++_recCtxSwitchEventQty;
 
     // Get the elem for this core
@@ -691,16 +732,14 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
 
         // Store the new "alloc event" in the thread
         if(tc.memAllocChunkData.size()==cmChunkSize) writeGenericChunk(tc.memAllocChunkData, tc.memAllocChunkLocs);
-        tc.memAllocChunkData.push_back(cmRecord::Evt{ {{PL_INVALID, lc.lastAllocSize}}, evtx.nameIdx, {tc.levels[level].parentNameIdx},
-                                                      evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                      { evtx.vU64 } });
+        tc.memAllocChunkData.push_back(cmRecord::Evt{ {{PL_INVALID, lc.lastAllocSize}}, evtx.threadId, evtx.flags, evtx.lineNbr,
+                                                      (u8)level, 0, 0, evtx.nameIdx, {tc.levels[level].parentNameIdx}, { evtx.vU64 } });
         tc.memDeallocMIdx.push_back(PL_INVALID); // If not leaked, will be overwritten when deallocated
 
         // Store the new "alloc call" elem (plottable)
         if(tc.memPlotChunkData.size()==cmChunkSize) writeGenericChunk(tc.memPlotChunkData, tc.memPlotChunkLocs);
-        tc.memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, tc.levels[level].parentNameIdx, {0},
-                                                     evtx.threadId, (u8)(level-1), tc.levels[level].parentFlags, 0, evtx.lineNbr, 0,
-                                                     { evtx.vU64 } });
+        tc.memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, evtx.threadId, tc.levels[level].parentFlags, evtx.lineNbr,
+                                                     (u8)(level-1), 0, 0, tc.levels[level].parentNameIdx, {0}, { evtx.vU64 } });
         tc.memPlotChunkData.back().memElemValue = tc.sumAllocQty;
     }
 
@@ -739,15 +778,13 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
             plAssert(allocElems.mIdx<(u32)tcAlloc->memDeallocMIdx.size());
             if(tcAlloc->memDeallocChunkData.size()==cmChunkSize) writeGenericChunk(tcAlloc->memDeallocChunkData, tcAlloc->memDeallocChunkLocs);
             tcAlloc->memDeallocMIdx[allocElems.mIdx] = deallocMIdx;
-            tcAlloc->memDeallocChunkData.push_back(cmRecord::Evt { {{PL_INVALID, allocElems.mIdx}}, evtx.nameIdx, {tc.levels[level].parentNameIdx},
-                                                                   evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                                   { evtx.vU64 } } );
+            tcAlloc->memDeallocChunkData.push_back(cmRecord::Evt { {{PL_INVALID, allocElems.mIdx}}, evtx.threadId, evtx.flags, evtx.lineNbr,
+                                                                   (u8)level, 0, 0, evtx.nameIdx, {tc.levels[level].parentNameIdx}, { evtx.vU64 } } );
 
             // Store the new "dealloc call" elem (plottable)
             if(tcAlloc->memPlotChunkData.size()==cmChunkSize) writeGenericChunk(tcAlloc->memPlotChunkData, tcAlloc->memPlotChunkLocs);
-            tcAlloc->memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, tc.levels[level].parentNameIdx, {0},
-                                                               evtx.threadId, (u8)(level-1), tc.levels[level].parentFlags, 0, evtx.lineNbr, 0,
-                                                               { evtx.vU64 } });
+            tcAlloc->memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, evtx.threadId, tc.levels[level].parentFlags, evtx.lineNbr,
+                                                               (u8)(level-1), 0, 0, tc.levels[level].parentNameIdx, {0}, { evtx.vU64 } });
             tcAlloc->memPlotChunkData.back().memElemValue = tcAlloc->sumDeallocQty;
         }
         lc.lastDeallocPtr = 0;
@@ -759,9 +796,8 @@ cmRecording::processMemoryEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int lev
 
     // Store the new "alloc size" elem (plottable) (common storage to both alloc and dealloc). Note that allocation thread is used here
     if(tcAlloc->memPlotChunkData.size()==cmChunkSize) writeGenericChunk(tcAlloc->memPlotChunkData, tcAlloc->memPlotChunkLocs);
-    tcAlloc->memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, evtx.nameIdx, {tc.levels[level].parentNameIdx},
-                                                       (u8)allocThreadId, (u8)(level-1), tc.levels[level].parentFlags, 0, evtx.lineNbr, 0,
-                                                       { evtx.vU64 } });
+    tcAlloc->memPlotChunkData.push_back(cmRecord::Evt{ {{0, 0}}, (u8)allocThreadId, tc.levels[level].parentFlags, evtx.lineNbr,
+                                                       (u8)(level-1), 0, 0, evtx.nameIdx, {tc.levels[level].parentNameIdx}, { evtx.vU64 } });
     tcAlloc->memPlotChunkData.back().memElemValue = (s64)(_recThreads[allocThreadId].sumAllocSize-_recThreads[allocThreadId].sumDeallocSize);
 
     // Update the elem "allocSize" with the new element
@@ -832,17 +868,12 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
 {
     plgScope(REC, "processScopeEvent");
 #define LOG_ERROR(type_)                                                \
-    u64  errHash   = bsHashStepChain(evtx.threadId, ((evtx.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_MARKER)? evtx.filenameIdx : evtx.nameIdx, type_, evtx.lineNbr); \
+    u64  errHash   = bsHashStepChain(evtx.threadId, evtx.nameIdx, type_, evtx.lineNbr); \
     int* errIdxPtr = _recErrorLkup.find(errHash, type_);                \
     if(errIdxPtr) _recErrors[*errIdxPtr].count += 1;                    \
     else if(_recErrorQty<cmRecord::MAX_REC_ERROR_QTY) {                 \
-        if((evtx.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_MARKER) {       \
-            _recErrors[_recErrorQty++] = { type_, evtx.threadId, evtx.lineNbr, PL_INVALID, evtx.filenameIdx, 1 }; \
-            if(_doForwardEvents) _itf->notifyInstrumentationError(type_, evtx.threadId, PL_INVALID, evtx.lineNbr, evtx.filenameIdx); \
-        } else {                                                        \
-            _recErrors[_recErrorQty++] = { type_, evtx.threadId, evtx.lineNbr, evtx.filenameIdx, evtx.nameIdx, 1 }; \
-            if(_doForwardEvents) _itf->notifyInstrumentationError(type_, evtx.threadId, evtx.filenameIdx, evtx.lineNbr, evtx.nameIdx); \
-        }                                                               \
+        _recErrors[_recErrorQty++] = { type_, evtx.threadId, evtx.lineNbr, evtx.filenameIdx, evtx.nameIdx, 1 }; \
+        if(_doForwardEvents) _itf->notifyInstrumentationError(type_, evtx.threadId, evtx.filenameIdx, evtx.lineNbr, evtx.nameIdx); \
         _recErrorLkup.insert(errHash, type_, _recErrorQty-1);           \
     }
 
@@ -898,8 +929,8 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
                 u32 memCurrentLIdx = (lcc.nonScopeChunkLocs.size()*cmChunkSize+lcc.nonScopeChunkData.size()) | 0x80000000; // We create a non scope
                 UPDATE_LINK(lcc, level+1, memCurrentLIdx, false);
                 if(lcc.nonScopeChunkData.size()==cmChunkSize) writeGenericChunk(lcc.nonScopeChunkData, lcc.nonScopeChunkLocs);
-                lcc.nonScopeChunkData.push_back(cmRecord::Evt { {{tc.levels[level].scopeCurrentLIdx, PL_INVALID}}, 0, {0},
-                                                                evtx.threadId, (u8)(level+1), PL_FLAG_TYPE_ALLOC, 0, evtx.lineNbr, 0,
+                lcc.nonScopeChunkData.push_back(cmRecord::Evt { {{tc.levels[level].scopeCurrentLIdx, PL_INVALID}}, evtx.threadId, PL_FLAG_TYPE_ALLOC, evtx.lineNbr,
+                                                                (u8)(level+1), 0, 0, 0, {0},
                                                                 { ( ((tc.sumAllocQty-lc.beginSumAllocQty)<<32) | bsMin((u64)0xFFFFFFFFULL, tc.sumAllocSize-lc.beginSumAllocSize) ) } } );
                 ++tc.elemEventQty;
                 ++_recElemEventQty;
@@ -909,8 +940,8 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
                 u32 memCurrentLIdx = (lcc.nonScopeChunkLocs.size()*cmChunkSize+lcc.nonScopeChunkData.size()) | 0x80000000; // We create a non scope
                 UPDATE_LINK(lcc, level+1, memCurrentLIdx, false);
                 if(lcc.nonScopeChunkData.size()==cmChunkSize) writeGenericChunk(lcc.nonScopeChunkData, lcc.nonScopeChunkLocs);
-                lcc.nonScopeChunkData.push_back(cmRecord::Evt { {{tc.levels[level].scopeCurrentLIdx, PL_INVALID}}, 0, {0},
-                                                                evtx.threadId, (u8)(level+1), PL_FLAG_TYPE_DEALLOC, 0, evtx.lineNbr, 0,
+                lcc.nonScopeChunkData.push_back(cmRecord::Evt { {{tc.levels[level].scopeCurrentLIdx, PL_INVALID}}, evtx.threadId, PL_FLAG_TYPE_DEALLOC, evtx.lineNbr,
+                                                                (u8)(level+1), 0, 0, 0, {0},
                                                                 { ( ((tc.sumDeallocQty-lc.beginSumDeallocQty)<<32) | bsMin((u64)0xFFFFFFFFULL, tc.sumDeallocSize-lc.beginSumDeallocSize) ) } } );
                 ++tc.elemEventQty;
                 ++_recElemEventQty;
@@ -921,7 +952,7 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
     // Sanity check on the positive level
     bool doStoreInHierarchy = true;
     if(level==0 && !(evtx.flags&PL_FLAG_SCOPE_MASK)) {
-        if(eType==PL_FLAG_TYPE_MARKER || eType==PL_FLAG_TYPE_LOCK_ACQUIRED || eType==PL_FLAG_TYPE_LOCK_RELEASED || eType==PL_FLAG_TYPE_LOCK_NOTIFIED) {
+        if(eType==PL_FLAG_TYPE_LOCK_ACQUIRED || eType==PL_FLAG_TYPE_LOCK_RELEASED || eType==PL_FLAG_TYPE_LOCK_NOTIFIED) {
             doStoreInHierarchy = false;
         } else {
             LOG_ERROR(cmRecord::ERROR_EVENT_OUTSIDE_SCOPE);
@@ -951,15 +982,13 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
         u32 parentIdx = (level>0)? tc.levels[level-1].scopeCurrentLIdx : PL_INVALID; // Always on scope data
         if(isScope) {
             // Store the "scope" event
-            lc.scopeChunkData.push_back(cmRecord::Evt { {{parentIdx, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
-                                                        evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                        { evtx.vU64 } } );
+            lc.scopeChunkData.push_back(cmRecord::Evt { {{parentIdx, PL_INVALID}}, evtx.threadId, evtx.flags, evtx.lineNbr,
+                                                        (u8)level, 0, 0, evtx.nameIdx, {evtx.filenameIdx}, { evtx.vU64 } } );
             lc.scopeCurrentLIdx = currentLIdx;
         } else {
             // Store the "flat" event
-            lc.nonScopeChunkData.push_back(cmRecord::Evt { {{parentIdx, PL_INVALID}}, evtx.nameIdx, {evtx.filenameIdx},
-                                                           evtx.threadId, (u8)level, evtx.flags, 0, evtx.lineNbr, 0,
-                                                           { evtx.vU64 } } );
+            lc.nonScopeChunkData.push_back(cmRecord::Evt { {{parentIdx, PL_INVALID}}, evtx.threadId, evtx.flags, evtx.lineNbr,
+                                                           (u8)level, 0, 0, evtx.nameIdx, {evtx.filenameIdx}, { evtx.vU64 } } );
         }
 
         // Get the elem from the path hash
@@ -1048,34 +1077,7 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
             INSERT_IN_ELEM(elem, elemIdx, currentLIdx, evtx.vS64, value, evtThreadBitmap);
             if(_doForwardEvents) _itf->notifyFilteredEvent(elemIdx, evtx.flags, _recStrings[evtx.nameIdx].hash, evtx.vS64, 0);
         }
-        else if(eType==PL_FLAG_TYPE_MARKER) {
-            // Save standard Elem (nameIdx=category) to be used by search on category
-            double value = evtx.filenameIdx;
-            if(elem.absYMin>value) elem.absYMin = value;
-            if(elem.absYMax<value) elem.absYMax = value;
-            INSERT_IN_ELEM(elem, elemIdx, currentLIdx, evtx.vS64, value, evtThreadBitmap);
-            if(_doForwardEvents) _itf->notifyFilteredEvent(elemIdx, evtx.flags, _recStrings[evtx.nameIdx].hash, evtx.vS64, evtx.filenameIdx);
 
-            // Save inversed Elem (filenameIdx=message) to be used by search on message content
-            // Get the elem from the path hash
-            u64 hashPath2     = bsHashStep(_recStrings[evtx.filenameIdx].hash, lc.hashPath);
-            u64 partialItemHashPath2 = bsHashStep(evtx.flags, hashPath2);
-            u64 itemHashPath2 = bsHashStep(tc.threadHash, partialItemHashPath2);
-            int* elemIdxPtr2  = _recElemPathToId.find(itemHashPath2, evtx.filenameIdx);
-            if(!elemIdxPtr2) { // If this Elem does not exist yet, let's create it
-                _recElems.push_back( { itemHashPath2, partialItemHashPath2, 0, evtx.filenameIdx, lc.prevElemIdx, evtx.threadId,
-                        level, evtx.filenameIdx, tc.levels[level].parentNameIdx, evtx.flags, false, true, true } );
-                _recElemPathToId.insert(itemHashPath2, evtx.filenameIdx, _recElems.size()-1);
-            }
-            int elemIdx2 = elemIdxPtr2? *elemIdxPtr2:_recElems.size()-1;
-            ElemBuild& elem2 = _recElems[elemIdx2];
-            plAssert(elem2.nameIdx==evtx.filenameIdx);
-            // Update the Elems
-            value = evtx.filenameIdx;
-            if(elem2.absYMin>value) elem2.absYMin = value;
-            if(elem2.absYMax<value) elem2.absYMax = value;
-            INSERT_IN_ELEM(elem2, elemIdx2, currentLIdx, evtx.vS64, value, evtThreadBitmap);
-        }
     } // doStoreInHierarchy
 
     // Lock wait: additional processing required (MR display)
@@ -1087,12 +1089,6 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
         // This compensate the fact that no non-scope element can be present at the root of the tree
         // So the scripting module will see lock notification from the tree and only the out-of-tree lock notifications if at the root.
         processLockNotifyEvent(evtx, tc, level, !doStoreInHierarchy);
-    }
-    else if(eType==PL_FLAG_TYPE_MARKER) {
-        // Forward marker events only if outside of the hierarchical tree
-        // This compensate the fact that no non-scope element can be present at the root of the tree
-        // So the scripting library will see markers from the tree and only the out-of-tree marker if at the root.
-        processMarkerEvent(evtx, tc, level, !doStoreInHierarchy);
     }
 
     // Mark the strings with the thread usage (used by search)
@@ -1177,7 +1173,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
         int               eType = evtx.flags&PL_FLAG_TYPE_MASK;
 
         if(_isMultiStream) {
-            if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {  // 1st part of memory events do not use strings
+            if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART && eType!=PL_FLAG_TYPE_LOG_PARAM) {  // 1st part of memory events do not use strings
 
                 if(eType!=PL_FLAG_TYPE_CSWITCH) {
                     // Strings
@@ -1234,7 +1230,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
         } // End of multistream conversion & check
 
         // Case monostream: String integrity check (data corruption). Should never happen with "good" clients
-        else if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {  // 1st part of memory events do not use strings
+        else if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART && eType!=PL_FLAG_TYPE_LOG_PARAM) {  // 1st part of memory events do not use strings
             if(eType!=PL_FLAG_TYPE_CSWITCH) {
                 if(evtx.nameIdx>=(u32)_recStrings.size()) return false; // Means nameIdx is corrupted
                 if(eType!=PL_FLAG_TYPE_SOFTIRQ && evtx.filenameIdx>=(u32)_recStrings.size()) return false; // Means filenameIdx is corrupted
@@ -1330,7 +1326,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
             if(!doProcessLockUse && !doInsertLockWaitEnd) continue;
 
             // In case of lock wait insertion, we turn the lock into a lock wait end now (change in level)
-            //  and indicate that the original bugz shall be logged afterward
+            //  and indicate that the original event shall be logged afterward
             if(doInsertLockWaitEnd) {
                 // Indicate the flags of the second event if the lock use shall be processed
                 if(doProcessLockUse) secondEventFlags = evtx.flags;
@@ -1346,6 +1342,10 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
         }
         if(eType==PL_FLAG_TYPE_SOFTIRQ) {
             processSoftIrqEvent(evtx, tc);
+            continue;
+        }
+        if(eType==PL_FLAG_TYPE_LOG || eType==PL_FLAG_TYPE_LOG_PARAM) {
+            processLogEvent(evtx, tc);
             continue;
         }
 
@@ -1393,7 +1393,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
         // Generic event case
         // ==================
 
-        // Log the event in the hierarchical tree
+        // Process the event in the hierarchical tree
         processScopeEvent(evtx, tc, level);
 
         // Optional insertion of a second event, copy of the first one but with flag changed
@@ -1744,13 +1744,13 @@ cmRecording::endRecord(void)
 
     // Flush global elems
     plgData(REC, "Flush lock notif events", _recGlobal.lockNtfChunkData.size());
-    writeGenericChunk(_recGlobal.lockNtfChunkData,  _recGlobal.lockNtfChunkLocs);
+    writeGenericChunk(_recGlobal.lockNtfChunkData, _recGlobal.lockNtfChunkLocs);
     plgData(REC, "Flush lock use events", _recGlobal.lockUseChunkData.size());
-    writeGenericChunk(_recGlobal.lockUseChunkData,  _recGlobal.lockUseChunkLocs);
+    writeGenericChunk(_recGlobal.lockUseChunkData, _recGlobal.lockUseChunkLocs);
     plgData(REC, "Flush core use events", _recGlobal.coreUsageChunkData.size());
-    writeGenericChunk(_recGlobal.coreUsageChunkData,  _recGlobal.coreUsageChunkLocs);
-    plgData(REC, "Flush marker events", _recGlobal.markerChunkData.size());
-    writeGenericChunk(_recGlobal.markerChunkData,  _recGlobal.markerChunkLocs);
+    writeGenericChunk(_recGlobal.coreUsageChunkData, _recGlobal.coreUsageChunkLocs);
+    plgData(REC, "Flush log events", _recGlobal.logChunkData.size());
+    writeGenericChunk(_recGlobal.logChunkData, _recGlobal.logChunkLocs);
     plgText(REC, "Stage", "Flush elems");
     for(auto& elem : _recElems) {
         writeElemChunk(elem, true);
@@ -1828,7 +1828,7 @@ cmRecording::endRecord(void)
     fwrite(&_recMemEventQty,       4, 1, _recFd);
     fwrite(&_recCtxSwitchEventQty, 4, 1, _recFd);
     fwrite(&_recLockEventQty,      4, 1, _recFd);
-    fwrite(&_recMarkerEventQty,    4, 1, _recFd);
+    fwrite(&_recLogEventQty,       4, 1, _recFd);
 
     // Write the streams
     // =================
@@ -1894,7 +1894,7 @@ cmRecording::endRecord(void)
         fwrite(&tc.memEventQty,       4, 1, _recFd);
         fwrite(&tc.ctxSwitchEventQty, 4, 1, _recFd);
         fwrite(&tc.lockEventQty,      4, 1, _recFd);
-        fwrite(&tc.markerEventQty,    4, 1, _recFd);
+        fwrite(&tc.logEventQty,       4, 1, _recFd);
 
         // Write the quantity of nesting levels
         tmp = tc.levels.size();
@@ -1980,17 +1980,17 @@ cmRecording::endRecord(void)
     plgData(REC, "Core usage indexes size", tmp);
     if(tmp) fwrite(&_recGlobal.coreUsageChunkLocs[0], sizeof(chunkLoc_t), tmp, _recFd);
 
-    // Write the marker indexes
-    tmp = _recGlobal.markerChunkLocs.size();
+    // Write the log indexes
+    tmp = _recGlobal.logChunkLocs.size();
     fwrite(&tmp, 4, 1, _recFd);
-    plgData(REC, "Marker indexes size", tmp);
-    if(tmp) fwrite(&_recGlobal.markerChunkLocs[0], sizeof(chunkLoc_t), tmp, _recFd);
+    plgData(REC, "Log indexes size", tmp);
+    if(tmp) fwrite(&_recGlobal.logChunkLocs[0], sizeof(chunkLoc_t), tmp, _recFd);
 
-    // Write the marker categories
-    tmp = _recMarkerCategoryNameIdxs.size();
+    // Write the log categories
+    tmp = _recLogCategoryNameIdxs.size();
     fwrite(&tmp, 4, 1, _recFd);
     plgData(REC, "Category list size", tmp);
-    if(tmp) fwrite(&_recMarkerCategoryNameIdxs[0], sizeof(int), tmp, _recFd);
+    if(tmp) fwrite(&_recLogCategoryNameIdxs[0], sizeof(int), tmp, _recFd);
 
     // Write the locks
     // ===============
@@ -2111,7 +2111,7 @@ cmRecording::createDeltaRecord(cmRecord::Delta* delta)
     delta->memEventQty    = _recMemEventQty;
     delta->ctxSwitchEventQty = _recCtxSwitchEventQty;
     delta->lockEventQty   = _recLockEventQty;
-    delta->markerEventQty = _recMarkerEventQty;
+    delta->logEventQty    = _recLogEventQty;
 
     // Errors
     delta->errorQty = _recErrorQty-_recLastIdxErrorQty;
@@ -2147,9 +2147,9 @@ cmRecording::createDeltaRecord(cmRecord::Delta* delta)
         _recUpdatedStringIds.clear();
     }
 
-    // Marker categories
-    for(int i=delta->markerCategories.size(); i<_recMarkerCategoryNameIdxs.size(); ++i) {
-        delta->markerCategories.push_back(_recMarkerCategoryNameIdxs[i]);
+    // Log categories
+    for(int i=delta->logCategories.size(); i<_recLogCategoryNameIdxs.size(); ++i) {
+        delta->logCategories.push_back(_recLogCategoryNameIdxs[i]);
     }
 
     // New locks
@@ -2218,7 +2218,7 @@ cmRecording::createDeltaRecord(cmRecord::Delta* delta)
         dst.memEventQty  = src.memEventQty;
         dst.ctxSwitchEventQty = src.ctxSwitchEventQty;
         dst.lockEventQty = src.lockEventQty;
-        dst.markerEventQty = src.markerEventQty;
+        dst.logEventQty = src.logEventQty;
 
         // Update levels
         for(int j=dst.levels.size(); j<src.levels.size(); ++j) dst.levels.push_back({}); // New levels
@@ -2270,7 +2270,7 @@ cmRecording::createDeltaRecord(cmRecord::Delta* delta)
     UPDATE_FROM_RECORDING(_recGlobal, (*delta), lockUse);
     UPDATE_FROM_RECORDING(_recGlobal, (*delta), lockNtf);
     UPDATE_FROM_RECORDING(_recGlobal, (*delta), coreUsage);
-    UPDATE_FROM_RECORDING(_recGlobal, (*delta), marker);
+    UPDATE_FROM_RECORDING(_recGlobal, (*delta), log);
 
     // New elems
     for(int i=delta->elems.size(); i<_recElems.size(); ++i) {

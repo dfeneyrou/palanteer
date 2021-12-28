@@ -43,19 +43,19 @@ import palanteer_scripting._cextension
 # =========
 
 _PL_FLAG_TYPE_DATA_NONE = 0
-_PL_FLAG_TYPE_DATA_TIMESTAMP = 1
-_PL_FLAG_TYPE_DATA_S32 = 2
-_PL_FLAG_TYPE_DATA_U32 = 3
-_PL_FLAG_TYPE_DATA_S64 = 4
-_PL_FLAG_TYPE_DATA_U64 = 5
-_PL_FLAG_TYPE_DATA_FLOAT = 6
-_PL_FLAG_TYPE_DATA_DOUBLE = 7
-_PL_FLAG_TYPE_DATA_STRING = 8
+_PL_FLAG_TYPE_DATA_S32 = 1
+_PL_FLAG_TYPE_DATA_U32 = 2
+_PL_FLAG_TYPE_DATA_S64 = 3
+_PL_FLAG_TYPE_DATA_U64 = 4
+_PL_FLAG_TYPE_DATA_FLOAT = 5
+_PL_FLAG_TYPE_DATA_DOUBLE = 6
+_PL_FLAG_TYPE_DATA_STRING = 7
+_PL_FLAG_TYPE_DATA_TIMESTAMP = 8
 _PL_FLAG_TYPE_LOCK_WAIT = 16
 _PL_FLAG_TYPE_LOCK_ACQUIRED = 17
 _PL_FLAG_TYPE_LOCK_RELEASED = 18
 _PL_FLAG_TYPE_LOCK_NOTIFIED = 19
-_PL_FLAG_TYPE_MARKER = 20
+_PL_FLAG_TYPE_LOG = 20
 _PL_FLAG_TYPE_MASK = 0x1F
 
 # Default: "data"
@@ -64,7 +64,7 @@ _flag_to_kind = {
     _PL_FLAG_TYPE_LOCK_ACQUIRED: "lock use",
     _PL_FLAG_TYPE_LOCK_RELEASED: "lock use",
     _PL_FLAG_TYPE_LOCK_NOTIFIED: "lock notified",
-    _PL_FLAG_TYPE_MARKER: "marker",
+    _PL_FLAG_TYPE_LOG: "log",
 }
 
 MATCH_EXT_STRING_LOOKUP = re.compile("@@([0-9A-F]{16})@@(.*)$")
@@ -134,7 +134,7 @@ class _Elem:
             struct.calcsize(self.valueDecodeFormat) if self.valueDecodeFormat else None
         )
         eType = flags & _PL_FLAG_TYPE_MASK
-        self.valueIsString = eType in (_PL_FLAG_TYPE_DATA_STRING, _PL_FLAG_TYPE_MARKER)
+        self.valueIsString = eType in (_PL_FLAG_TYPE_DATA_STRING, _PL_FLAG_TYPE_LOG)
         self.kind = _flag_to_kind.get(eType, "data")
 
         # Build the path

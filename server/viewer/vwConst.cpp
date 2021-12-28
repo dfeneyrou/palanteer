@@ -20,10 +20,11 @@
 
 
 // ImGui Colors
-const ImVec4 vwConst::gold    (1.,   0.75, 0.25, 1.);
-const ImVec4 vwConst::grey    (0.75, 0.75, 0.75, 1.);
-const ImVec4 vwConst::white   (1. ,  1.  , 1.  , 1.);
-const ImVec4 vwConst::red     (1. ,  0.  , 0.  , 1.);
-const ImVec4 vwConst::yellow  (1. ,  1.  , 0.  , 1.);
-const ImVec4 vwConst::cyan    (0.125, 0.75, 0.75, 1.);
-const ImVec4 vwConst::darkBlue(0.125, 0.125, 0.25, 1.);
+const ImVec4 vwConst::gold    (1.f,   0.75f, 0.25f, 1.f);
+const ImVec4 vwConst::grey    (0.75f, 0.75f, 0.75f, 1.f);
+const ImVec4 vwConst::white   (1.f ,  1.f  , 1.f  , 1.f);
+const ImVec4 vwConst::red     (1.f ,  0.f  , 0.f  , 1.f);
+const ImVec4 vwConst::yellow  (1.f ,  1.f  , 0.f  , 1.f);
+const ImVec4 vwConst::cyan    (0.125f, 0.75f, 0.75f, 1.f);
+const ImVec4 vwConst::darkBlue(0.125f, 0.125f, 0.25f, 1.f);
+const ImVec4 vwConst::darkOrange(0.125f, 0.51f, 0.15f, 1.f);

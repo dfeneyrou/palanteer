@@ -118,7 +118,7 @@ vwMain::_addProfileStack(Profile& prof, const bsString& name, s64 startTimeNs, s
                 (prof.kind==TIMINGS)? (u64)prof.timeRangeNs : 0, 0, "", 0, 0 } );
     }
 
-    plMarker("user", "Add a profile");
+    plLogInfo("user", "Add a profile");
 }
 
 

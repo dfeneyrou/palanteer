@@ -147,6 +147,18 @@ vwConfig::setTimelineVSpacing(float spacing)
 
 
 bool
+vwConfig::setTimeFormat(int timeFormat)
+{
+    plgScope(CFG, "setTimeFormat");
+    if(_timeFormat==timeFormat) return true;
+    plgVar(CFG, timeFormat);
+    _timeFormat = timeFormat;
+    _globalNeedsSaving = true;
+    return true;
+}
+
+
+bool
 vwConfig::setWindowCatalogVisibility(bool state)
 {
     plgScope(CFG, "setWindowCatalogVisibility");
@@ -427,7 +439,7 @@ vwConfig::notifyNewRecord(cmRecord* record)
         _elems[i].style     = LINE;
         _elems[i].hash      = hash;
         int eType = (record->elems[i].flags&PL_FLAG_TYPE_MASK);
-        if(eType==PL_FLAG_TYPE_DATA_STRING || eType==PL_FLAG_TYPE_MARKER) _elems[i].style = STEP;
+        if(eType==PL_FLAG_TYPE_DATA_STRING || eType==PL_FLAG_TYPE_LOG) _elems[i].style = STEP;
         if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) { _elems[i].style = POINT; _elems[i].pointSize = 6; }
     }
 
@@ -521,7 +533,7 @@ vwConfig::notifyUpdatedRecord(cmRecord* record)
             int eType = (record->elems[_elems.size()].flags&PL_FLAG_TYPE_MASK);
             CurveStyle style = LINE;
             int        pointSize = 3;
-            if(eType==PL_FLAG_TYPE_DATA_STRING || eType==PL_FLAG_TYPE_MARKER) style = STEP;
+            if(eType==PL_FLAG_TYPE_DATA_STRING || eType==PL_FLAG_TYPE_LOG) style = STEP;
             if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) { style = LOLLIPOP; pointSize = 4; }
             _elems.push_back({(int)(hashPath%_colorPaletteDark.size()), pointSize, style, hashPath});
         }
@@ -695,6 +707,7 @@ vwConfig::saveGlobal(void)
     fprintf(fh, "hWheelInversion %d\n", _hWheelInversion);
     fprintf(fh, "vWheelInversion %d\n", _vWheelInversion);
     fprintf(fh, "vTimelineSpacing %d\n", (int)(100.*_vTimelineSpacing));
+    fprintf(fh, "timeFormat %d\n",     _timeFormat);
     fprintf(fh, "winVisiCatalog %d\n", _winVisiCatalog);
     fprintf(fh, "winVisiRecord %d\n",    _winVisiRecord);
     fprintf(fh, "winVisiSearch %d\n",    _winVisiSearch);
@@ -732,7 +745,7 @@ vwConfig::loadGlobal(void)
     char line[lineSize];
     FILE* fh = fopen((_configPath+"palanteer.cfg").toChar(), "r");
     if(!fh) {
-        _main->log(cmLogKind::LOG_ERROR, "Unable to open the global configuration %s\n", (_configPath+"palanteer.cfg").toChar());
+        _main->logToConsole(cmLogKind::LOG_ERROR, "Unable to open the global configuration %s\n", (_configPath+"palanteer.cfg").toChar());
         _recordStoragePath = _programDataPath+PL_DIR_SEP "records" PL_DIR_SEP;
         _globalNeedsSaving = true;
         return;
@@ -749,7 +762,7 @@ vwConfig::loadGlobal(void)
 #define READ_GLOBAL(fieldName, readQty, ...)                            \
         if(!strncmp(line, #fieldName, kwLength)) {                      \
             if(sscanf(line+kwLength+1, __VA_ARGS__)!=readQty)           \
-                { _main->log(cmLogKind::LOG_WARNING, "Unable to read global config for field '" #fieldName "'\n"); } \
+                { _main->logToConsole(cmLogKind::LOG_WARNING, "Unable to read global config for field '" #fieldName "'\n"); } \
         }
 #define READ_PATH(fieldName)                                            \
         if(!strncmp(line, #fieldName, kwLength)) {                      \
@@ -763,9 +776,10 @@ vwConfig::loadGlobal(void)
         READ_GLOBAL(vWheelInversion, 1, "%d", &_vWheelInversion);
         READ_GLOBAL(vTimelineSpacing, 1, "%d", &tmp);
         if(!strncmp(line, "vTimelineSpacing", kwLength)) {
-            if(sscanf(line+kwLength+1, "%d", &tmp)!=1) { _main->log(cmLogKind::LOG_WARNING, "Unable to read global config for field 'vTimelineSpacing'\n"); }
+            if(sscanf(line+kwLength+1, "%d", &tmp)!=1) { _main->logToConsole(cmLogKind::LOG_WARNING, "Unable to read global config for field 'vTimelineSpacing'\n"); }
             _vTimelineSpacing = 0.01f*tmp;
         }
+        READ_GLOBAL(timeFormat, 1, "%d", &_timeFormat);
         READ_GLOBAL(winVisiCatalog, 1, "%d", &_winVisiCatalog);
         READ_GLOBAL(winVisiRecord, 1, "%d", &_winVisiRecord);
         READ_GLOBAL(winVisiSearch, 1, "%d", &_winVisiSearch);
@@ -785,7 +799,7 @@ vwConfig::loadGlobal(void)
         if(!strncmp(line, "keepOnlyLastRecord", kwLength)) {
             int state, n;
             if(sscanf(line+kwLength+1, "%d %d %255[^\n]", &state, &n, tmpStr)!=3)
-                { _main->log(cmLogKind::LOG_WARNING, "Unable to read global config for field 'keepOnlyLastRecord'\n"); }
+                { _main->logToConsole(cmLogKind::LOG_WARNING, "Unable to read global config for field 'keepOnlyLastRecord'\n"); }
             else {
                 _keepOnlyLastRecord.push_back({ tmpStr, state, n });
             }
@@ -793,7 +807,7 @@ vwConfig::loadGlobal(void)
 
         if(!strncmp(line, "appExtStringsPath", kwLength)) {
             if(sscanf(line+kwLength+1, "%255[^|\n]|%255[^\n]", tmpStr2, tmpStr)!=2)
-                { _main->log(cmLogKind::LOG_WARNING, "Unable to read global config for field 'appExtStringsPath'\n"); }
+                { _main->logToConsole(cmLogKind::LOG_WARNING, "Unable to read global config for field 'appExtStringsPath'\n"); }
             else {
                 _appExtStringsPath.push_back({ tmpStr, tmpStr2 });
             }
@@ -911,7 +925,7 @@ vwConfig::loadApplication(const bsString& appName)
         isKwFound = false;                                                \
         if(kwLength==strlen(#fieldName) && !strncmp(line, #fieldName, kwLength)) { \
             if(sscanf(line+kwLength+1, __VA_ARGS__)!=readQty)           \
-                { _main->log(cmLogKind::LOG_WARNING, "Unable to read application config for field '" #fieldName "'\n"); } \
+                { _main->logToConsole(cmLogKind::LOG_WARNING, "Unable to read application config for field '" #fieldName "'\n"); } \
             else isKwFound = true;                                        \
         }
         u64 hash = 0;

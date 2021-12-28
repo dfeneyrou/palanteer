@@ -38,8 +38,8 @@
 #endif
 
 
-constexpr int SUPPORTED_MIN_PROTOCOL = 2;
-constexpr int SUPPORTED_MAX_PROTOCOL = 2;
+constexpr int SUPPORTED_MIN_PROTOCOL = 3;
+constexpr int SUPPORTED_MAX_PROTOCOL = 3;
 
 cmCnx::cmCnx(cmInterface* itf, int port) :
     _itf(itf), _port(port), _doStopThreads(0)
@@ -216,7 +216,7 @@ cmCnx::checkConnection(const bsVec<bsString>& importedFilenames, bsSocket_t mast
         for(const bsString& filename : importedFilenames) {
 
             // Open the filename
-            _itf->log(LOG_INFO, "Open file %s for import", filename.toChar());
+            _itf->logToConsole(LOG_INFO, "Open file %s for import", filename.toChar());
             FILE* fd = fopen(filename.toChar(), "rb");
             if(!fd) {
                 isInitValid = false;
@@ -265,7 +265,7 @@ cmCnx::checkConnection(const bsVec<bsString>& importedFilenames, bsSocket_t mast
             // Check for new connection
             int selectRet = select(masterSockFd+1, &fds, NULL, NULL, &tv);
             if(selectRet==-1) {
-                _itf->log(LOG_WARNING, "Client reception: failed to check for activity on the sockets");
+                _itf->logToConsole(LOG_WARNING, "Client reception: failed to check for activity on the sockets");
                 isInitValid = false;
                 break;
             }
@@ -293,7 +293,7 @@ cmCnx::checkConnection(const bsVec<bsString>& importedFilenames, bsSocket_t mast
                     streamId = initializeTransport(0, sock, errorMsg);
                     isInitValid  = (streamId>=0);
                 }
-                else _itf->log(LOG_WARNING, "Client reception in monostream mode: ignoring incoming socket");
+                else _itf->logToConsole(LOG_WARNING, "Client reception in monostream mode: ignoring incoming socket");
 
                 // Store in stream order (unless there is an error)
                 if(streamId>=0) {
@@ -426,7 +426,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
             // Parse the received content
             areNewDataReceived = parseTransportLayer(streamId, _recBuffer, qty);
             if(!areNewDataReceived) {
-                _itf->log(LOG_ERROR, "Client reception: Error in parsing the received data");
+                _itf->logToConsole(LOG_ERROR, "Client reception: Error in parsing the received data");
                 plgText(CLIENTRX, "State", "Error in parsing the received data");
                 isRecordOk = false; // Corrupted record
                 break;
@@ -478,7 +478,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
                     // Parse the received content
                     areNewDataReceived = parseTransportLayer(streamId, _recBuffer, qty);
                     if(!areNewDataReceived) {
-                        _itf->log(LOG_ERROR, "Client reception: Error in parsing the received data");
+                        _itf->logToConsole(LOG_ERROR, "Client reception: Error in parsing the received data");
                         plgText(CLIENTRX, "State", "Error in parsing the received data");
                         isRecordOk = false; // Corrupted record
                         break;
@@ -498,7 +498,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
                     if(_isMultiStream) {
                         streamId = initializeTransport(0, sock, errorMsg);
                     }
-                    else _itf->log(LOG_WARNING, "Client reception in monostream mode: ignoring incoming socket");
+                    else _itf->logToConsole(LOG_WARNING, "Client reception in monostream mode: ignoring incoming socket");
 
                     if(streamId>=0) {
                         StreamInfo& si = _streams[streamId];
@@ -537,7 +537,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
         if(si.socketDescr!=bsSocketError) { bsOsCloseSocket(si.socketDescr); si.socketDescr = (bsSocket_t)bsSocketError; }
     }
     if(_isSocketInput) {
-        _itf->log(LOG_DETAIL, "Client reception: Closed client connection");
+        _itf->logToConsole(LOG_DETAIL, "Client reception: Closed client connection");
     }
     plgText(CLIENTRX, "State", "End of recording");
 }
@@ -553,7 +553,7 @@ cmCnx::runRxFromClient(void)
     plgBegin(CLIENTRX, "Create the listening socket");
     bsSocket_t masterSockFd = (bsSocket_t)socket(AF_INET,SOCK_STREAM,0);
     if(!bsIsSocketValid(masterSockFd)) {
-        _itf->log(LOG_ERROR, "Client reception: unable to create a socket");
+        _itf->logToConsole(LOG_ERROR, "Client reception: unable to create a socket");
         plgText(CLIENTRX, "State", "Error, unable to create");
     }
 
@@ -572,15 +572,15 @@ cmCnx::runRxFromClient(void)
     tv.tv_usec = 10000;
     setsockopt(masterSockFd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv)); // Timeout on reception. Probably do the same later with SO_SNDTIMEO
 
-    _itf->log(LOG_INFO, "Client reception: Binding socket on port %d", _port);
+    _itf->logToConsole(LOG_INFO, "Client reception: Binding socket on port %d", _port);
     int bindSuccess = bind(masterSockFd, (sockaddr*)&serverAddress, sizeof(serverAddress));
     if(bindSuccess==-1) {
-        _itf->log(LOG_ERROR, "Client reception: unable to bind socket");
+        _itf->logToConsole(LOG_ERROR, "Client reception: unable to bind socket");
         plgText(CLIENTRX, "State", "Error, unable to bind");
     }
     int listenSuccess = listen(masterSockFd, cmConst::MAX_STREAM_QTY); // Accept all streams
     if(listenSuccess==-1) {
-        _itf->log(LOG_ERROR, "Client reception: unable to listen to socket");
+        _itf->logToConsole(LOG_ERROR, "Client reception: unable to listen to socket");
         plgText(CLIENTRX, "State", "Error, unable to listen");
     }
     plgText(CLIENTRX, "State", "Socket ok");
@@ -594,7 +594,7 @@ cmCnx::runRxFromClient(void)
     }
 
     if(bindSuccess!=-1 && listenSuccess!=-1) {
-        _itf->log(LOG_INFO, "Client reception: Start the socket listening loop");
+        _itf->logToConsole(LOG_INFO, "Client reception: Start the socket listening loop");
     } else {
         char tmpStr[256];
         snprintf(tmpStr, sizeof(tmpStr), "Unable to listen for program connections. Please check that the port %d is not already in use", _port);
@@ -753,7 +753,7 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
         case PL_TLV_PROTOCOL:
             CHECK_TLV_PAYLOAD_SIZE(2, "Protocol");
             si.tlvs[tlvType] = (header[offset+4]<<8) | (header[offset+5]<<0);
-            _itf->log(LOG_DETAIL, "   Protocol version is %d", (int)si.tlvs[tlvType]);
+            _itf->logToConsole(LOG_DETAIL, "   Protocol version is %d", (int)si.tlvs[tlvType]);
             plgData(CLIENTRX, "Protocol version is", si.tlvs[tlvType]);
             break;
 
@@ -772,7 +772,7 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
                 tickToNs  = *(double*)tmp1;
             }
             si.tlvs[tlvType] = (u64)(1000.*tickToNs); // Pico second, as precision can be deep. For display only
-            _itf->log(LOG_DETAIL, "   Clock precision is %.1f ns", tickToNs);
+            _itf->logToConsole(LOG_DETAIL, "   Clock precision is %.1f ns", tickToNs);
             plgData(CLIENTRX, "Time tick origin is", timeOriginTick);
             plgData(CLIENTRX, "Time tick unit is",   tickToNs);
             break;
@@ -783,7 +783,7 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
             if(!si.appName.empty() && si.appName.back()==0) si.appName.pop_back();
             si.appName.filterForFilename();
             // Some logging
-            _itf->log(LOG_DETAIL, "   Application name is '%s'", si.appName.toChar());
+            _itf->logToConsole(LOG_DETAIL, "   Application name is '%s'", si.appName.toChar());
             plgData(CLIENTRX, "Application name", si.appName.toChar());
             break;
 
@@ -791,7 +791,7 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
             // Get the build name
             si.buildName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
             if(!si.buildName.empty() && si.buildName.back()==0) si.buildName.pop_back();
-            _itf->log(LOG_DETAIL, "   Build name is '%s'", si.buildName.toChar());
+            _itf->logToConsole(LOG_DETAIL, "   Build name is '%s'", si.buildName.toChar());
             plgData(CLIENTRX, "Build name", si.buildName.toChar());
             break;
 
@@ -799,28 +799,28 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
             // Get the language name
             si.langName = bsString((char*)&header[offset+4], (char*)(&header[offset+4]+tlvLength));
             if(!si.langName.empty() && si.langName.back()==0) si.langName.pop_back();
-            _itf->log(LOG_DETAIL, "   Language name is '%s'", si.langName.toChar());
+            _itf->logToConsole(LOG_DETAIL, "   Language name is '%s'", si.langName.toChar());
             plgData(CLIENTRX, "Language name", si.langName.toChar());
             break;
 
         case PL_TLV_HAS_EXTERNAL_STRING:
             CHECK_TLV_PAYLOAD_SIZE(0, "External String Flag");
             si.tlvs[tlvType] = 1;
-            _itf->log(LOG_DETAIL, "   External string is activated");
+            _itf->logToConsole(LOG_DETAIL, "   External string is activated");
             plgText(CLIENTRX, "State", "External String Flag set");
             break;
 
         case PL_TLV_HAS_SHORT_STRING_HASH:
             CHECK_TLV_PAYLOAD_SIZE(0, "Short String Hash Flag");
             si.tlvs[tlvType] = 1;
-            _itf->log(LOG_DETAIL, "   Short string hash is activated");
+            _itf->logToConsole(LOG_DETAIL, "   Short string hash is activated");
             plgText(CLIENTRX, "State", "Short String Hash Flag set");
             break;
 
         case PL_TLV_HAS_NO_CONTROL:
             CHECK_TLV_PAYLOAD_SIZE(0, "No Control Flag");
             si.tlvs[tlvType] = 1;
-            _itf->log(LOG_DETAIL, "   Remote control is disabled");
+            _itf->logToConsole(LOG_DETAIL, "   Remote control is disabled");
             plgText(CLIENTRX, "State", "No Control Flag set");
             break;
 
@@ -832,35 +832,35 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
                                     ((u64)header[offset+ 8]<<24) | ((u64)header[offset+ 9]<<16) |
                                     ((u64)header[offset+10]<< 8) |  (u64)header[offset+11]);
             if(si.tlvs[tlvType]==0) si.tlvs[tlvType] = 1; // 0 is reserved for "long date"
-            _itf->log(LOG_DETAIL, "   Short date is activated");
+            _itf->logToConsole(LOG_DETAIL, "   Short date is activated");
             plgText(CLIENTRX, "State", "Short Date Flag set");
             break;
 
         case PL_TLV_HAS_COMPACT_MODEL:
             CHECK_TLV_PAYLOAD_SIZE(0, "Compact Model Flag");
             si.tlvs[tlvType] = 1;
-            _itf->log(LOG_DETAIL, "   Compact model is activated");
+            _itf->logToConsole(LOG_DETAIL, "   Compact model is activated");
             plgText(CLIENTRX, "State", "Compact Model Flag set");
             break;
 
         case PL_TLV_HAS_HASH_SALT:
             CHECK_TLV_PAYLOAD_SIZE(4, "Hash Salt");
             si.tlvs[tlvType] = (header[offset+4]<<24) | (header[offset+5]<<16) | (header[offset+6]<<8) | (header[offset+7]<<0);
-            _itf->log(LOG_DETAIL, "   Hash salt is set to %u", (u32)si.tlvs[tlvType]);
+            _itf->logToConsole(LOG_DETAIL, "   Hash salt is set to %u", (u32)si.tlvs[tlvType]);
             plgData(CLIENTRX, "Hash salt", si.tlvs[tlvType]);
             break;
 
         case PL_TLV_HAS_AUTO_INSTRUMENT:
             CHECK_TLV_PAYLOAD_SIZE(0, "Auto Instrument Flag");
             si.tlvs[tlvType] = 1;
-            _itf->log(LOG_DETAIL, "   Auto instrumentation is activated");
+            _itf->logToConsole(LOG_DETAIL, "   Auto instrumentation is activated");
             plgText(CLIENTRX, "State", "Auto instrumentation Flag set");
             break;
 
         case PL_TLV_HAS_CSWITCH_INFO:
             CHECK_TLV_PAYLOAD_SIZE(0, "Context Switch Collection Flag");
             si.tlvs[tlvType] = 1;
-            _itf->log(LOG_DETAIL, "   Context Switch Collection is activated");
+            _itf->logToConsole(LOG_DETAIL, "   Context Switch Collection is activated");
             plgText(CLIENTRX, "State", "Context Switch Collection Flag set");
             break;
 
@@ -897,7 +897,7 @@ cmCnx::initializeTransport(FILE* fd, bsSocket_t socketd, bsString& errorMsg)
     storedStream.tickToNs       = tickToNs;
     storedStream.infos          = si;
     plgText(CLIENTRX, "State", "Transport initialized, header is ok");
-    _itf->log(LOG_DETAIL, " Stream %d accepted", _streamQty-1);
+    _itf->logToConsole(LOG_DETAIL, " Stream %d accepted", _streamQty-1);
    return _streamQty-1;
 }
 
@@ -918,21 +918,27 @@ cmCnx::processNewEvents(int streamId, u8* buf, int eventQty)
     plPriv::EventExtCompact* src = (plPriv::EventExtCompact*)buf;
     plPriv::EventExt*        dst = (plPriv::EventExt*)&_conversionBuffer[0];
     for(int i=0; i<eventQty; ++i, ++src, ++dst) {
-        dst->threadId = src->threadId;
-        dst->flags    = src->flags;
-        dst->lineNbr  = src->lineNbr;
-        dst->filenameIdx = src->filenameIdx;
         int eType = src->flags&PL_FLAG_TYPE_MASK;
-        if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {
-            dst->nameIdx  = src->nameIdx;
-            if(eType==PL_FLAG_TYPE_CSWITCH) {
-                if     (dst->nameIdx==0xFFFF) dst->nameIdx = 0xFFFFFFFF;
-                else if(dst->nameIdx==0xFFFE) dst->nameIdx = 0xFFFFFFFE;
-            }
-        } else {
-            dst->memSize = src->memSize;
+        if(eType==PL_FLAG_TYPE_LOG_PARAM) {
+            memcpy((u8*)dst, (u8*)src, sizeof(plPriv::EventExtCompact));  // Raw copy of the payload
+            memset((u8*)dst+sizeof(plPriv::EventExtCompact), 0, sizeof(plPriv::EventExtFull)-sizeof(plPriv::EventExtCompact));  // Fill the rest with zero for better compression
         }
-        dst->vU64 = src->vU32;
+        else {
+            dst->threadId = src->threadId;
+            dst->flags    = src->flags;
+            dst->lineNbr  = src->lineNbr;
+            dst->filenameIdx = src->filenameIdx;
+            if(eType!=PL_FLAG_TYPE_ALLOC_PART && eType!=PL_FLAG_TYPE_DEALLOC_PART) {
+                dst->nameIdx  = src->nameIdx;
+                if(eType==PL_FLAG_TYPE_CSWITCH) {
+                    if     (dst->nameIdx==0xFFFF) dst->nameIdx = 0xFFFFFFFF;
+                    else if(dst->nameIdx==0xFFFE) dst->nameIdx = 0xFFFFFFFE;
+                }
+            } else {
+                dst->memSize = src->memSize;
+            }
+            dst->vU64 = src->vU32;
+        }
     }
 
     // Notify with the converted buffer
@@ -969,7 +975,7 @@ cmCnx::parseTransportLayer(int streamId, u8* buf, int qty)
                 // Magic
                 plAssert(s.size()==CLIENT_HEADER_SIZE);
                 if(s[0]!='P' || s[1]!='L') {
-                    _itf->log(LOG_ERROR, "Received buffer has a corrupted header");
+                    _itf->logToConsole(LOG_ERROR, "Received buffer has a corrupted header");
                     return false;
                 }
                 // Check the type
@@ -986,7 +992,7 @@ cmCnx::parseTransportLayer(int streamId, u8* buf, int qty)
                     pc.remoteLeft = (s[4]<<24) | (s[5]<<16) | (s[6]<<8) | s[7];
                 }
                 else {
-                    _itf->log(LOG_WARNING, "Client sent unknown TLV %d - ignored", (int)dataType);
+                    _itf->logToConsole(LOG_WARNING, "Client sent unknown TLV %d - ignored", (int)dataType);
                 }
                 s.clear();
             }

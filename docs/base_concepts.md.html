@@ -74,28 +74,28 @@ Some instrumentation functions have both a static and a dynamic string version (
   * `plFunction` and `plFunctionDyn`
 
 
-Unless with the explicit prefix "Dyn", the strings are expected to be static. The exception is `plData` which is a multi-type logging function which accepts numerical values and dynamic strings. Functions with parameters `name` and `value` expect `name` to be static.
+Unless with the explicit prefix "Dyn", the strings are expected to be static. The exception is `plData` which is a multi-type tracing function which accepts numerical values and dynamic strings. Functions with parameters `name` and `value` expect `name` to be static.
 
 Some examples:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
-// Text logging
+// Text tracing
 plText("stage", "Phase one reached"); // Static string
 
-// Text logging
+// Text tracing
 constexpr const char* myConstExprString = "I am a static string because constexpr";
 plText("stage", myConstExprString); // OK, as myConstExprString is "constexpr"
 
-// Data logging (numeric or string)
+// Data tracing (numeric or string)
 const char* myConstString = "I am not a static string"; // Dynamic string API required because not constexpr. "const" is not enough for compile time processing.
 plData("Status", myConstString); // plData always considers the value string as dynamic, so it is hashed at run-time.
 
-// Function scope logging
+// Function scope tracing
 plFunction();    // Works only for some recent compilers, see warning in plFunction API description
 plFunctionDyn(); // Always works but uses a dynamic string
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! error
-    Tens of preprocessor and compiler errors are triggers if a static string API is used instead of  a dynamic one. These errors usually start with:
+    Tens of preprocessor and compiler errors are triggered if a static string API is used instead of  a dynamic one. These errors usually start with:
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
     palanteer.h: error: "string variable" is not a constant expression
      | #define PL_STRINGHASH(s) plPriv::forceCompileTimeElseError_ < plPriv::fnv1a_(s,PL_FNV_HASH_OFFSET_) > ::compileTimeValue
@@ -160,8 +160,7 @@ plString_t monsterNames[3] = { plMakeString("Orc"), plMakeString("Dragon"), plMa
 // If it were a simple "const char*", it would be processed as a dynamic string because not "constexpr".
 plData("monster name", monsterNames[monsterIdx]);
 
-// All dynamic logging function work with the behavior and performance of a static string when provided a plString_t
-plMarkerDyn("Killed", monsterNames[monsterIdx]);
+// All dynamic tracing function work with the behavior and performance of a static string when provided a plString_t
 plScopeDyn(monsterNames[monsterIdx]);
 plDeclareThreadDyn(monsterNames[monsterIdx]);
 plLockWaitDyn(monsterNames[monsterIdx]);
@@ -174,7 +173,7 @@ plLockWaitDyn(monsterNames[monsterIdx]);
 
 ### Manual scopes
 
-Two different ways to create a scope, i.e. a start and end events defining a timed named zone, are described in the [instrumentation API reference for hierarchical structure](instrumentation_api_cpp.md.html#structurelogging):
+Two different ways to create a scope, i.e. a start and end events defining a timed named zone, are described in the [instrumentation API reference for hierarchical structure](instrumentation_api_cpp.md.html#structuretracing):
 
  - explicit end: with `plBegin(...)` to mark the start of the scope and `plEnd(...)` to mark its end.
  - implicit end: with `plScope(...)`, which is equivalent to a `plBegin()` associated to an automatic `plEnd()` at the end of the C++ scope (RAII defer property).
@@ -234,13 +233,13 @@ The collection thread checks regularly (~5 ms) if either:
 In this case, it swaps the banks atomically and process the previously filled bank.
 
 !!! Warning
-   If the collection buffer size is too small to receive all generated events during the ~5 ms harvesting period, the event logging command busy-waits until the next bank swap.<br/>
-   As the timing of the program is altered, a marker is forced inside the `Palanteer\Transmission` thread:
+   If the collection buffer size is too small to receive all generated events during the ~5 ms harvesting period, the event tracing command busy-waits until the next bank swap.<br/>
+   As the timing of the program is altered, an error log is forced inside the `Palanteer\Transmission` thread:
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
-plMarker("SATURATION", "EVENT BUFFER IS FULL. PLEASE INCREASE ITS SIZE FOR CORRECT MEASUREMENTS");
+plLogError("SATURATION", "EVENT BUFFER IS FULL. PLEASE INCREASE ITS SIZE FOR CORRECT MEASUREMENTS");
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   If this marker is present, the value of [`PL_IMPL_COLLECTION_BUFFER_BYTE_QTY`](instrumentation_configuration_cpp.md.html#pl_impl_collection_buffer_byte_qty) shall be increased. <br/>
+   If this log is present, the value of [`PL_IMPL_COLLECTION_BUFFER_BYTE_QTY`](instrumentation_configuration_cpp.md.html#pl_impl_collection_buffer_byte_qty) shall be increased. <br/>
    Note that the default value (1 MB) is dimensioned for an average of more than 3 million events per second, knowing that only the "peak rate" on these 5 ms matters.
 
 
@@ -250,8 +249,8 @@ Some more information:
     - `Palanteer\Transmission` collects event and send them to the server
     - `Palanteer\Reception` receives commands from the server
     - a third one `Palanteer/winTraceLogger` is created only on Windows if the OS context switch collection is enabled
-  - the group `PL_VERBOSE` (enabled by default) controls the event logging of the `Palanteer` threads
-  - the dynamic strings are preallocated and if the pool is depleted during a collection cycle, then the same process than the buffer overflow is applied: the thread busy-waits and an explicit marker is recorded.
+  - the group `PL_VERBOSE` (enabled by default) controls the event tracing of the `Palanteer` threads
+  - the dynamic strings are preallocated and if the pool is depleted during a collection cycle, then the same process than the buffer overflow is applied: the thread busy-waits and an explicit error log is recorded.
     - in this case, the value of [`PL_IMPL_DYN_STRING_QTY`](instrumentation_configuration_cpp.md.html#pl_impl_dyn_string_qty) shall be increased.
 
 
@@ -296,28 +295,28 @@ Please refer to the [C++ event collection mechanism](#baseconcepts/c++specific/e
 
 However, Python is a higher level and interpreted language which implies that:
   - it requires less control on the hardware
-  - the maximum logging rate is lower than in C++
+  - the maximum tracing rate is lower than in C++
   - more dynamic strings are used as the concept of "static string" does not exist in Python
 
 The inner C++ instrumentation library is configured once for all, taking these points into consideration. <br/>
 There is no configuration parameters for the Python instrumentation module.
 
 
-## Event logging
+## Event tracing
 
 ### Unique strings and event kinds
 
 The design of `Palanteer` leverages redundancies, notably:
   - strings whose identical content can be logged many times
-  - events which are positioned at the same place in the hierarchical logging tree.
+  - events which are positioned at the same place in the hierarchical tracing tree.
 
 All strings are hashed as early as possible. This enables efficient string unicity check. <br/>
 Each unique string is assigned an integer ID, and is processed and stored only once.
 
-Each event is intrinsically associated to a "path" in the hierarchical logging tree, composed by the name of all "parent scope events", for a given thread. <br/>
+Each event is intrinsically associated to a "path" in the hierarchical tracing tree, composed by the name of all "parent scope events", for a given thread. <br/>
 This association is what defines an "event kind", all its values can be viewed and manipulated as a whole.
 
-### Structured logging is preferred
+### Structured tracing is preferred
 
 A typical log (taken from Linux /var/log/auth.log) looks like:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
@@ -337,24 +336,58 @@ While simple, this log is sub-optimal in many ways:
  - no easy manipulation can be done with it without parsing and decomposing it by semantic parts
  - no easy association can be done in a serie of such logs
 
-The preferred approach in `Palanteer` is to log per semantic parts:
+The preferred approach in `Palanteer` is to log per semantic parts. Two variants are possible:
+  1. hierarchical traces
+  1. logs
+
+The hierarchical trace variant is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
 {
-    plScope("session opened for user root");  // Timestamped event, its end is also logs at the end of the C++ scope
+    plScope("session opened for user root");  // Timestamped event, its end is also logged at the end of the C++ scope
     plData("machine", "laptop");
     plData("executable", "sudo");
     plData("by uid", 0);
 }
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
- - The cost on the network is bit higher in this example (the example text log is 92 characters long, the structured log is 5*24=120 bytes)
+ - The cost on the network is bit higher in this example
+   - the example text log is 92 characters long, the structured log is 5*24=120 bytes
  - The CPU cost is much lower (~5*20ns) as no string allocation (all static strings) nor formatting call are required
  - All string contents are sent once, only their ID is sent the next times
- - All 4 fields can be directly plotted, have an histogram, be used as a filter, etc...
+ - All 3 named fields can be directly plotted, have an histogram, be searched, etc...
 
-!!!
-    In C++, `plMarkerDyn` exceptionally accepts a printf-like syntax, both for convenience and because a marker is supposed to be scarce
+The logging variant is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+    plLogInfo("%s %s: session opened for user root by (uid=%d)", "laptop", "sudo", 0);
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+ - The cost on the network is smaller: 1 event for the timestamped log with the format string + 1 event which packs the 3 parameters
+   - the example text log is 92 characters long, the structured log is 2*24=48 bytes
+ - The base CPU cost is lower (~2*20ns here) as no formatting call are required, but strings requires hashing
+ - All string contents are sent once, only their ID is sent the next times
+ - All 3 fields can be directly plotted, have an histogram, be searched, etc...
+   - but they have no name
+
+
+### Log parameters
+
+The efficiency of the logging service comes from the deferred formatting and the generic compile time pre-computations (hashed strings and variadic templates).
+
+The first event of a log call is the timestamped "log event" containing the level, the category and the format string (both are static strings). <br/>
+The category and the format strings are processed at compile time and sent only once to the server.
+
+If present, the parameters are "packed" as much as possible inside dedicated parameter events (events are the fundamental item of data exchange), their quantity depends on their type and order:
+  - `int` and `float` take 4 bytes
+  - 64 bits integers, pointers, `double`, and character strings take 8 bytes. <br/>
+    In the compact model, note that these types are downgraded into their 32 bits versions.
+
+In the standard model (respectively compact model), 20 bytes (respectively 8 bytes) are available per event. Parameters are packed until all are stored or the event cannot hold the new parameter. In this case, another parameter event is added and the packing process continues.
+
+Example of space occupied:
+  - 5 `int` or `float` can hold in 1 "parameter" event. So a log with up to 5 such parameters hold on 2 events (2*24=48 bytes).
+  - 2 `double` or pointers or character strings plus 1 `int` or `float` can hold in 1 "parameter" event. So a log with two 64 bits and one 32 bits parameters also hold on 2 events (2*24=48 bytes).
+
+On a CPU point of view, the runtime cost of a log is close to the event tracing one, especially with numeric parameters. As for tracing with standard events, dynamic strings add some cost due to the dynamic string hashing.
 
 ## Command Line Interface
 

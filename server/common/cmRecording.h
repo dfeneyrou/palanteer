@@ -177,11 +177,13 @@ private:
         u32 memEventQty       = 0;
         u32 ctxSwitchEventQty = 0;
         u32 lockEventQty      = 0;
-        u32 markerEventQty    = 0;
+        u32 logEventQty       = 0;
         u32 droppedEventQty   = 0;
         s64 durationNs        = 0;
         ShortDateState shortDateState;
         ShortDateState shortDateStateCSwitch;
+        // Logs
+        bsVec<plPriv::EventExt> partialLogs;
         // Memory
         u64  sumAllocQty    = 0;
         u64  sumAllocSize   = 0;
@@ -214,7 +216,7 @@ private:
         LOC_STORAGE_REC(lockUse);
         LOC_STORAGE_REC(lockNtf);
         LOC_STORAGE_REC(coreUsage);
-        LOC_STORAGE_REC(marker);
+        LOC_STORAGE_REC(log);
     };
 
     void saveThreadMemorySnapshot(ThreadBuild& tc, s64 timeNs, u32 allocMIdx);
@@ -223,7 +225,7 @@ private:
     void processCtxSwitchEvent (plPriv::EventExt& evtx, ThreadBuild& tc);
     void processSoftIrqEvent   (plPriv::EventExt& evtx, ThreadBuild& tc);
     bool processCoreUsageEvent (int streamId, plPriv::EventExt& evtx);
-    void processMarkerEvent    (plPriv::EventExt& evtx, ThreadBuild& tc, int level, bool doForwardEvents);
+    void processLogEvent       (plPriv::EventExt& evtx, ThreadBuild& tc);
     void processLockNotifyEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int level, bool doForwardEvents);
     void processLockWaitEvent  (plPriv::EventExt& evtx, ThreadBuild& tc, int level);
     bool processLockUseEvent   (int streamId, plPriv::EventExt& evtx, bool& doInsertLockWaitEnd);
@@ -245,7 +247,7 @@ private:
     u32 _recElemEventQty   = 0;
     u32 _recMemEventQty    = 0;
     u32 _recLockEventQty   = 0;
-    u32 _recMarkerEventQty = 0;
+    u32 _recLogEventQty    = 0;
     u32 _recCtxSwitchEventQty = 0;
     int _recLastIdxErrorQty = 0;
     int _recErrorQty        = 0;
@@ -254,7 +256,7 @@ private:
     u32  _eventBufferId = 0;
     bsHashMap<u64,VMemAlloc> _recMemAllocLkup;
     bsHashMap<int,int>  _recElemPathToId;
-    bsVec<u32>          _recMarkerCategoryNameIdxs;
+    bsVec<u32>          _recLogCategoryNameIdxs;
     bsVec<cmStreamInfo> _recStreams;
     bsVec<LockBuild>    _recLocks;
     bsVec<ElemBuild>    _recElems;

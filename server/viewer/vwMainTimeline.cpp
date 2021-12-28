@@ -24,6 +24,7 @@
 
 // Internal
 #include "bsKeycode.h"
+#include "cmPrintf.h"
 #include "vwMain.h"
 #include "vwConst.h"
 #include "vwConfig.h"
@@ -507,7 +508,7 @@ TimelineDrawHelper::drawLocks(float& yThread)
                 if(ImGui::IsMouseReleased(0)) main->ensureThreadVisibility(tl->syncMode, cl.e.threadId);
                 if(ImGui::IsMouseReleased(2)) {
                     // Find the matching elem
-                    u64 itemHashPath = bsHashStepChain(record->threads[cl.e.threadId].threadHash , record->getString(cl.e.nameIdx).hash, cmConst::LOCK_USE_NAMEIDX); // Element lock notified for this thread and with this name
+                    u64 itemHashPath = bsHashStepChain(record->threads[cl.e.threadId].threadHash, record->getString(cl.e.nameIdx).hash, cmConst::LOCK_USE_NAMEIDX); // Element lock notified for this thread and with this name
                     for(int elemIdx=0; elemIdx<record->elems.size(); ++elemIdx) {
                         if(record->elems[elemIdx].hashPath!=itemHashPath) continue;
                         main->_plotMenuItems.clear(); // Reset the popup menu state
@@ -787,31 +788,31 @@ TimelineDrawHelper::drawScopes(float& yThread, int tId)
         }
     }
 
-    // Draw the markers
-    const float yMarker = yThread-fontHeight;
-    const float markerHalfWidthPix = 4.f;
-    const float markerHeightPix = 0.3f*fontHeight;
-    const float markerThickness = 2.f;
+    // Draw the logs
+    const float yLog = yThread-fontHeight;
+    const float logHalfWidthPix = 4.f;
+    const float logHeightPix    = 0.3f*fontHeight;
+    const float logThickness    = 2.f;
     const bsVec<ImVec4>& colors = main->getConfig().getColorPalette(true);
     float hlTimePix = -1.f;
-    for(const vwMain::TlCachedMarker& cm : tl->cachedMarkerPerThread[tId]) {
+    for(const vwMain::TlCachedLog& cm : tl->cachedLogPerThread[tId]) {
         ImGui::PushID(&cm);
-        bool isHovered = (!cm.isCoarse && isWindowHovered && mouseX>=winX+cm.timePix-markerHalfWidthPix &&
-                          mouseX<=winX+cm.timePix+markerHalfWidthPix && mouseY>=yMarker && mouseY<=yMarker+markerHeightPix);
+        bool isHovered = (!cm.isCoarse && isWindowHovered && mouseX>=winX+cm.timePix-logHalfWidthPix-logThickness &&
+                          mouseX<=winX+cm.timePix+logHalfWidthPix+logThickness && mouseY>=yLog-logThickness && mouseY<=yLog+logHeightPix+logThickness);
         if(isHovered || main->isScopeHighlighted(cm.e.threadId, cm.e.vS64, cm.e.flags, -1, cm.e.nameIdx)) hlTimePix = cm.timePix;
 
         // Draw the triangles
-        DRAWLIST->AddTriangleFilled(ImVec2(winX+cm.timePix-markerHalfWidthPix-markerThickness, yMarker-markerThickness),
-                                    ImVec2(winX+cm.timePix+markerHalfWidthPix+markerThickness, yMarker-markerThickness),
-                                    ImVec2(winX+cm.timePix, yMarker+markerHeightPix+markerThickness),
+        DRAWLIST->AddTriangleFilled(ImVec2(winX+cm.timePix-logHalfWidthPix-logThickness, yLog-logThickness),
+                                    ImVec2(winX+cm.timePix+logHalfWidthPix+logThickness, yLog-logThickness),
+                                    ImVec2(winX+cm.timePix, yLog+logHeightPix+logThickness),
                                     (cm.isCoarse || cm.elemIdx<0)? vwConst::uGrey : ImU32(ImColor(main->getConfig().getCurveColor(cm.elemIdx))));
-        DRAWLIST->AddTriangleFilled(ImVec2(winX+cm.timePix-markerHalfWidthPix, yMarker), ImVec2(winX+cm.timePix+markerHalfWidthPix, yMarker),
-                                    ImVec2(winX+cm.timePix, yMarker+markerHeightPix),
+        DRAWLIST->AddTriangleFilled(ImVec2(winX+cm.timePix-logHalfWidthPix, yLog), ImVec2(winX+cm.timePix+logHalfWidthPix, yLog),
+                                    ImVec2(winX+cm.timePix, yLog+logHeightPix),
                                     cm.isCoarse? vwConst::uGrey : ImU32(ImColor(colors[cm.e.filenameIdx%colors.size()])));
 
         // Hovered?
         if(isHovered) {
-            main->setScopeHighlight(tId, cm.e.vS64, PL_FLAG_TYPE_MARKER, -1, cm.e.nameIdx);
+            main->setScopeHighlight(tId, cm.e.vS64, PL_FLAG_TYPE_LOG, -1, cm.e.nameIdx);
             // Clicked?
             if(ImGui::IsMouseReleased(0)) {
                 // Synchronize the text (after getting the nesting level and lIdx for this date on this thread)
@@ -822,21 +823,32 @@ TimelineDrawHelper::drawScopes(float& yThread, int tId)
             }
             if(ImGui::IsMouseReleased(2) && cm.elemIdx>=0) {
                 main->_plotMenuItems.clear(); // Reset the popup menu state
-                main->prepareGraphContextualMenu(cm.elemIdx, tl->getStartTimeNs(), tl->getTimeRangeNs(), false, false);
-                ImGui::OpenPopup("marker menu");
+                u64 itemHashPath = bsHashStepChain(record->threads[cm.e.threadId].threadHash, record->getString(cm.e.filenameIdx).hash, cmConst::LOG_NAMEIDX);
+                int* elemIdxPtr  = record->elemPathToId.find(itemHashPath, cmConst::LOG_NAMEIDX);
+                if(elemIdxPtr) {
+                    main->prepareGraphLogContextualMenu(*elemIdxPtr, tl->getStartTimeNs(), tl->getTimeRangeNs(), false);
+                    ImGui::OpenPopup("log menu");
+                }
             }
             // Tooltip
             ImGui::BeginTooltip();
-            ImGui::TextColored(vwConst::gold, "[%s] %s", record->getString(cm.e.nameIdx).value.toChar(),
-                               record->getString(cm.e.filenameIdx).value.toChar());
+            switch(cm.e.lineNbr&0x7FFF) {
+            case 0: ImGui::TextColored(vwConst::grey,       "[debug]"); break;
+            case 1: ImGui::TextColored(vwConst::cyan,       "[info]");  break;
+            case 2: ImGui::TextColored(vwConst::darkOrange, "[warn]");  break;
+            case 3: ImGui::TextColored(vwConst::red,        "[error]"); break;
+            };
+            ImGui::SameLine();
+            ImGui::TextColored(vwConst::gold, "[%s] %s", record->getString(cm.e.nameIdx).value.toChar(), cm.message.toChar());
             ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cm.e.vS64, 0));
             ImGui::EndTooltip();
         }
 
         // Popup
-        if(ImGui::BeginPopup("marker menu", ImGuiWindowFlags_AlwaysAutoResize)) {
+        if(ImGui::BeginPopup("log menu", ImGuiWindowFlags_AlwaysAutoResize)) {
             float headerWidth = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize("Histogram").x+5;
-            ImGui::TextColored(vwConst::grey, "Marker [%s]", record->getString(cm.e.nameIdx).value.toChar());
+            ImGui::TextColored(vwConst::grey, "[%s] %s", record->getString(cm.e.nameIdx).value.toChar(),
+                               record->getString(cm.e.filenameIdx).value.toChar());
             // Plot & histogram
             if(!main->_plotMenuItems.empty()) {
                 ImGui::Separator();
@@ -845,10 +857,10 @@ TimelineDrawHelper::drawScopes(float& yThread, int tId)
                 ImGui::Separator();
                 if(!main->displayHistoContextualMenu(headerWidth))             ImGui::CloseCurrentPopup();
             }
-            // Marker window
-            if(main->_markers.empty()) {
+            // Log window
+            if(main->_logViews.empty()) {
                 ImGui::Separator();
-                if(ImGui::Selectable("Add a marker window")) main->addMarker(main->getId(), cm.e.vS64);
+                if(ImGui::Selectable("Add a log window")) main->addLog(main->getId(), cm.e.vS64);
             }
 
             ImGui::EndPopup();
@@ -857,8 +869,8 @@ TimelineDrawHelper::drawScopes(float& yThread, int tId)
     }
     // Highlight is overwritten after full display to avoid display order masking
     if(hlTimePix>=0) {
-        DRAWLIST->AddTriangleFilled(ImVec2(winX+hlTimePix-markerHalfWidthPix, yMarker), ImVec2(winX+hlTimePix+markerHalfWidthPix, yMarker),
-                                    ImVec2(winX+hlTimePix, yMarker+markerHeightPix), vwConst::uWhite);
+        DRAWLIST->AddTriangleFilled(ImVec2(winX+hlTimePix-logHalfWidthPix, yLog), ImVec2(winX+hlTimePix+logHalfWidthPix, yLog),
+                                    ImVec2(winX+hlTimePix, yLog+logHeightPix), vwConst::uWhite);
     }
 
     const float dim2 = 0.8f; // Alternate level
@@ -1033,7 +1045,7 @@ vwMain::addTimeline(int id)
     getSynchronizedRange(tl.syncMode, tl.startTimeNs, tl.timeRangeNs);
     memset(&tl.valuePerThread[0], 0, sizeof(tl.valuePerThread));
     setFullScreenView(-1);
-    plMarker("user", "Add a timeline");
+    plLogInfo("user", "Add a timeline");
     return true;
 }
 
@@ -1063,8 +1075,8 @@ vwMain::prepareTimeline(Timeline& tl)
     tl.cachedLockNtf.resize(_record->locks.size());
     tl.cachedLockWaitPerThread.clear();
     tl.cachedLockWaitPerThread.resize(_record->threads.size());
-    tl.cachedMarkerPerThread.clear();
-    tl.cachedMarkerPerThread.resize(_record->threads.size());
+    tl.cachedLogPerThread.clear();
+    tl.cachedLogPerThread.resize(_record->threads.size());
     tl.cachedScopesPerThreadPerNLevel.clear();
     tl.cachedScopesPerThreadPerNLevel.resize(_record->threads.size());
 
@@ -1328,20 +1340,26 @@ vwMain::prepareTimeline(Timeline& tl)
             } // End of loop on events
         }
 
-        // Cache the markers
-        bsVec<TlCachedMarker>& cachedMarker = tl.cachedMarkerPerThread[tId];
-        cachedMarker.clear();
+        // Cache the logs
+        bsVec<TlCachedLog>& cachedLog = tl.cachedLogPerThread[tId];
+        cachedLog.clear();
         if(isExpanded) {
-            plgScope(TML, "Markers");
-            cachedMarker.reserve(128);
-            bool isCoarseScope = false;
-            cmRecord::Evt e;
-            cmRecordIteratorMarker itMarker(_record, tId, PL_INVALID, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
-            while(itMarker.getNextMarker(isCoarseScope, e)) {
-                int*   elemIdx = _record->elemPathToId.find(bsHashStepChain(_record->threads[tId].threadHash, e.nameIdx, cmConst::MARKER_NAMEIDX), cmConst::MARKER_NAMEIDX);
-                float timePix = (float)(nsToPix*(e.vS64-tl.startTimeNs));
-                cachedMarker.push_back( { isCoarseScope, elemIdx? *elemIdx : -1, timePix, e } );
-                if(timePix>winWidth) break;
+            plgScope(TML, "Logs");
+            cachedLog.reserve(128);
+            char messageStr[512];
+            bsVec<cmLogParam> params;
+            u64 threadHash = _record->threads[tId].threadHash;
+            int* elemIdx  = _record->elemPathToId.find(bsHashStepChain(threadHash, tl.logLevel, cmConst::LOG_NAMEIDX), cmConst::LOG_NAMEIDX);
+            if(elemIdx) {
+                bool isCoarse; cmRecord::Evt e;
+                cmRecordIteratorLog itLog(_record, *elemIdx, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
+                while(itLog.getNextLog(isCoarse, e, params)) {
+                    float timePix = (float)(nsToPix*(e.vS64-tl.startTimeNs));
+                    elemIdx = _record->elemPathToId.find(bsHashStepChain(threadHash, 0, _record->getString(e.nameIdx).hash, cmConst::LOG_NAMEIDX), cmConst::LOG_NAMEIDX);
+                    cmVsnprintf(messageStr, sizeof(messageStr), _record->getString(e.filenameIdx).value.toChar(), _record, params);
+                    cachedLog.push_back( { isCoarse, elemIdx? *elemIdx : -1, timePix, e, messageStr } );
+                    if(timePix>winWidth) break;
+                }
             }
         }
 
@@ -1656,7 +1674,7 @@ vwMain::drawTimeline(int tlWindowIdx)
 
     // Double click: range focus on an item (detected above at drawing time)
     if(ctx.forceRangeNs!=0.) {
-        tl.setView(ctx.forceStartNs, bsMax(ctx.forceRangeNs, 1000LL));
+        tl.setView(ctx.forceStartNs, ctx.forceRangeNs);
         ctx.nsToPix = ctx.winWidth/tl.timeRangeNs;
         changedNavigation = true;
     }

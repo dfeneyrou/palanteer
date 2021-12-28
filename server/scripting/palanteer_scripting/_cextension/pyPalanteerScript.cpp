@@ -192,7 +192,6 @@ void notifyNewElems(pyiElem* elems, int elemQty)
     }
     // Call the python
     PyObject* result = PyObject_CallFunction(pyNotifyNewElems, "N", elemList);
-    CheckForPyError();
     plAssert(result);
     Py_DECREF(elemList);
     Py_DECREF(result);

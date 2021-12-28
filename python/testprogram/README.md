@@ -11,5 +11,5 @@ As a first step, run the viewer then `./testprogram.py collect`.
 
 Display the help and the options with `./testprogram.py`
 
-Note: if the Palanteer library is not installed and the module `palanteer_stub.py` in not reachable in the Python path, the program will not run.
+Note: if the Palanteer library is not installed and the module `palanteer_stub.py` is not reachable in the Python path, the program will not run.
 

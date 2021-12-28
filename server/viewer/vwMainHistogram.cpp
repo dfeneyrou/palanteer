@@ -37,37 +37,41 @@ static const double MIN_BAR_PIX_QTY = 5.;
 static const double MIN_BAR_QTY     = 2.;
 static const double MIN_BAR_HEIGHT  = 3.;
 
-// @#TODO Check if we work on "all names" or only one... What to do for this??
 
 bsString
 vwMain::Histogram::getDescr(void) const
 {
     char tmpStr[128];
-    snprintf(tmpStr, sizeof(tmpStr), "histogram %d %" PRIX64 " %" PRIX64, syncMode, threadUniqueHash, hashPath);
+    snprintf(tmpStr, sizeof(tmpStr), "histogram %d %" PRIX64 " %" PRIX64 " %d", syncMode, threadUniqueHash, hashPath, logParamIdx);
     return tmpStr;
 }
 
 // elemIdx may be negative if not known yet (case of saved layout)
 bool
-vwMain::addHistogram(int id, u64 threadUniqueHash, u64 hashPath, int elemIdx, s64 startTimeNs, s64 timeRangeNs)
+vwMain::addHistogram(int id, u64 threadUniqueHash, u64 hashPath, int elemIdx, s64 startTimeNs, s64 timeRangeNs, int logParamIdx)
 {
     // Sanity
     if(!_record) return false;
     plScope("addHistogram");
-    plgVar(HISTO, threadUniqueHash, hashPath, elemIdx, startTimeNs, getNiceDuration(timeRangeNs));
+    plgVar(HISTO, threadUniqueHash, hashPath, elemIdx, startTimeNs, getNiceDuration(timeRangeNs), logParamIdx);
 
     // Add the half-initialized histogram entry
     if(elemIdx<0) {
-        _histograms.push_back( { id, elemIdx, threadUniqueHash, hashPath, "(Not present)", startTimeNs, timeRangeNs, 0, false } );
+        _histograms.push_back( { id, elemIdx, threadUniqueHash, hashPath, "(Not present)", startTimeNs, timeRangeNs, 0, false, logParamIdx } );
     } else {
         char tmpStr[256];
         cmRecord::Elem& elem = _record->elems[elemIdx];
-        snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", getElemName(_record->getString(elem.nameIdx).value.toChar(), elem.flags),
-                 (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
-        _histograms.push_back( { id, elemIdx, threadUniqueHash, hashPath, tmpStr, startTimeNs, timeRangeNs, 0, false } );
+        if(elem.flags==PL_FLAG_TYPE_LOG) {
+            snprintf(tmpStr, sizeof(tmpStr), "<log> %s [Param #%d] [%s]", _record->getString(elem.nameIdx).value.toChar(), logParamIdx,
+                     (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
+        } else {
+            snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", getElemName(_record->getString(elem.nameIdx).value.toChar(), elem.flags),
+                     (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
+        }
+        _histograms.push_back( { id, elemIdx, threadUniqueHash, hashPath, tmpStr, startTimeNs, timeRangeNs, 0, false, logParamIdx } );
     }
     setFullScreenView(-1);
-    plMarker("user", "Add a histogram");
+    plLogInfo("user", "Add a histogram");
     return true;
 }
 
@@ -82,7 +86,6 @@ vwMain::_computeChunkHistogram(Histogram& h)
     // Finish the initialization if needed (init and live)
     if(h.elemIdx<0 && (h.isFirstRun || _liveRecordUpdated)) {
         h.isFirstRun = false;
-
         u64 threadHash = 0;
         for(cmRecord::Thread& t : _record->threads) {
             if(t.threadUniqueHash!=h.threadUniqueHash) continue;
@@ -99,8 +102,13 @@ vwMain::_computeChunkHistogram(Histogram& h)
                (h.threadUniqueHash==0 && elem.hashPath!=h.hashPath)) continue;
             // Complete the histogram initialization
             char tmpStr[256];
-            snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", getElemName(_record->getString(elem.nameIdx).value.toChar(), elem.flags),
-                     (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
+            if(elem.flags==PL_FLAG_TYPE_LOG) {
+                snprintf(tmpStr, sizeof(tmpStr), "<log> %s [Param #%d] [%s]", _record->getString(elem.nameIdx).value.toChar(), h.logParamIdx,
+                         (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
+            } else {
+                snprintf(tmpStr, sizeof(tmpStr), "%s [%s]", getElemName(_record->getString(elem.nameIdx).value.toChar(), elem.flags),
+                         (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
+            }
             h.elemIdx = elemIdx;
             h.name    = tmpStr;
             h.isHexa  = _record->getString(elem.nameIdx).isHexa;
@@ -108,6 +116,10 @@ vwMain::_computeChunkHistogram(Histogram& h)
         }
     }
     if(h.elemIdx<0) return true; // Elem is not resolved yet
+
+    double ptValue; s64 ptTimeNs = 0; cmRecord::Evt evt; u32 lIdx = PL_INVALID;
+    bool   isCoarse;
+    char   tmpStr[64];
 
     // Bootstrap the computation
     dirty();
@@ -117,8 +129,10 @@ vwMain::_computeChunkHistogram(Histogram& h)
         frd.resize(MAX_BIN_QTY);
         _histoBuild.absMinValue =  1e300;
         _histoBuild.absMaxValue = -1e300;
-        if((elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_MARKER) { // Marker case (specific iterator)
-            _histoBuild.itMarker.init(_record, h.elemIdx, h.startTimeNs, 0.);
+        _histoBuild.boundaryDiscoveryPhase = false;  // Usually not needed as boundaries are usually pre-computed
+        if((elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOG) { // Log case (specific iterator)
+            _histoBuild.itLog.init(_record, h.elemIdx, h.startTimeNs, 0.);
+            _histoBuild.boundaryDiscoveryPhase = true;  // Log parameters have no pre-computed boundaries
         } else if((elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOCK_NOTIFIED) { // Lock notif case (specific iterator)
             _histoBuild.itLockNtf.init(_record, elem.nameIdx, h.startTimeNs, 0.);
         } else if((elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOCK_ACQUIRED) { // Lock use case (specific iterator)
@@ -130,6 +144,18 @@ vwMain::_computeChunkHistogram(Histogram& h)
         for(int i=0; i<MAX_BIN_QTY; ++i) {
             frd[i] = {0, 0, -1, 0, -1LL};
             _histoBuild.maxValuePerBin[i] = -1e300;
+        }
+
+        // Get infos on the elem
+        h.valueType = elem.flags;
+        if(h.valueType==PL_FLAG_TYPE_LOG) {
+            // Check if first event has a discrete parameter. This attribute is generalized to the whole histogram
+            cmRecordIteratorLog it(_record, h.elemIdx, 0, 0.);
+            bsVec<cmLogParam> params;
+            h.valueType = PL_FLAG_TYPE_DATA_DOUBLE;  // Default is the widest one
+            if(it.getNextLog(isCoarse, evt, params) && h.logParamIdx>=0 && h.logParamIdx<params.size()) {
+                h.valueType = params[h.logParamIdx].paramType;
+            }
         }
 
         // Clear fields
@@ -144,37 +170,57 @@ vwMain::_computeChunkHistogram(Histogram& h)
         ImGui::OpenPopup("In progress##WaitHistogram");
     }
 
-    // Get infos on the elem
-    bool isDiscrete  = ((elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_DATA_STRING || (elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_MARKER); // And supposedly small range
-    double yToBinIdx = isDiscrete? 1. : (double)MAX_BIN_QTY/bsMax(1e-300, elem.absYMax-elem.absYMin); // Discrete values shall stay unmodified
-
+    bool   isDiscrete = (h.valueType==PL_FLAG_TYPE_DATA_STRING);
+    double yToBinIdx = 1.;
+    if(!isDiscrete) {  // Discrete values shall stay unmodified
+        yToBinIdx  = (double)MAX_BIN_QTY/bsMax(1e-300, (elem.flags==PL_FLAG_TYPE_LOG)? _histoBuild.absMaxValue-_histoBuild.absMinValue : elem.absYMax-elem.absYMin);
+    }
     bsUs_t endComputationTimeUs = bsGetClockUs() + vwConst::COMPUTATION_TIME_SLICE_US; // Time slice of computation
     double absMinValue = _histoBuild.absMinValue, absMaxValue = _histoBuild.absMaxValue;
-    double ptValue; s64 ptTimeNs = 0; cmRecord::Evt evt; u32 lIdx = PL_INVALID;
-    bool   isCoarseScope;
-    char   tmpStr[64];
 
     // Collect data
     bool isFinished = true;
-    if((elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_MARKER) { // Marker case (specific iterator)
-        while(_histoBuild.itMarker.getNextMarker(isCoarseScope, evt)) {
-            ptValue = evt.filenameIdx;
+    if(elem.flags==PL_FLAG_TYPE_LOG) { // Log case (specific iterator)
+        bsVec<cmLogParam> params;
+        while(_histoBuild.itLog.getNextLog(isCoarse, evt, params)) {
+            if(h.logParamIdx<0 || h.logParamIdx>=params.size()) {
+                if(evt.vS64>h.startTimeNs+h.timeRangeNs) break;
+                continue;
+            }
+            const cmLogParam& param = params[h.logParamIdx];
+            switch(param.paramType) {
+            case PL_FLAG_TYPE_DATA_S32:    ptValue = (double)param.vInt; break;
+            case PL_FLAG_TYPE_DATA_U32:    ptValue = (double)param.vU32; break;
+            case PL_FLAG_TYPE_DATA_S64:    ptValue = (double)param.vS64; break;
+            case PL_FLAG_TYPE_DATA_U64:    ptValue = (double)param.vU64; break;
+            case PL_FLAG_TYPE_DATA_FLOAT:  ptValue = (double)param.vFloat; break;
+            case PL_FLAG_TYPE_DATA_DOUBLE: ptValue = param.vDouble; break;
+            case PL_FLAG_TYPE_DATA_STRING: ptValue = param.vStringIdx; break;
+            default: ptValue = 0;
+            };
 
             // Get the bin index, if time range matches
             if(evt.vS64<h.startTimeNs) continue;
             if(evt.vS64>h.startTimeNs+h.timeRangeNs) break; // Stop if time is past
-            int idx = bsMinMax((int)((ptValue-elem.absYMin)*yToBinIdx+0.5), 0, MAX_BIN_QTY-1);
 
-            // Update the bin & global statistics
-            frd[idx].qty++;
-            if(ptValue>_histoBuild.maxValuePerBin[idx]) {
-                _histoBuild.maxValuePerBin[idx] = ptValue;
-                frd[idx].timeNs   = evt.vS64;
-                frd[idx].threadId = evt.threadId;
-                frd[idx].lIdx     = PL_INVALID;
+            if(_histoBuild.boundaryDiscoveryPhase) {
+                // Compute the boundaries dynamically
+                if(absMinValue>ptValue) absMinValue = ptValue;
+                if(absMaxValue<ptValue) absMaxValue = ptValue;
             }
-            if(ptValue<absMinValue) absMinValue = ptValue;
-            if(ptValue>absMaxValue) absMaxValue = ptValue;
+            else {
+                // Update the bin & global statistics
+                int idx = bsMinMax((int)((ptValue-elem.absYMin)*yToBinIdx+0.5), 0, MAX_BIN_QTY-1);
+                frd[idx].qty++;
+                if(ptValue>_histoBuild.maxValuePerBin[idx]) {
+                    _histoBuild.maxValuePerBin[idx] = ptValue;
+                    frd[idx].timeNs   = evt.vS64;
+                    frd[idx].threadId = evt.threadId;
+                    frd[idx].lIdx     = PL_INVALID;
+                }
+                if(ptValue<absMinValue) absMinValue = ptValue;
+                if(ptValue>absMaxValue) absMaxValue = ptValue;
+            }
 
             // End of computation time slice?
             h.computationLevel = (int)bsMinMax(100.*(evt.vS64-h.startTimeNs)/h.timeRangeNs, 1., 99.); // 0 means just started, 100 means finished
@@ -186,7 +232,7 @@ vwMain::_computeChunkHistogram(Histogram& h)
         }
     }
     else if((elem.flags&PL_FLAG_TYPE_MASK)==PL_FLAG_TYPE_LOCK_NOTIFIED) { // Lock notif case (specific iterator)
-        while(_histoBuild.itLockNtf.getNextLock(isCoarseScope, evt)) {
+        while(_histoBuild.itLockNtf.getNextLock(isCoarse, evt)) {
             // Get the bin index, if time range matches
             if(evt.vS64<h.startTimeNs) continue;
             if(evt.vS64>h.startTimeNs+h.timeRangeNs) break; // Stop if time is past
@@ -274,7 +320,16 @@ vwMain::_computeChunkHistogram(Histogram& h)
     _histoBuild.absMaxValue = absMaxValue;
 
     // Computations are finished?
-    if(ptTimeNs>h.startTimeNs+h.timeRangeNs || isFinished) h.computationLevel = 100;
+    if(ptTimeNs>h.startTimeNs+h.timeRangeNs || isFinished) {
+        if(_histoBuild.boundaryDiscoveryPhase) {
+            // Boundaries are computed, switch to the data collection inside bins and start again
+            _histoBuild.boundaryDiscoveryPhase = false;
+            _histoBuild.itLog.init(_record, h.elemIdx, h.startTimeNs, 0.);
+            h.computationLevel = 1;
+            return true;
+        }
+        else h.computationLevel = 100;
+    }
 
     bool openPopupModal = true;
     if(ImGui::BeginPopupModal("In progress##WaitHistogram",
@@ -420,7 +475,7 @@ vwMain::drawHistograms(void)
             ImGui::SetNextWindowFocus();
         }
 
-        char tmpStr[64];
+        char tmpStr[256];
         snprintf(tmpStr, sizeof(tmpStr), "Histogram %s###%d", histogram.name.toChar(), histogram.uniqueId);
         bool isOpen = true;
         if(ImGui::Begin(tmpStr, &isOpen, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavInputs)) {
@@ -658,23 +713,23 @@ vwMain::drawHistogram(int histogramIdx)
     ImU32 textBg = IM_COL32(32, 32, 32, 128);
     if(isDiscrete) {
         for(int barIdx=firstBarIdx; barIdx<=lastBarIdx; ++barIdx) {
-            snprintf(tmpStr, sizeof(tmpStr), "%s", getValueAsChar(elem.flags, (double)h.discreteLkup[barIdx], 0., h.isHexa));
+            snprintf(tmpStr, sizeof(tmpStr), "%s", getValueAsChar(h.valueType, (double)h.discreteLkup[barIdx], 0., h.isHexa));
             float x = winX-scrollX+uMargin+(0.5f+barIdx)*barTotalWidth-0.5f*ImGui::CalcTextSize(tmpStr).x;
             DRAWLIST->AddText(ImVec2(x+5.f, yLowest), vwConst::uYellow, tmpStr);
         }
     }
     // Draw the horizontal extreme X-axis in other cases
     else if(h.data[0].qty>0) {
-        const char* valueMinString = getValueAsChar(elem.flags, h.absMinValue+yDelta*firstBarIdx, 0., h.isHexa);
+        const char* valueMinString = getValueAsChar(h.valueType, h.absMinValue+yDelta*firstBarIdx, 0., h.isHexa);
         DRAWLIST->AddText(ImVec2(winX+5, yLowest), vwConst::uYellow, valueMinString);
-        const char* valueMaxString = getValueAsChar(elem.flags, h.absMinValue+yDelta*lastBarIdx, 0., h.isHexa);
+        const char* valueMaxString = getValueAsChar(h.valueType, h.absMinValue+yDelta*lastBarIdx, 0., h.isHexa);
         DRAWLIST->AddText(ImVec2(winX+winWidth-ImGui::CalcTextSize(valueMaxString).x-2.f, yLowest), vwConst::uYellow, valueMaxString);
     }
 
     // Draw average and median on the window
     if(!isDiscrete && averageCount>0) {
         double avgValue = averageValue/(double)averageCount;
-        snprintf(tmpStr, sizeof(tmpStr), "Avg: %s", getValueAsChar(elem.flags, avgValue, 0., h.isHexa));
+        snprintf(tmpStr, sizeof(tmpStr), "Avg: %s", getValueAsChar(h.valueType, avgValue, 0., h.isHexa));
         float sWidth = ImGui::CalcTextSize(tmpStr).x;
         double avgIdx = (avgValue-h.absMinValue)/yDelta;
         float x = winX-scrollX+uMargin+(float)(avgIdx*barTotalWidth)+0.5f*barTotalWidth;
@@ -684,7 +739,7 @@ vwMain::drawHistogram(int histogramIdx)
         DRAWLIST->AddText(ImVec2(x+5.f, y), vwConst::uCyan, tmpStr);
     }
     if(h.data[medianIdx].qty>0) {
-        snprintf(tmpStr, sizeof(tmpStr), "Median: %s", getValueAsChar(elem.flags, isDiscrete?
+        snprintf(tmpStr, sizeof(tmpStr), "Median: %s", getValueAsChar(h.valueType, isDiscrete?
                                                                       (double)h.discreteLkup[medianIdx] : h.absMinValue+yDelta*medianIdx,
                                                                       0., h.isHexa));
         float sWidth = ImGui::CalcTextSize(tmpStr).x;
@@ -705,13 +760,16 @@ vwMain::drawHistogram(int histogramIdx)
         else
             setScopeHighlight(hd.threadId, hd.timeNs, elem.flags, elem.nestingLevel, elem.hlNameIdx);
 
+        // Update the time of the mouse
+        _mouseTimeNs = hd.timeNs;
+
         // Tooltip
         bsString deltaString;
-        if(eType!=PL_FLAG_TYPE_DATA_STRING && eType!=PL_FLAG_TYPE_MARKER && eType!=PL_FLAG_TYPE_LOCK_NOTIFIED) {
-            deltaString = bsString(" +/-") + getValueAsChar(elem.flags, 0.5f*yDelta, 0., h.isHexa); // 0.5 because "plus or minus"
+        if(eType!=PL_FLAG_TYPE_DATA_STRING && eType!=PL_FLAG_TYPE_LOG && eType!=PL_FLAG_TYPE_LOCK_NOTIFIED) {
+            deltaString = bsString(" +/-") + getValueAsChar(h.valueType, 0.5f*yDelta, 0., h.isHexa); // 0.5 because "plus or minus"
         }
         snprintf(tmpStr, sizeof(tmpStr),  "%s { %s%s }", h.name.toChar(),
-                 getValueAsChar(elem.flags, isDiscrete? (double)h.discreteLkup[highlightedIdx] : h.absMinValue+yDelta*(0.5+highlightedIdx), 0., h.isHexa),
+                 getValueAsChar(h.valueType, isDiscrete? (double)h.discreteLkup[highlightedIdx] : h.absMinValue+yDelta*(0.5+highlightedIdx), 0., h.isHexa),
                  deltaString.toChar());
         float ttWidth = bsMax(ImGui::CalcTextSize(tmpStr).x, 3.f*ImGui::CalcTextSize(" Cumulative: ").x);
         ImGui::SetNextWindowSize(ImVec2(ttWidth+20.f, 0));
@@ -742,7 +800,7 @@ vwMain::drawHistogram(int histogramIdx)
             // Simple click: set timeline position at middle of the screen
             // Double click: adapt also the scale to have the scope at a fixed percentage of the size of the screen
             s64 scopeDurationNs = 0;
-            if     (hd.lIdx==PL_INVALID) { } // Marker case (we do not know the parent, so no duration)
+            if(hd.lIdx==PL_INVALID) { } // Log case (we do not know the parent, so no duration)
             else if(elem.nameIdx==elem.hlNameIdx) scopeDurationNs = (s64)(h.absMinValue+yDelta*highlightedIdx); // For scopes, the value is the duration
             else scopeDurationNs = cmGetParentDurationNs(_record,hd.threadId, elem.nestingLevel, hd.lIdx); // For "flat" items, the duration is the one of the parent
             if(ImGui::IsMouseDoubleClicked(0) && scopeDurationNs>0) newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*scopeDurationNs;
@@ -785,9 +843,9 @@ vwMain::drawHistogram(int histogramIdx)
         // Elems
         const char* binSizeStr = 0;
         if     (eType==PL_FLAG_TYPE_DATA_STRING)   binSizeStr = "<Enum>";
-        else if(eType==PL_FLAG_TYPE_MARKER)        binSizeStr = "<Marker>";
         else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) binSizeStr = "<Lock notified>";
-        else binSizeStr = getValueAsChar(elem.flags, yDelta, 0., h.isHexa);  // Persistent string until next call
+        else if(eType==PL_FLAG_TYPE_LOG && h.valueType==PL_FLAG_TYPE_DATA_STRING) binSizeStr = "<Log>";
+        else binSizeStr = getValueAsChar(h.valueType, yDelta, 0., h.isHexa);  // Persistent string until next call
         DRAWLIST->AddText(ImVec2(legendX+legendTextMargin,                 legendY+1.f*lineHeight), vwConst::uWhite, "Bin size");
         DRAWLIST->AddText(ImVec2(legendX+legendTextMargin+legendCol1Width, legendY+1.f*lineHeight), vwConst::uGrey, binSizeStr);
 
@@ -802,7 +860,7 @@ vwMain::drawHistogram(int histogramIdx)
             bool isLegendHovered = (mouseX>=legendX && mouseX<=legendX+legendWidth && mouseY>=legendY && mouseY<=legendY+legendHeight);
 
             // Right click: open contextual menu
-            if(isLegendHovered && highlightedIdx<0 && h.legendDragMode==NONE && ImGui::IsMouseReleased(2)) {
+            if(isLegendHovered &&  h.legendDragMode==NONE && ImGui::IsMouseReleased(2)) {
                 ImGui::OpenPopup("Histogram menu");
                 // Precompute the menu content
                 _rangeMenuItems[0] = { 0, 0,        ""}; _rangeMenuItems[1] = { 0, 0, "Full range"};
@@ -870,8 +928,8 @@ vwMain::drawHistogram(int histogramIdx)
             DRAWLIST->AddLine(ImVec2(x2, mouseY), ImVec2(x2-arrowSize, mouseY+arrowSize), vwConst::uBlack, 2.f);
             // Text
             snprintf(tmpStr, sizeof(tmpStr),  "{ %s -> %s }",
-                     getValueAsChar(elem.flags, isDiscrete? (double)h.discreteLkup[h.rangeSelStartIdx] : h.absMinValue+yDelta*h.rangeSelStartIdx, 0., h.isHexa),
-                     getValueAsChar(elem.flags, isDiscrete? (double)h.discreteLkup[h.rangeSelEndIdx  ] : h.absMinValue+yDelta*h.rangeSelEndIdx  , 0., h.isHexa, 1));
+                     getValueAsChar(h.valueType, isDiscrete? (double)h.discreteLkup[h.rangeSelStartIdx] : h.absMinValue+yDelta*h.rangeSelStartIdx, 0., h.isHexa),
+                     getValueAsChar(h.valueType, isDiscrete? (double)h.discreteLkup[h.rangeSelEndIdx  ] : h.absMinValue+yDelta*h.rangeSelEndIdx  , 0., h.isHexa, 1));
             ImVec2 tb = ImGui::CalcTextSize(tmpStr);
             float x3 = 0.5f*(x1+x2-tb.x);
             if(x3<x1)      DRAWLIST->AddRectFilled(ImVec2(x3, mouseY-tb.y-5.f), ImVec2(x1,      mouseY-5.f), IM_COL32(255,255,255,128));
@@ -917,12 +975,16 @@ vwMain::drawHistogram(int histogramIdx)
             if(pw.unit.empty()) pw.unit = getUnitFromFlags(elem.flags);
             pw.startTimeNs = 0;
             pw.timeRangeNs = _record->durationNs;
-            // Plot all corresponding names
-            for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
-                const cmRecord::Elem& elem2 = _record->elems[elemIdx];
-                if(elem.isPartOfHStruct==elem2.isPartOfHStruct && elem2.threadId==elem.threadId &&
-                   elem2.nameIdx==elem.nameIdx && elem2.flags==elem.flags) {
-                    pw.curves.push_back( { h.threadUniqueHash, elem2.partialHashPath, elemIdx, true } );
+            if(elem.flags==PL_FLAG_TYPE_LOG) {
+                pw.curves.push_back( { h.threadUniqueHash, elem.partialHashPath, h.elemIdx, true, false, h.logParamIdx } );
+            } else {
+                // Plot all corresponding names
+                for(int elemIdx=0; elemIdx<_record->elems.size(); ++elemIdx) {
+                    const cmRecord::Elem& elem2 = _record->elems[elemIdx];
+                    if(elem.isPartOfHStruct==elem2.isPartOfHStruct && elem2.threadId==elem.threadId &&
+                       elem2.nameIdx==elem.nameIdx && elem2.flags==elem.flags) {
+                        pw.curves.push_back( { h.threadUniqueHash, elem2.partialHashPath, elemIdx, true, false } );
+                    }
                 }
             }
             setFullScreenView(-1);

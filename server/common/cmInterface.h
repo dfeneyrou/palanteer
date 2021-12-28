@@ -21,7 +21,7 @@
 #include "cmRecord.h"
 
 // Enumerations & types
-enum cmLogKind : u8 { LOG_DETAIL, LOG_INFO, LOG_WARNING, LOG_ERROR };
+enum cmLogKind : u8 { LOG_DETAIL, LOG_INFO, LOG_WARNING, LOG_ERROR };  // @#RENAME with cmLogMsgKind, to make it less ambiguous with the event logs
 enum cmErrorKind { ERROR_LOAD, ERROR_IMPORT, ERROR_GENERIC };
 
 
@@ -31,8 +31,8 @@ class cmInterface {
     virtual ~cmInterface(void) {}
 
     // Logging
-    virtual void log(cmLogKind kind, const bsString& msg) = 0;
-    virtual void log(cmLogKind kind, const char* format, ...)
+    virtual void logToConsole(cmLogKind kind, const bsString& msg) = 0;
+    virtual void logToConsole(cmLogKind kind, const char* format, ...)
 #if defined(__clang__) || defined(__GNUC__)
         __attribute__ ((format (printf, 3, 4))) // Check format at compile time
 #endif

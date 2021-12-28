@@ -43,7 +43,7 @@ vwMain::PlotWindow::getDescr(void) const
     int offset = snprintf(tmpStr, sizeof(tmpStr), "plot %d", syncMode);
     for(const PlotCurve& c : curves) {
         offset += snprintf(tmpStr+offset, bsMax((int)(sizeof(tmpStr)-offset), 0),
-                           " %" PRIX64 " %" PRIX64, c.threadUniqueHash, c.hashPath);
+                           " %" PRIX64 " %" PRIX64 " %d", c.threadUniqueHash, c.hashPath, c.logParamIdx);
     }
 
     return tmpStr;
@@ -115,7 +115,12 @@ vwMain::preparePlot(PlotWindow& p)
         int eType = elem.flags&PL_FLAG_TYPE_MASK;
 
         // Compute its name and thread names
-        p.curveNames.push_back(getElemName(s.value, elem.flags));
+        if(elem.flags==PL_FLAG_TYPE_LOG) {
+            snprintf(tmpStr, sizeof(tmpStr), "<log> %s [Param #%d]", _record->getString(elem.nameIdx).value.toChar(), c.logParamIdx);
+            p.curveNames.push_back(tmpStr);
+        } else {
+            p.curveNames.push_back(getElemName(s.value, elem.flags));
+        }
         p.maxWidthCurveName  = bsMax(p.maxWidthCurveName,  ImGui::CalcTextSize(p.curveNames.back().toChar()).x);
         snprintf(tmpStr, sizeof(tmpStr), " [%s]", (elem.threadId>=0)? getFullThreadName(elem.threadId) : "(all)");
         p.curveThreadNames.push_back(tmpStr);
@@ -123,24 +128,40 @@ vwMain::preparePlot(PlotWindow& p)
         double nsPerPix = MIN_PIX_PER_POINT*(double)p.timeRangeNs/(double)winWidth;
 
         // Fill it with data
-        if(eType==PL_FLAG_TYPE_MARKER) { // Marker case (specific iterator)
-            bool isCoarseScope = false; cmRecord::Evt evt;
-            cmRecordIteratorMarker itMarker(_record, c.elemIdx, p.startTimeNs, nsPerPix);
-            while(itMarker.getNextMarker(isCoarseScope, evt)) {
-                double ptValue = evt.filenameIdx;
-                cache.push_back( { evt.vS64, ptValue, PL_INVALID, evt } );
+        if(eType==PL_FLAG_TYPE_LOG) { // Log case (specific iterator)
+            bool isCoarse = false; cmRecord::Evt evt;
+            double ptValue;
+            bsVec<cmLogParam> params;
+            cmRecordIteratorLog itLog(_record, c.elemIdx, p.startTimeNs, nsPerPix);
+            while(itLog.getNextLog(isCoarse, evt, params)) {
+                if(c.logParamIdx<0 || c.logParamIdx>=params.size()) {
+                    if(evt.vS64>p.startTimeNs+p.timeRangeNs) break;
+                    continue;
+                }
+                const cmLogParam& param = params[c.logParamIdx];
+                switch(param.paramType) {
+                case PL_FLAG_TYPE_DATA_S32: ptValue = (double)param.vInt; break;
+                case PL_FLAG_TYPE_DATA_U32: ptValue = (double)param.vU32; break;
+                case PL_FLAG_TYPE_DATA_S64: ptValue = (double)param.vS64; break;
+                case PL_FLAG_TYPE_DATA_U64: ptValue = (double)param.vU64; break;
+                case PL_FLAG_TYPE_DATA_FLOAT:  ptValue = (double)param.vFloat; break;
+                case PL_FLAG_TYPE_DATA_DOUBLE: ptValue = param.vDouble; break;
+                case PL_FLAG_TYPE_DATA_STRING: ptValue = param.vStringIdx; break;
+                default: ptValue = 0;
+                };
+                cache.push_back( { evt.vS64, ptValue, PL_INVALID, param.paramType, evt } );
                 c.absYMin = bsMin(c.absYMin, ptValue);
                 c.absYMax = bsMax(c.absYMax, ptValue);
                 if(evt.vS64>p.startTimeNs+p.timeRangeNs) break; // Time break at the end, as we want 1 point past the range
             }
         }
         else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) { // Lock notifier case (specific iterator)
-            bool isCoarseScope = false; cmRecord::Evt evt;
+            bool isCoarse = false; cmRecord::Evt evt;
             int nameIdx = elem.nameIdx;
             cmRecordIteratorLockNtf itLockNtf(_record, nameIdx, p.startTimeNs, nsPerPix);
-            while(itLockNtf.getNextLock(isCoarseScope, evt)) {
+            while(itLockNtf.getNextLock(isCoarse, evt)) {
                 double ptValue = (double)evt.threadId;
-                cache.push_back( { evt.vS64, ptValue, PL_INVALID, evt } );
+                cache.push_back( { evt.vS64, ptValue, PL_INVALID, 0, evt } );
                 c.absYMin = bsMin(c.absYMin, ptValue);
                 c.absYMax = bsMax(c.absYMax, ptValue);
                 if(evt.vS64>p.startTimeNs+p.timeRangeNs) break; // Time break at the end, as we want 1 point past the range
@@ -150,7 +171,7 @@ vwMain::preparePlot(PlotWindow& p)
             cmRecordIteratorLockUseGraph itLockUse(_record, elem.threadId, elem.nameIdx, p.startTimeNs, nsPerPix);
             s64 ptTimeNs; double ptValue; cmRecord::Evt evt;
             while(itLockUse.getNextLock(ptTimeNs, ptValue, evt)) {
-                cache.push_back( { ptTimeNs, ptValue, PL_INVALID, evt } );
+                cache.push_back( { ptTimeNs, ptValue, PL_INVALID, 0, evt } );
                 c.absYMin = bsMin(c.absYMin, ptValue);
                 c.absYMax = bsMax(c.absYMax, ptValue);
                 if(ptTimeNs>p.startTimeNs+p.timeRangeNs) break; // Time break at the end, as we want 1 point past the range
@@ -160,7 +181,7 @@ vwMain::preparePlot(PlotWindow& p)
             cmRecordIteratorElem it(_record, c.elemIdx, p.startTimeNs, nsPerPix);
             u32 lIdx = PL_INVALID; s64 ptTimeNs; double ptValue; cmRecord::Evt evt;
             while((lIdx=it.getNextPoint(ptTimeNs, ptValue, evt))!=PL_INVALID) {
-                cache.push_back( { ptTimeNs, ptValue, lIdx, evt } );
+                cache.push_back( { ptTimeNs, ptValue, lIdx, 0, evt } );
                 c.absYMin = bsMin(c.absYMin, ptValue);
                 c.absYMax = bsMax(c.absYMax, ptValue);
                 if(ptTimeNs>p.startTimeNs+p.timeRangeNs) break; // Time break at the end, as we want 1 point past the range
@@ -362,7 +383,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
         bool isFirst = true; float lastX=0., lastY=0.;
         for(const PlotCachedPoint& point : pw.cachedItems[curveIdx]) {
             // Get coordinates
-            float x = winX+(float)(xFactor*(point.timeNs-pw.startTimeNs));
+            float x = winX   +(float)(xFactor*(point.timeNs-pw.startTimeNs));
             float y = yLowest-(float)(yFactor*(point.value-pw.valueMin));
 
             // Draw the point
@@ -411,7 +432,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
     // Draw extreme Y range values, and current one
     bool changedNavigation = false;
-    if(!pw.cachedItems.empty() && typicalFlag!=0 && flagType!=PL_FLAG_TYPE_DATA_STRING && flagType!=PL_FLAG_TYPE_MARKER &&
+    if(!pw.cachedItems.empty() && typicalFlag!=0 && flagType!=PL_FLAG_TYPE_DATA_STRING && flagType!=PL_FLAG_TYPE_LOG &&
        flagType!=PL_FLAG_TYPE_LOCK_NOTIFIED) { // Extreme range display for strings has no sense
         float yUnderMouse = (float)(pw.valueMin-(mouseY-winY-winHeight+vMargin)/yFactor);
         if(isWindowHovered) {
@@ -502,7 +523,11 @@ vwMain::drawPlot(int curPlotWindowIdx)
                     ImGui::OpenPopup("Plot curve menu");
                     _plotMenuItems.clear();
                     _plotMenuSpecificCurveIdx = curveIdx;
-                    prepareGraphContextualMenu(pw.curves[curveIdx].elemIdx, pw.getStartTimeNs(), pw.getTimeRangeNs(), false, true);
+                    if(_record->elems[pw.curves[curveIdx].elemIdx].flags==PL_FLAG_TYPE_LOG) {
+                        prepareGraphLogContextualMenu(pw.curves[curveIdx].elemIdx, pw.getStartTimeNs(), pw.getTimeRangeNs(), true);
+                    } else {
+                        prepareGraphContextualMenu(pw.curves[curveIdx].elemIdx, pw.getStartTimeNs(), pw.getTimeRangeNs(), false, true);
+                    }
                 }
 
                 // Tooltip: build the full path
@@ -546,7 +571,11 @@ vwMain::drawPlot(int curPlotWindowIdx)
         const PlotCurve& curve = pw.curves[i];
         float x = winX+(float)(xFactor*(pcp.timeNs-pw.startTimeNs));
         float y = winY+winHeight-vMargin-(float)(yFactor*(bsMinMax(pcp.value, pw.valueMin, pw.valueMax)-pw.valueMin))-fontHeightNoSpacing;
-        const char* s = getValueAsChar(typicalFlag, pcp.value, pw.valueMax-pw.valueMin, curve.isHexa);
+
+        const char* s = (typicalFlag==PL_FLAG_TYPE_LOG)?
+            getValueAsChar(pcp.flagLogParam, pcp.value, pw.valueMax-pw.valueMin, curve.isHexa) :
+            getValueAsChar(typicalFlag, pcp.value, pw.valueMax-pw.valueMin, curve.isHexa);
+
         float sWidth = ImGui::CalcTextSize(s).x;
         ImU32 color = getConfig().getCurveColor(curve.elemIdx, false);
         DRAWLIST->AddRectFilled(ImVec2(x+5, y), ImVec2(x+5+sWidth, y+fontHeightNoSpacing), color);
@@ -605,7 +634,11 @@ vwMain::drawPlot(int curPlotWindowIdx)
                 cmRecordIteratorScope it(_record, pcp.evt.threadId, nestingLevel, pcp.lIdx);
                 it.getChildren(pcp.evt.linkLIdx, pcp.lIdx, false, false, true, _workDataChildren, _workLIdxChildren);
             }
-            else { // Case non-scope: just build the title
+            else if(flags==PL_FLAG_TYPE_LOG) { // Case non-scope: just build the title
+                snprintf(titleStr, sizeof(titleStr), "%s { %s }", _record->getString(nameIdx).value.toChar(),
+                         getValueAsChar(pcp.flagLogParam, pcp.value, pw.valueMax-pw.valueMin, curve.isHexa));
+            }
+            else {
                 snprintf(titleStr, sizeof(titleStr), "%s { %s }", _record->getString(nameIdx).value.toChar(),
                          getValueAsChar(flags, pcp.value, pw.valueMax-pw.valueMin, curve.isHexa));
             }
@@ -615,7 +648,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
         if(pw.syncMode>0 && ImGui::IsMouseDoubleClicked(0)) {
             s64 newTimeRangeNs = 0;
-            if   (pcp.lIdx==PL_INVALID) { } // Marker case (we do not know the parent, so no duration)
+            if   (pcp.lIdx==PL_INVALID) { } // Log case (we do not know the parent, so no duration)
             else if(elem.nameIdx==elem.hlNameIdx) newTimeRangeNs = (s64)(vwConst::DCLICK_RANGE_FACTOR*pcp.value); // For scopes, the value is the duration
             else newTimeRangeNs = vwConst::DCLICK_RANGE_FACTOR*cmGetParentDurationNs(_record, pcp.evt.threadId, nestingLevel, pcp.lIdx); // For "flat" items, the duration is the one of the parent
             if(newTimeRangeNs>0.) {
@@ -793,10 +826,10 @@ vwMain::drawPlot(int curPlotWindowIdx)
             if(pw.syncMode!=0 && ImGui::MenuItem("from the time range of the group")) {
                 s64 startTimeNs, timeRangeNs;
                 vwMain::getSynchronizedRange(pw.syncMode, startTimeNs, timeRangeNs);
-                initiateExportPlot(curve.elemIdx, startTimeNs, startTimeNs+timeRangeNs);
+                initiateExportPlot(curve.elemIdx, startTimeNs, startTimeNs+timeRangeNs, curve.logParamIdx);
             }
             if(ImGui::MenuItem("from the full thread")) {
-                initiateExportPlot(curve.elemIdx, 0, _record->durationNs);
+                initiateExportPlot(curve.elemIdx, 0, _record->durationNs, curve.logParamIdx);
             }
             ImGui::EndMenu();
         }

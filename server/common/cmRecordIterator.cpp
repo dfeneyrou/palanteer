@@ -54,8 +54,8 @@
 #ifndef PL_GROUP_ITLOCK
 #define PL_GROUP_ITLOCK 0
 #endif
-#ifndef PL_GROUP_ITMARKER
-#define PL_GROUP_ITMARKER 0
+#ifndef PL_GROUP_ITLOG
+#define PL_GROUP_ITLOG 0
 #endif
 
 
@@ -512,7 +512,6 @@ cmRecordIteratorElem::getNextPoint(s64& timeNs, double& value, cmRecord::Evt& ev
         case PL_FLAG_TYPE_DATA_FLOAT:  value = (double)evt.vFloat; break;
         case PL_FLAG_TYPE_DATA_DOUBLE: value = (double)evt.vDouble; break;
         case PL_FLAG_TYPE_DATA_STRING: value = (double)evt.vStringIdx; break;
-        case PL_FLAG_TYPE_MARKER:      timeNs = evt.vS64; value = evt.filenameIdx; break;
         case PL_FLAG_TYPE_LOCK_NOTIFIED: timeNs = evt.vS64; value = evt.nameIdx; break;
         default: plAssert(0, "bug, unknown type...", evt.flags);
         }
@@ -1072,91 +1071,198 @@ cmRecordIteratorSoftIrq::getNextSwitch(bool& isCoarse, s64& timeNs, s64& endTime
 
 
 // ======================================
-// Marker iterator (for timeline)
+// Log iterator
 // ======================================
 
-// threadId>=0  and nameIdx==-1 for timeline thread triangles
-// threadId>=0  and nameIdx>=0  for plot/histogram of a specific category
-cmRecordIteratorMarker::cmRecordIteratorMarker(const cmRecord* record, int threadId, u32 nameIdx, s64 timeNs, double nsPerPix) :
-    cmRecordIteratorTimePlotBase(record, &(record->markerLastLiveEvtChunk))
+cmRecordIteratorLog::cmRecordIteratorLog(const cmRecord* record, int threadId, u32 nameIdx, int logLevel, s64 timeNs, double nsPerPix) :
+    cmRecordIteratorTimePlotBase(record, &(record->logLastLiveEvtChunk))
 {
     plAssert(threadId>=0);
-    plgScope(ITMARKER, "cmRecordIteratorMarker::cmRecordIteratorMarker");
-    plgVar(ITMARKER, threadId);
-    _record  = record;
-    _lastLiveEvtChunk = &(record->markerLastLiveEvtChunk);
-    _pmIdx   = 0;
+    plAssert(logLevel>=0 && logLevel<=3);
+    plgScope(ITLOG, "cmRecordIteratorLog::cmRecordIteratorLog");
+    plgVar(ITLOG, threadId, logLogLevel);
 
-    // Get the hashpath, either relative to a thread or global
-    u64 hashPath;
-    if(nameIdx!=PL_INVALID) hashPath = bsHashStepChain(record->threads[threadId].threadHash, nameIdx, cmConst::MARKER_NAMEIDX);
-    else                    hashPath = bsHashStepChain(record->threads[threadId].threadHash, cmConst::MARKER_NAMEIDX);
+    // Get the hashpath
+    plAssert(nameIdx!=PL_INVALID);
+    u64 hashPath = bsHashStepChain(record->threads[threadId].threadHash, logLevel, nameIdx, cmConst::LOG_NAMEIDX);
 
-    // Get the marker plot elem
-    int* elemIdxPtr = record->elemPathToId.find(hashPath, cmConst::MARKER_NAMEIDX);
-    if(elemIdxPtr) findLevelAndIdx(*elemIdxPtr, timeNs, nsPerPix, _record->markerChunkLocs);
+    // Get the log plot elem
+    int* elemIdxPtr = record->elemPathToId.find(hashPath, cmConst::LOG_NAMEIDX);
+    if(elemIdxPtr) findLevelAndIdx(*elemIdxPtr, timeNs, nsPerPix, _record->logChunkLocs);
 }
 
 
-cmRecordIteratorMarker::cmRecordIteratorMarker(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix) :
-    cmRecordIteratorTimePlotBase(record, &(record->markerLastLiveEvtChunk))
+cmRecordIteratorLog::cmRecordIteratorLog(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix) :
+    cmRecordIteratorTimePlotBase(record, &(record->logLastLiveEvtChunk))
 {
-    plgScope(ITMARKER, "cmRecordIteratorMarker::cmRecordIteratorMarker");
-    plgVar(ITMARKER, elemIdx);
-    findLevelAndIdx(elemIdx, timeNs, nsPerPix, _record->markerChunkLocs);
+    plgScope(ITLOG, "cmRecordIteratorLog::cmRecordIteratorLog");
+    plgVar(ITLOG, elemIdx);
+    findLevelAndIdx(elemIdx, timeNs, nsPerPix, _record->logChunkLocs);
 }
 
 
 void
-cmRecordIteratorMarker::init(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix)
+cmRecordIteratorLog::init(const cmRecord* record, int elemIdx, s64 timeNs, double nsPerPix)
 {
-    plgScope(ITMARKER, "cmRecordIteratorMarker::init");
-    plgVar(ITMARKER, elemIdx);
+    plgScope(ITLOG, "cmRecordIteratorLog::init");
+    plgVar(ITLOG, elemIdx);
     _record  = record;
-    _lastLiveEvtChunk = &(record->markerLastLiveEvtChunk);
+    _lastLiveEvtChunk = &(record->logLastLiveEvtChunk);
     _pmIdx   = 0;
-    findLevelAndIdx(elemIdx, timeNs, nsPerPix, _record->markerChunkLocs);
+    findLevelAndIdx(elemIdx, timeNs, nsPerPix, _record->logChunkLocs);
 }
 
 
 bool
-cmRecordIteratorMarker::getNextMarker(bool& isCoarse, cmRecord::Evt& eOut)
+cmRecordIteratorLog::getNextLog(bool& isCoarse, cmRecord::Evt& eOut, bsVec<cmLogParam>& params)
 {
-    plgScope(ITMARKER, "cmRecordIteratorMarker::getNextMarker");
-    const cmRecord::Evt* eCoarseEnd = 0;
-    s64 timeNs = 0;
-    const cmRecord::Evt* e = getNextEvent(_record->markerChunkLocs, isCoarse, timeNs, eCoarseEnd);
-    if(!e) return false;
-    eOut = *e;
-    plgVar(ITMARKER, timeNs);
+    // Get base fields
+    plgScope(ITLOG, "cmRecordIteratorLog::getNextLog");
+    if(_elemIdx<0) return false;
+    const bsVec<chunkLoc_t>& chunkLocs     = _record->logChunkLocs;
+    const cmRecord::Elem&    elem          = _record->elems[_elemIdx];
+    const bsVec<chunkLoc_t>& elemChunkLocs = elem.chunkLocs;
+    const bsVec<u32>& elemLastLiveLocChunk = elem.lastLiveLocChunk;
+    const bsVec<bsVec<cmRecord::ElemMR>>& mrSpeckChunks = elem.mrSpeckChunks;
+    plgAssert(ITLOG, _mrLevel>=-1 && _mrLevel<mrSpeckChunks.size(), _mrLevel, mrSpeckChunks.size());
+    if((mrSpeckChunks.empty() && elemLastLiveLocChunk.empty()) || (_mrLevel>=0 && (int)_pmIdx>=mrSpeckChunks[_mrLevel].size())) {
+        plgVar(ITLOG, mrSpeckChunks.empty(), _mrLevel, mrSpeckChunks.size(), _pmIdx);
+        if(_mrLevel>=0) plgVar(ITLOG, mrSpeckChunks[_mrLevel].size());
+        plgText(ITLOG, "IterPlot", "End of record"); return false;
+    }
+    plgVar(ITLOG, _speckUs, _mrLevel, _pmIdx);
+
+    // Increase precision until speck size is reached
+    bool hasMrChanged = false;
+    while(_mrLevel>=0 && mrSpeckChunks[_mrLevel][_pmIdx].speckUs>_speckUs) {
+        plgData(ITLOG, "Lower level due to too high speck size", mrSpeckChunks[_mrLevel][_pmIdx].speckUs);
+        --_mrLevel; _pmIdx *= cmMRElemSize; hasMrChanged = true;
+    }
+
+    // Decrease precision as much as speck size allows it
+    while(!hasMrChanged && _mrLevel+1<mrSpeckChunks.size() && (int)_pmIdx/cmMRElemSize<mrSpeckChunks[_mrLevel+1].size() &&
+          mrSpeckChunks[_mrLevel+1][_pmIdx/cmMRElemSize].speckUs<_speckUs) {
+        ++_mrLevel; _pmIdx /= cmMRElemSize;
+        plgData(ITLOG, "Upper level with speck size", mrSpeckChunks[_mrLevel][_pmIdx].speckUs);
+    }
+
+    isCoarse = (_mrLevel>=0);
+    plgData(ITLOG, "Final MR level", _mrLevel);
+    plgData(ITLOG, "Final speck size", isCoarse? mrSpeckChunks[_mrLevel][_pmIdx].speckUs : 0);
+    u64 mrLevelFactor = 1; for(int i=0; i<=_mrLevel; ++i) mrLevelFactor *= cmMRElemSize;
+
+    // Get the mIdx from the full resolution Elem data (which are not event but arrays of event mIdx)
+    u32 mIdx = PL_INVALID;
+    if(isCoarse) { // Easy case: mIdx is directly inside the MR structure (the maximum value)
+        mIdx = mrSpeckChunks[_mrLevel][_pmIdx].lIdx;
+    }
+    else {         // Hard way: get the mIdx from the full resolution Elem data (which are not event but arrays of event mIdx)
+        u64 frPmIdx = isCoarse? _pmIdx*mrLevelFactor : _pmIdx;
+        int pmrIdx  = (int)(frPmIdx/cmElemChunkSize);
+        int peIdx   = frPmIdx%cmElemChunkSize;
+        if(pmrIdx>=elemChunkLocs.size()) { plgText(ITLOG, "IterPlot", "elem data chunk out of bound"); return false; }
+        const bsVec<u32>& elemChunkData = _record->getElemChunk(elemChunkLocs[pmrIdx], &elemLastLiveLocChunk);
+        if(peIdx>=elemChunkData.size())  { plgText(ITLOG, "IterPlot", "elem data index out of bound (1)"); return false; }
+        mIdx = elemChunkData[peIdx];
+    }
+
+    // Get the point time and value from the event
+    int mrIdx = mIdx/cmChunkSize;
+    int eIdx  = mIdx%cmChunkSize;
+    if(mrIdx>=chunkLocs.size()) { plgText(ITLOG, "IterPlot", "chunk index out of bound"); return false; }
+    const bsVec<cmRecord::Evt>* chunkData = &_record->getEventChunk(chunkLocs[mrIdx], _lastLiveEvtChunk);
+    if(eIdx>=chunkData->size())  { plgText(ITLOG, "IterPlot", "data index out of bound"); return false; }
+    eOut = (*chunkData)[eIdx];
+
+    // Get the parameters. They are stored contiguously
+    params.clear();
+    if((eOut.lineNbr&0x8000)==0) {  // The 0x8000 bit means end of parameters
+        // Loop on log param events
+        while(1) {
+            if(++eIdx>=chunkData->size()) {
+                ++mrIdx; eIdx = 0;
+                if(mrIdx>=chunkLocs.size()) { plgText(ITLOG, "IterPlot", "chunk index out of bound"); return false; }
+                chunkData = &_record->getEventChunk(chunkLocs[mrIdx], _lastLiveEvtChunk);
+                if(eIdx>=chunkData->size())  { plgText(ITLOG, "IterPlot", "data index out of bound"); return false; }
+            }
+            const cmRecord::Evt& paramEvt = (*chunkData)[eIdx];
+            if(paramEvt.flags!=PL_FLAG_TYPE_LOG_PARAM) return false;  // Bad syntax
+            // Loop on parameters inside this event
+            int dataOffset = 4;  // Up to 24 bytes =sizeof(EventExt)
+            u8* payload = (u8*)&(paramEvt.threadId);
+            for(int paramIdx=0; paramIdx<5; ++paramIdx) {  // 5 parameters max in a log param event
+                int paramType = (paramEvt.lineNbr>>(3*paramIdx))&0x7;
+                if(paramType==0) break; // Last parameter in this event
+
+                params.push_back({paramType, 0});
+                cmLogParam& p = params.back();
+                switch(paramType) {
+                case PL_FLAG_TYPE_DATA_S32:
+                    if(dataOffset<=20) { p.vInt   = *( int32_t*)(payload+dataOffset); dataOffset += 4; }
+                    else return false;
+                    break;
+                case PL_FLAG_TYPE_DATA_U32:
+                    if(dataOffset<=20) { p.vU32   = *(uint32_t*)(payload+dataOffset); dataOffset += 4; }
+                    else return false;
+                    break;
+                case PL_FLAG_TYPE_DATA_FLOAT:
+                    if(dataOffset<=20) { p.vFloat = *(float*)   (payload+dataOffset); dataOffset += 4; }
+                    else return false;
+                    break;
+                case PL_FLAG_TYPE_DATA_S64:
+                    if(dataOffset<=16) { p.vS64   = *( int64_t*)(payload+dataOffset); dataOffset += 8; }
+                    else return false;
+                    break;
+                case PL_FLAG_TYPE_DATA_U64:
+                    if(dataOffset<=16) { p.vU64   = *(uint64_t*)(payload+dataOffset); dataOffset += 8; }
+                    else return false;
+                    break;
+                case PL_FLAG_TYPE_DATA_DOUBLE:
+                    if(dataOffset<=16) { p.vDouble = *(double*)(payload+dataOffset); dataOffset += 8; }
+                    else return false;
+                    break;
+                case PL_FLAG_TYPE_DATA_STRING:
+                    if(dataOffset<=16) { p.vStringIdx = *(uint32_t*)(payload+dataOffset); dataOffset += 8; }
+                    else return false;
+                    break;
+                default:
+                    return false;
+                };
+            }
+
+            // Last log param event?
+            if(paramEvt.lineNbr&0x8000) break;
+        }
+    }
+    ++_pmIdx; // Next point next time
     return true;
 }
 
 
 s64
-cmRecordIteratorMarker::getTimeRelativeIdx(int offset)
+cmRecordIteratorLog::getTimeRelativeIdx(int offset)
 {
-    plgScope(ITMARKER, "cmRecordIteratorMarker::getTimeRelativeIdx");
+    plgScope(ITLOG, "cmRecordIteratorLog::getTimeRelativeIdx");
 
     const cmRecord::Elem&    elem          = _record->elems[_elemIdx];
     const bsVec<chunkLoc_t>& elemChunkLocs = elem.chunkLocs;
     const bsVec<u32>& elemLastLiveLocChunk = elem.lastLiveLocChunk;
-    if((int)_pmIdx+offset<0) { plgText(ITMARKER, "IterMarker", "End of record"); return -1; }
+    if((int)_pmIdx+offset<0) { plgText(ITLOG, "IterLog", "End of record"); return -1; }
 
     // Get the index of the event from the plot index arrays (full resolution required)
     int pmrIdx = (_pmIdx+offset)/cmElemChunkSize;
     int peIdx  = (_pmIdx+offset)%cmElemChunkSize;
-    if(pmrIdx>=elemChunkLocs.size()) { plgText(ITMARKER, "IterMarker", "elem data chunk out of bound"); return -1; }
+    if(pmrIdx>=elemChunkLocs.size()) { plgText(ITLOG, "IterLog", "elem data chunk out of bound"); return -1; }
     const bsVec<u32>& elemChunkData = _record->getElemChunk(elemChunkLocs[pmrIdx], &elemLastLiveLocChunk);
-    if(peIdx>=elemChunkData.size())  { plgText(ITMARKER, "IterMarker", "elem data index out of bound (1)"); return -1; }
+    if(peIdx>=elemChunkData.size())  { plgText(ITLOG, "IterLog", "elem data index out of bound (1)"); return -1; }
     u32 mIdx = elemChunkData[peIdx];
 
     // Get the event
     int mrIdx = mIdx/cmChunkSize;
     int eIdx  = mIdx%cmChunkSize;
-    if(mrIdx>=_record->markerChunkLocs.size()) { plgText(ITMARKER, "IterMarker", "chunk index out of bound"); return -1; }
-    const bsVec<cmRecord::Evt>& chunkData = _record->getEventChunk(_record->markerChunkLocs[mrIdx], _lastLiveEvtChunk);
-    if(eIdx>=chunkData.size())  { plgText(ITMARKER, "IterMarker", "data index out of bound"); return -1; }
+    if(mrIdx>=_record->logChunkLocs.size()) { plgText(ITLOG, "IterLog", "chunk index out of bound"); return -1; }
+    const bsVec<cmRecord::Evt>& chunkData = _record->getEventChunk(_record->logChunkLocs[mrIdx], _lastLiveEvtChunk);
+    if(eIdx>=chunkData.size())  { plgText(ITLOG, "IterLog", "data index out of bound"); return -1; }
     return chunkData[eIdx].vS64;
 }
 
@@ -1443,7 +1549,7 @@ cmRecordIteratorHierarchy::getParents(bsVec<Parent>& parents)
     parents.clear();
 
     // Get current item
-    if(nestingLevel>=rt.levels.size())  { plgText(ITPARENT, "IterHierc", "Current out of nesting level"); return; }
+    if(nestingLevel<0 || nestingLevel>=rt.levels.size())  { plgText(ITPARENT, "IterHierc", "Current out of nesting level"); return; }
     const bsVec<chunkLoc_t>& nonScopeChunkLocs = rt.levels[nestingLevel].nonScopeChunkLocs;
     const bsVec<chunkLoc_t>& scopeChunkLocs    = rt.levels[nestingLevel].scopeChunkLocs;
     const bsVec<chunkLoc_t>* chunkLocs = GET_ISFLAT(lIdx)? &nonScopeChunkLocs : &scopeChunkLocs;

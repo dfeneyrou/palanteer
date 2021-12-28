@@ -72,14 +72,14 @@ pyMainItf::~pyMainItf(void)
 // =====================================
 
 void
-pyMainItf::log(cmLogKind kind, const bsString& msg)
+pyMainItf::logToConsole(cmLogKind kind, const bsString& msg)
 {
     _ntf->notifyLog((int)kind, msg.toChar());
 }
 
 
 void
-pyMainItf::log(cmLogKind kind, const char* format, ...)
+pyMainItf::logToConsole(cmLogKind kind, const char* format, ...)
 {
     // Format the string
     char tmpStr[256];
@@ -356,12 +356,12 @@ pyMainItf::notifyInstrumentationError(cmRecord::RecErrorType type, int threadId,
     plAssert(filenameIdx>=0);
     char errorMsg[256];
     snprintf(errorMsg, sizeof(errorMsg), "%s:%d - %s:%s - %s",
-             (filenameIdx==0xFFFFFFFF)? "N/A (marker)" : _recording->getString(filenameIdx).toChar(), lineNbr,
+             (filenameIdx==0xFFFFFFFF)? "N/A (log)" : _recording->getString(filenameIdx).toChar(), lineNbr,
              (type==cmRecord::ERROR_MAX_THREAD_QTY_REACHED || _recording->getThreadNameIdx(threadId)<0)? "(no thread)" : _recording->getString(_recording->getThreadNameIdx(threadId)).toChar(),
              _recording->getString(nameIdx).toChar(), errorMessagesPerType[type]);
 
     // Log the instrumentation error message
-    log(LOG_ERROR, "%s", errorMsg);
+    logToConsole(LOG_ERROR, "%s", errorMsg);
 }
 
 
@@ -369,7 +369,7 @@ pyMainItf::notifyInstrumentationError(cmRecord::RecErrorType type, int threadId,
 void
 pyMainItf::notifyErrorForDisplay(cmErrorKind kind, const bsString& errorMsg)
 {
-    log(LOG_ERROR, errorMsg);
+    logToConsole(LOG_ERROR, errorMsg);
 }
 
 

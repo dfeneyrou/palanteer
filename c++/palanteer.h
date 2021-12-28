@@ -145,8 +145,8 @@
 #endif // ifndef PL_IMPL_STACKTRACE
 
 // Display the stacktrace on console using terminal colors. Enabled by default.
-#ifndef PL_IMPL_STACKTRACE_COLOR
-#define PL_IMPL_STACKTRACE_COLOR 1
+#ifndef PL_IMPL_CONSOLE_COLOR
+#define PL_IMPL_CONSOLE_COLOR 1
 #endif
 
 // Exit function when a crash occurs, called after logging the crash in Palanteer, flushing the recording and restoring signals
@@ -334,6 +334,7 @@
 
 #if USE_PL==1
 #include <cstdio>  // For snprintf etc...
+#include <cstdarg> // For va_list used in logs
 #include <atomic>  // Lock-free thread safety is done with atomics
 #include <thread>  // For this_thread::yield()
 #endif
@@ -423,6 +424,15 @@ struct plStats {
 
 enum plMode { PL_MODE_CONNECTED, PL_MODE_STORE_IN_FILE, PL_MODE_INACTIVE};
 
+enum plLogLevel {
+    PL_LOG_LEVEL_ALL   = 0,  // Just for clarity
+    PL_LOG_LEVEL_DEBUG = 0,
+    PL_LOG_LEVEL_INFO  = 1,
+    PL_LOG_LEVEL_WARN  = 2,
+    PL_LOG_LEVEL_ERROR = 3,
+    PL_LOG_LEVEL_NONE  = 4
+};
+
 
 // If USE_PL==0 or not defined, the full Palanteer service is disabled (events, remote control, palanteer assertions)
 #if USE_PL==1
@@ -432,6 +442,12 @@ void plSetFilename(const char* filename);
 
 // This configuration is considered only when plInitAndStart is called, and if mode is PL_MODE_CONNECTED
 void plSetServer(const char* serverAddr, int serverPort);
+
+// This function dynamically sets the minimum level of the log to be recorded. Default is "debug" (i.e. all logs).
+void plSetLogLevelRecord(plLogLevel level);
+
+// This function dynamically sets the minimum level of the log to be displayed on consoled. Default is "warn".
+void plSetLogLevelConsole(plLogLevel level);
 
 // The service shall be initialized once, before any usage of event logging.
 //  The 'appName' is the application name seen by the server
@@ -469,6 +485,8 @@ void plDetachVirtualThread(bool isSuspended);
 
 #define plSetFilename(filename_) PL_UNUSED(filename_)
 #define plSetServer(serverAddr_, serverPort_)
+#define plSetLogLevelRecord(level) PL_UNUSED(level)
+#define plSetLogLevelConsole(level) PL_UNUSED(level)
 #define plInitAndStart(appName_, ...) PL_UNUSED(appName_)
 #define plStopAndUninit()
 #define plGetStats() plStats { 0, 0, 0, 0, 0, 0, 0, 0 }
@@ -567,20 +585,48 @@ void plDetachVirtualThread(bool isSuspended);
 #define PL_PRIV_VARS_PARAM9(v1, v2, v3, v4, v5, v6, v7, v8, v9)  plVar_(v1); plVar_(v2); plVar_(v3); plVar_(v4); plVar_(v5); plVar_(v6); plVar_(v7); plVar_(v8); plVar_(v9);
 #define PL_PRIV_VARS_PARAM10(v1, v2, v3, v4, v5, v6, v7, v8, v9, v10)  plVar_(v1); plVar_(v2); plVar_(v3); plVar_(v4); plVar_(v5); plVar_(v6); plVar_(v7); plVar_(v8); plVar_(v9); plVar_(v10);
 
-// Log a named & categorized & dated event that shall be highlighted in the viewer. Filename is not tracked (no enough space)
-#define plMarker(category_, msg_)                                       \
-    do { if(PL_IS_ENABLED_()) {                                         \
-            plPriv::eventLogRaw(PL_STRINGHASH(msg_), PL_STRINGHASH(category_), PL_EXTERNAL_STRINGS?0:(msg_), PL_EXTERNAL_STRINGS?0:(category_), __LINE__, \
-                                PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_MARKER, PL_GET_CLOCK_TICK_FUNC()); \
-        } } while(0)
-#define plgMarker(group_, category_, msg_) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plMarker(category_, msg_),do {} while(0))
-
-#define plMarkerDyn(category_, msg_, ...)                               \
-    do { if(PL_IS_ENABLED_())                                           \
-            plPriv::eventLogRawDynFile(PL_STRINGHASH(category_), msg_, PL_EXTERNAL_STRINGS?0:category_, __LINE__, \
-                                       PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_MARKER, PL_GET_CLOCK_TICK_FUNC(),##__VA_ARGS__); \
+// Log "logs"
+#define plLogDebug(category_, format_, ...)                             \
+    do {                                                                \
+        (void)sizeof(printf(format_, ##__VA_ARGS__));  /* Check consistency of printf parameters. "-Werror=format" is recommended */ \
+        plPriv::eventLogLog(PL_STRINGHASH(format_), PL_STRINGHASH(category_), PL_EXTERNAL_STRINGS?0:(format_), PL_EXTERNAL_STRINGS?0:(category_), \
+                            PL_LOG_LEVEL_DEBUG,##__VA_ARGS__);          \
     } while(0)
-#define plgMarkerDyn(group_, category_, msg_, ...) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plMarkerDyn(category_, msg_,##__VA_ARGS__),do {} while(0))
+#define plgLogDebug(group_, category_, format_, ...) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plLogDebug(category_, format_,##__VA_ARGS__),do {} while(0))
+
+#define plLogInfo(category_, format_, ...)                              \
+    do {                                                                \
+        (void)sizeof(printf(format_, ##__VA_ARGS__));  /* Check consistency of printf parameters. "-Werror=format" is recommended */ \
+        plPriv::eventLogLog(PL_STRINGHASH(format_), PL_STRINGHASH(category_), PL_EXTERNAL_STRINGS?0:(format_), PL_EXTERNAL_STRINGS?0:(category_), \
+                            PL_LOG_LEVEL_INFO,##__VA_ARGS__);           \
+    } while(0)
+#define plgLogInfo(group_, category_, format_, ...) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plLogInfo(category_, format_,##__VA_ARGS__),do {} while(0))
+
+#define plLogWarn(category_, format_, ...)     \
+    do {                                                                \
+        (void)sizeof(printf(format_, ##__VA_ARGS__));  /* Check consistency of printf parameters. "-Werror=format" is recommended */ \
+        plPriv::eventLogLog(PL_STRINGHASH(format_), PL_STRINGHASH(category_), PL_EXTERNAL_STRINGS?0:(format_), PL_EXTERNAL_STRINGS?0:(category_), \
+                            PL_LOG_LEVEL_WARN,##__VA_ARGS__);           \
+    } while(0)
+#define plgLogWarn(group_, category_, format_, ...) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plLogWarn(category_, format_,##__VA_ARGS__),do {} while(0))
+
+#define plLogError(category_, format_, ...)      \
+    do {                                                                \
+        (void)sizeof(printf(format_, ##__VA_ARGS__));  /* Check consistency of printf parameters. "-Werror=format" is recommended */ \
+        plPriv::eventLogLog(PL_STRINGHASH(format_), PL_STRINGHASH(category_), PL_EXTERNAL_STRINGS?0:(format_), PL_EXTERNAL_STRINGS?0:(category_), \
+                            PL_LOG_LEVEL_ERROR,##__VA_ARGS__);          \
+    } while(0)
+#define plgLogError(group_, category_, format_, ...) PL_PRIV_IF(PLG_IS_COMPILE_TIME_ENABLED_(group_), plLogError(category_, format_,##__VA_ARGS__),do {} while(0))
+
+
+// DEPRECATED plMarker API: use plLog<level> instead. Will be removed in a future release
+// Current implementation is a wrapper on plLogWarn, but the compatibility is not 100%:
+//   If your msg_ string is not static, you have to replace plMarkerDyn("category", dynamicString) with plMarkerDyn("category", "%s", dynamicString)
+#define plMarker(category_, msg_)                   plLogWarn(category_, msg_)
+#define plgMarker(group_, category_, msg_)          plgLogWarn(group_, category_, msg_)
+#define plMarkerDyn(category_, msg_, ...)           plLogWarn(category_, msg_,##__VA_ARGS__)
+#define plgMarkerDyn(group_, category_, msg_ ,...)  plgLogWarn(group_, category_, msg_,##__VA_ARGS__)
+
 
 // Mutex tracking macros (non re-entrant mutexes only)
 
@@ -686,7 +732,15 @@ void plDetachVirtualThread(bool isSuspended);
 #define plMarker(category_, msg_)                   do { } while(0)
 #define plgMarker(group_, category_, msg_)          do { } while(0)
 #define plMarkerDyn(category_, msg_, ...)           do { } while(0)
-#define plgMarkerDyn(group_, category_, msg_ ,...)  do { } while(0)
+#define plgMarkerDyn(group_, category_, msg_,...)   do { } while(0)
+#define plLogDebug(category_, format_,...)          do { } while(0)
+#define plgLogDebug(group_, category_, format_,...) do { } while(0)
+#define plLogInfo(category_, format_,...)           do { } while(0)
+#define plgLogInfo(group_, category_, format_,...)  do { } while(0)
+#define plLogWarn(category_, format_, ...)          do { } while(0)
+#define plgLogWarn(group_, category_,format_, ...)  do { } while(0)
+#define plLogError(category_, format_,...)          do { } while(0)
+#define plgLogError(group_, category_, format_,...) do { } while(0)
 #define plVar(...)                                  do { } while(0)
 #define plgVar(...)                                 do { } while(0)
 #define plLockWait(name_)                           do { } while(0)
@@ -715,17 +769,26 @@ void plDetachVirtualThread(bool isSuspended);
 #if defined(__GNUC__) || defined(__clang__)
 #define PL_LIKELY(x)   (__builtin_expect(!!(x), 1))
 #define PL_UNLIKELY(x) (__builtin_expect(!!(x), 0))
-#define PL_NOINLINE_PRE
-#define PL_NOINLINE_POST __attribute__ ((noinline))
+#define PL_NOINLINE      __attribute__ ((noinline))
 #define PL_NOINSTRUMENT  __attribute__ ((no_instrument_function))
 #define PL_NORETURN      __attribute__ ((__noreturn__))
 #else
 #define PL_LIKELY(x)   (x)
 #define PL_UNLIKELY(x) (x)
-#define PL_NOINLINE_PRE
-#define PL_NOINLINE_POST
+#define PL_NOINLINE
 #define PL_NOINSTRUMENT
 #define PL_NORETURN
+#endif
+
+#if defined(__GNUC__)
+#define PL_PRINTF_CHECK(formatStringIndex_, firstArgIndex_) __attribute__((__format__(__printf__, formatStringIndex_, firstArgIndex_)))
+#define PL_PRINTF_FORMAT_STRING
+#elif _MSC_VER
+#define PL_PRINTF_CHECK(formatStringIndex_, firstArgIndex_)
+#define PL_PRINTF_FORMAT_STRING _Printf_format_string_
+#else
+#define PL_PRINTF_CHECK(formatStringIndex_, firstArgIndex_)
+#define PL_PRINTF_FORMAT_STRING
 #endif
 
 #define PL_UNUSED(x) ((void)(x))
@@ -830,6 +893,7 @@ namespace plPriv {
 struct plString_t {
     plString_t(void) = default;
     plString_t(const char* value_, plPriv::hashStr_t hash_) : value(value_), hash(hash_) {}
+    operator const char*() const { return value; }
     const char*       value; // May be null (case of external strings)
     plPriv::hashStr_t hash;  // Zero means no hash
 };
@@ -883,8 +947,7 @@ namespace plPriv {
     { if(name) { printParamType_(infoStr, offset, name, value); } printParams_(infoStr, offset, args...); }
 
     // Variadic template based assertion display
-    PL_NOINLINE_PRE
-    template<typename... Args> void PL_NOINLINE_POST PL_NORETURN failedAssert(const char* filename, int lineNbr, const char* function, const char* condition, Args... args)
+    template<typename... Args> void PL_NOINLINE PL_NORETURN failedAssert(const char* filename, int lineNbr, const char* function, const char* condition, Args... args)
     {
         char infoStr[CRASH_MSG_SIZE];
         int offset = snprintf(infoStr, sizeof(infoStr), "[PALANTEER] Assertion failed: %s\n  On function: %s\n  On file    : %s(%d)\n", condition, function, filename, lineNbr);
@@ -946,8 +1009,7 @@ namespace plPriv {
     { if(nameHash) { printParamTypeEs_(infoStr, offset, nameHash, value); } printParamsEs_(infoStr, offset, args...); }
 
     // Variadic template based assertion display
-    PL_NOINLINE_PRE
-    template<typename... Args> void PL_NOINLINE_POST PL_NORETURN failedAssertEs(hashStr_t filenameHash, int lineNbr, hashStr_t conditionHash, Args... args)
+    template<typename... Args> void PL_NOINLINE PL_NORETURN failedAssertEs(hashStr_t filenameHash, int lineNbr, hashStr_t conditionHash, Args... args)
     {
         char infoStr[CRASH_MSG_SIZE];
         int  offset = snprintf(infoStr, sizeof(infoStr), "[PALANTEER] Assertion failed: @@%016" PL_PRI_HASH "@@\n  On file @@%016" PL_PRI_HASH "@@(%d)\n",
@@ -1153,10 +1215,7 @@ public:
     }
 
     // Output
-    void setErrorState(const char* format=0, ...)
-#if defined(__clang__) || defined(__GNUC__)
-        __attribute__ ((format (printf, 2, 3))) // Check format at compile time
-#endif
+    void PL_PRINTF_CHECK(2, 3) setErrorState(PL_PRINTF_FORMAT_STRING const char* format=0, ...)
     {
         _execStatus = false;
         if(!format) return;
@@ -1168,10 +1227,7 @@ public:
         if(writtenQty>_response.free_space()-1) writtenQty = _response.free_space()-1;
         _response.resize(_response.size()+writtenQty);
     }
-    bool addToResponse(const char* format, ...)
-#if defined(__clang__) || defined(__GNUC__)
-        __attribute__ ((format (printf, 2, 3))) // Check format at compile time
-#endif
+    bool PL_PRINTF_CHECK(2, 3) addToResponse(PL_PRINTF_FORMAT_STRING const char* format, ...)
     {
         if(_response.free_space()<=0) return false;
         va_list args;
@@ -1254,16 +1310,8 @@ public:
     int64_t     getParamInt   (int paramIdx) const { PL_UNUSED(paramIdx); return 0 ; }
     double      getParamFloat (int paramIdx) const { PL_UNUSED(paramIdx); return 0.; }
     const char* getParamString(int paramIdx) const { PL_UNUSED(paramIdx); return 0 ; }
-    void        setErrorState(const char* format=0, ...)
-#if defined(__clang__) || defined(__GNUC__)
-        __attribute__ ((format (printf, 2, 3))) // Check format at compile time
-#endif
-    { PL_UNUSED(format); }
-    bool addToResponse(const char* format, ...)
-#if defined(__clang__) || defined(__GNUC__)
-        __attribute__ ((format (printf, 2, 3))) // Check format at compile time
-#endif
-    { PL_UNUSED(format); return true; }
+    void PL_PRINTF_CHECK(2, 3) setErrorState(PL_PRINTF_FORMAT_STRING const char* format=0, ...) { PL_UNUSED(format); }
+    bool PL_PRINTF_CHECK(2, 3) addToResponse(PL_PRINTF_FORMAT_STRING const char* format, ...)   { PL_UNUSED(format); return true; }
     void clearResponse(void) { }
     // Introspection for generic wrappers
     uint64_t getCliNameHash(void) const { return 0; }
@@ -1291,14 +1339,14 @@ public:
 
 // Event flags
 #define PL_FLAG_TYPE_DATA_NONE       0
-#define PL_FLAG_TYPE_DATA_TIMESTAMP  1
-#define PL_FLAG_TYPE_DATA_S32        2
-#define PL_FLAG_TYPE_DATA_U32        3
+#define PL_FLAG_TYPE_DATA_S32        1
+#define PL_FLAG_TYPE_DATA_U32        2
+#define PL_FLAG_TYPE_DATA_FLOAT      3
 #define PL_FLAG_TYPE_DATA_S64        4
 #define PL_FLAG_TYPE_DATA_U64        5
-#define PL_FLAG_TYPE_DATA_FLOAT      6
-#define PL_FLAG_TYPE_DATA_DOUBLE     7
-#define PL_FLAG_TYPE_DATA_STRING     8
+#define PL_FLAG_TYPE_DATA_DOUBLE     6
+#define PL_FLAG_TYPE_DATA_STRING     7
+#define PL_FLAG_TYPE_DATA_TIMESTAMP  8
 #define PL_FLAG_TYPE_DATA_QTY        9
 #define PL_FLAG_TYPE_THREADNAME      9
 #define PL_FLAG_TYPE_MEMORY_FIRST   10  // Memory infos are spread on 2 events
@@ -1316,8 +1364,9 @@ public:
 #define PL_FLAG_TYPE_LOCK_RELEASED  18
 #define PL_FLAG_TYPE_LOCK_NOTIFIED  19
 #define PL_FLAG_TYPE_LOCK_LAST      19
-#define PL_FLAG_TYPE_MARKER         20
+#define PL_FLAG_TYPE_LOG            20
 #define PL_FLAG_TYPE_WITH_TIMESTAMP_LAST 20
+#define PL_FLAG_TYPE_LOG_PARAM      21
 #define PL_FLAG_TYPE_MASK           0x1F
 #define PL_FLAG_SCOPE_BEGIN         0x20
 #define PL_FLAG_SCOPE_END           0x40
@@ -1335,7 +1384,7 @@ public:
 #define PALANTEER_VERSION_NUM 501  // Monotonic number. 100 per version component. Official releases are multiple of 100
 
 // Client-Server protocol version
-#define PALANTEER_CLIENT_PROTOCOL_VERSION 2
+#define PALANTEER_CLIENT_PROTOCOL_VERSION 3
 
 // Maximum thread quantity is 254 (server limitation for efficient storage)
 #define PL_MAX_THREAD_QTY 254
@@ -1367,14 +1416,14 @@ namespace plPriv {
     // Event structure for immediate storage in buffer
     // Max size is 8*8= 64 bytes on 64 bits,  9*4=36 bytes on 32 bits arch
     struct EventInt {
+        uint8_t     threadId;
+        uint8_t     flags;
+        uint16_t    lineNbr;
+        uint32_t    extra;
         hashStr_t   filenameHash;
         hashStr_t   nameHash;
         const char* filename;
         const char* name;
-        uint16_t    lineNbr;
-        uint8_t     threadId;
-        uint8_t     flags;
-        uint32_t    extra;
         union {
             int32_t  vInt;
             uint32_t vU32;
@@ -1392,10 +1441,12 @@ namespace plPriv {
 
 #if PL_COMPACT_MODEL==1
 #define PL_PRIV_RAW_FIELD vU32
+#define PL_PRIV_EVENTEXT_SIZE 12
     typedef uint32_t bigRawData_t;
     typedef uint16_t nameData_t;
 #else
 #define PL_PRIV_RAW_FIELD vU64
+#define PL_PRIV_EVENTEXT_SIZE 24
     typedef uint64_t bigRawData_t;
     typedef uint32_t nameData_t;
 #endif
@@ -1426,6 +1477,9 @@ namespace plPriv {
         int      collectBufferMaxEventQty = 0;
         std::atomic<int> isBufferSaturated = { 0 };
         std::atomic<int> isDynStringPoolEmpty = { 0 };
+        plLogLevel minLogLevelRecord  = PL_LOG_LEVEL_DEBUG;
+        plLogLevel minLogLevelConsole = PL_LOG_LEVEL_WARN;
+        uint64_t   originNs = 0ULL;  // Low resolution (used for logs)
         MemoryPool<DynString_t> dynStringPool;
         ThreadInfo_t            threadInfos[PL_MAX_THREAD_QTY];
     };
@@ -1543,13 +1597,13 @@ namespace plPriv {
 
     inline EventInt& eventLogBase(uint32_t bi, hashStr_t filenameHash_, hashStr_t nameHash_, const char* filename_, const char* name_, int lineNbr_, int flags_) {
         EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
+        e.threadId     = getThreadId();
+        e.flags        = (uint8_t)flags_;
+        e.lineNbr      = (uint16_t)lineNbr_;
         e.filenameHash = filenameHash_;
         e.nameHash     = nameHash_;
         e.filename     = filename_;
         e.name         = name_;
-        e.lineNbr      = (uint16_t)lineNbr_;
-        e.threadId     = getThreadId();
-        e.flags        = (uint8_t)flags_;
         return e;
     }
 
@@ -1676,14 +1730,14 @@ namespace plPriv {
     inline void eventLogCSwitch(int threadId_, int sysThreadId_, int oldCoreId_, int newCoreId_, clockType_t timestamp_) {
         uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
         EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
+        e.threadId     = (uint8_t)threadId_;
+        e.flags        = PL_FLAG_TYPE_CSWITCH;
+        e.lineNbr      = (uint16_t)((oldCoreId_<<8) | newCoreId_);
+        e.extra        = sysThreadId_;
         e.filenameHash = PL_STRINGHASH("");
         e.nameHash     = PL_STRINGHASH("");
         e.filename     = "";
         e.name         = "";
-        e.lineNbr      = (uint16_t)((oldCoreId_<<8) | newCoreId_);
-        e.threadId     = (uint8_t)threadId_;
-        e.flags        = PL_FLAG_TYPE_CSWITCH;
-        e.extra        = sysThreadId_;
         e.PL_PRIV_RAW_FIELD = (clockType_t)timestamp_;
         e.writeAck     = 1;
         eventCheckOverflow(bi);
@@ -1790,6 +1844,125 @@ namespace plPriv {
         e.writeAck      = 1;
         if(!doSkipOverflowCheck_) eventCheckOverflow(bi);
     }
+
+
+    // Logs
+
+#define EVENT_LOG_STORE_PARAM_IMPL(paramType_t, storedParamType_t, extraCast, flagType) \
+    template<typename... Args>                                          \
+    inline void                                                         \
+    eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, paramType_t value, Args... args) \
+    {                                                                   \
+        if(4+dataOffset+sizeof(storedParamType_t)>PL_PRIV_EVENTEXT_SIZE) { \
+            EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX]; \
+            e.lineNbr  = paramTypes;                                    \
+            e.writeAck = 1;                                             \
+            eventCheckOverflow(bi);                                     \
+            bi = globalCtx.bankAndIndex.fetch_add(1);                   \
+            EventInt& e2 = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX]; \
+            e2.threadId  = getThreadId();                               \
+            e2.flags     = PL_FLAG_TYPE_LOG_PARAM;                      \
+            paramTypes   = 0;                                           \
+            paramIdx     = 0;                                           \
+            dataOffset   = 0;                                           \
+        }                                                               \
+        /* Update the u16 type area, which can hold up to 4 times 3 bits, the top bit being "is it the last param event?" */ \
+        paramTypes |= flagType<<(3*paramIdx);                           \
+        /* Raw write inside the event (C++ limits the unamed struct & union usage, which would have made it less hacky...) */ \
+        uint8_t* payload = ((uint8_t*)(&(globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX])))+4; \
+        *((storedParamType_t*)(payload+dataOffset)) = (storedParamType_t) extraCast value; \
+        eventLogStoreParam(bi, paramTypes, paramIdx+1, dataOffset+sizeof(storedParamType_t), args...); \
+    }
+
+
+    inline void
+    eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset)
+    {
+        (void)paramIdx; (void)dataOffset;
+        EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
+        e.lineNbr  = 0x8000 | paramTypes;
+        e.writeAck = 1;
+        eventCheckOverflow(bi);
+    }
+
+    template<typename... Args> void eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, int32_t  value, Args... args);
+    template<typename... Args> void eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, uint32_t value, Args... args);
+    template<typename... Args> void eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, int64_t  value, Args... args);
+    template<typename... Args> void eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, uint64_t value, Args... args);
+    template<typename... Args> void eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, float    value, Args... args);
+    template<typename... Args> void eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, double   value, Args... args);
+    template<typename... Args> void eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, void*    value, Args... args);
+    template<typename... Args> void eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, const char* value, Args... args);
+    EVENT_LOG_STORE_PARAM_IMPL(int32_t,  int32_t,  , PL_FLAG_TYPE_DATA_S32);
+    EVENT_LOG_STORE_PARAM_IMPL(uint32_t, uint32_t, , PL_FLAG_TYPE_DATA_U32);
+    EVENT_LOG_STORE_PARAM_IMPL(float,    float,    , PL_FLAG_TYPE_DATA_FLOAT);
+#if PL_COMPACT_MODEL==1
+    EVENT_LOG_STORE_PARAM_IMPL(void*,    uint32_t,   (uintptr_t), PL_FLAG_TYPE_DATA_U32);
+    EVENT_LOG_STORE_PARAM_IMPL(int64_t,  int32_t,  , PL_FLAG_TYPE_DATA_S32);
+    EVENT_LOG_STORE_PARAM_IMPL(uint64_t, uint32_t, , PL_FLAG_TYPE_DATA_U32);
+    EVENT_LOG_STORE_PARAM_IMPL(double,   float,    , PL_FLAG_TYPE_DATA_FLOAT);
+#else
+    EVENT_LOG_STORE_PARAM_IMPL(void*,    uint64_t,   (uintptr_t), PL_FLAG_TYPE_DATA_U64);
+    EVENT_LOG_STORE_PARAM_IMPL(int64_t,  int64_t,  , PL_FLAG_TYPE_DATA_S64);
+    EVENT_LOG_STORE_PARAM_IMPL(uint64_t, uint64_t, , PL_FLAG_TYPE_DATA_U64);
+    EVENT_LOG_STORE_PARAM_IMPL(double,   double,   , PL_FLAG_TYPE_DATA_DOUBLE);
+#endif
+
+    template<typename... Args> void
+    eventLogStoreParam(uint32_t bi, uint16_t paramTypes, int paramIdx, int dataOffset, const char* value, Args... args)
+    {
+        if(dataOffset+8>PL_PRIV_EVENTEXT_SIZE-4) {
+            EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
+            e.lineNbr  = paramTypes;
+            e.writeAck = 1;
+            eventCheckOverflow(bi);
+            bi = globalCtx.bankAndIndex.fetch_add(1);
+            EventInt& e2 = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
+            e2.threadId  = getThreadId();
+            e2.flags     = PL_FLAG_TYPE_LOG_PARAM;
+            paramTypes = 0;
+            paramIdx = 0;
+            dataOffset = 0;
+        }
+        /* Update the u16 type area, which can hold up to 4 times 3 bits, the top bit being "is it the last param event?" */
+        paramTypes |= PL_FLAG_TYPE_DATA_STRING<<(3*paramIdx);
+        /* Raw write inside the event (C++ limits the unamed struct & union usage, which would have made it less hacky...) */
+        uint8_t* payload = ((uint8_t*)&globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX])+4;
+        *((const char**)(payload+dataOffset)) = getDynString(value);
+        eventLogStoreParam(bi, paramTypes, paramIdx+1, dataOffset+8, args...);
+    }
+
+    template<typename... Args> void eventLogConsoleDisplay(plLogLevel level, const char* category_, const char* format, ...);
+
+    template<typename... Args>
+    inline void
+    eventLogLog(hashStr_t formatHash_, hashStr_t categoryHash_, const char* format_, const char* category_, plLogLevel level, Args... args)
+    {
+        if(PL_IS_ENABLED_() && level>=globalCtx.minLogLevelRecord) {
+            eventLogRaw(formatHash_, categoryHash_, format_, category_, (int)level, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_LOG, PL_GET_CLOCK_TICK_FUNC());
+            uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
+            EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX]; \
+            e.threadId  = getThreadId();
+            e.flags     = PL_FLAG_TYPE_LOG_PARAM;
+            eventLogStoreParam(bi, 0, 0, 0, args...); // Recursive storage of provided parameters
+        }
+        if(level>=globalCtx.minLogLevelConsole) {
+            eventLogConsoleDisplay(level, category_, format_, args...);
+        }
+    }
+
+
+    inline void
+    eventLogLog(hashStr_t formatHash_, hashStr_t categoryHash_, const char* format_, const char* category_, plLogLevel level)
+    {
+        if(PL_IS_ENABLED_() && level>=globalCtx.minLogLevelRecord) {
+            eventLogRaw(formatHash_, categoryHash_, format_, category_, 0x8000 | (int)level, PL_STORE_COLLECT_CASE_, PL_FLAG_TYPE_LOG, PL_GET_CLOCK_TICK_FUNC());
+        }
+        if(level>=globalCtx.minLogLevelConsole) {
+            eventLogConsoleDisplay(level, category_, format_);
+        }
+    }
+
 
     // Thread declaration function
     inline void declareThread(hashStr_t nameHash_, const char* name_, bool doSkipOverflowCheck_, bool isDynName) {
@@ -2112,7 +2285,7 @@ namespace plPriv {
 #if PL_NOASSERT==0
 
 #if PL_EXTERNAL_STRINGS==0
-    PL_NOINLINE_PRE void PL_NOINLINE_POST
+    void PL_NOINLINE
     failedAssertSimple(const char* filename, int lineNbr, const char* function, const char* condition)
     {
         char infoStr[1024];
@@ -2120,7 +2293,7 @@ namespace plPriv {
         plCrash(infoStr);
     }
 #else
-    PL_NOINLINE_PRE void PL_NOINLINE_POST
+    void PL_NOINLINE
     failedAssertSimpleEs(hashStr_t filenameHash, int lineNbr, hashStr_t conditionHash)
     {
         char infoStr[1024];
@@ -2516,6 +2689,7 @@ namespace plPriv {
         uint32_t      stringUniqueId = 0;
         uint32_t      prevBankAndIndex = 1UL<<31;
         double        maxSendingLatencyNs = 100000000.;
+        std::mutex    logDisplayMx;
         // Automatic instrumentation
 #if PL_IMPL_AUTO_INSTRUMENT==1
         char* baseVirtualAddress = 0;
@@ -2577,9 +2751,50 @@ namespace plPriv {
 
 
     //-----------------------------------------------------------------------------
-    // [PRIVATE IMPLEMENTATION] Crash and stacktrace handlers
+    // [PRIVATE IMPLEMENTATION] Misc. functions
     //-----------------------------------------------------------------------------
 
+#if PL_NOEVENT==0
+
+    template<typename... Args>
+    void
+    eventLogConsoleDisplay(plLogLevel level, const char* category_, const char* format, ...)
+    {
+#if PL_IMPL_CONSOLE_COLOR==1
+        constexpr const char* levelStr[4] = { "[\033[37mdebug\033[m]", "[\033[32minfo \033[m]", "[\033[33m\033[1mwarn \033[m]", "[\033[1m\033[41merror\033[m]" };
+#define CAT_COLOR       "\033[37m"
+#define CAT_COLOR_RESET "\033[m"
+#else
+        constexpr const char* levelStr[4] = { "[debug]", "[info ]", "[warn ]", "[error]" };
+#define CAT_COLOR       ""
+#define CAT_COLOR_RESET ""
+#endif
+
+        uint64_t relativeDate = PL_GET_SYSTEM_CLOCK_NS()-globalCtx.originNs;
+        int hours     = (int)(relativeDate/3600000000000ULL);
+        relativeDate -= 3600000000000ULL*(uint64_t)hours;
+        int minutes   = (int)(relativeDate/60000000000ULL);
+        relativeDate -= 60000000000ULL*(uint64_t)minutes;
+        int seconds   = (int)(relativeDate/1000000000ULL);
+        relativeDate -= 1000000000ULL*(uint64_t)seconds;
+        {
+            std::lock_guard<std::mutex> lk(implCtx.logDisplayMx);
+            printf("[%02d:%02d:%02d.%09d] %s [" CAT_COLOR "%s" CAT_COLOR_RESET "] ", hours, minutes, seconds, (int)relativeDate, levelStr[level], category_);
+
+            va_list ap;
+            va_start(ap, format);
+            (void)vprintf(format, ap);
+            va_end (ap);
+            printf("\n");
+        }
+    }
+
+#endif // if PL_NOEVENT==0
+
+
+    //-----------------------------------------------------------------------------
+    // [PRIVATE IMPLEMENTATION] Crash and stacktrace handlers
+    //-----------------------------------------------------------------------------
 
 #if defined(__unix__) && PL_IMPL_STACKTRACE==1
     void
@@ -2628,7 +2843,7 @@ namespace plPriv {
                              filename? strrchr(filename,'/')+1:"<unknown>", filename?lineNbr:0,
                              status?dwfl_module_addrname(module, addr):demangledName);
                     snprintf(localMsgStr, sizeof(localMsgStr),
-#if PL_IMPL_STACKTRACE_COLOR==1
+#if PL_IMPL_CONSOLE_COLOR==1
                              "  \033[93m#%-2d \033[0m%s(%d) : \033[36m%s\033[0m\n",
 #else
                              "  #%-2d %s(%d) : %s\n",
@@ -2640,7 +2855,7 @@ namespace plPriv {
                 else {
                     snprintf(msgStr, PL_DYN_STRING_MAX_SIZE, "   #%-2d 0x%" PRIX64 " : %s", depth-skipDepthQty, ip-4, dwfl_module_addrname(module, addr));
                     snprintf(localMsgStr, sizeof(localMsgStr),
-#if PL_IMPL_STACKTRACE_COLOR==1
+#if PL_IMPL_CONSOLE_COLOR==1
                              "  \033[93m#%-2d \033[0m0x%" PRIX64 " : \033[36m%s\033[0m\n",
 #else
                              "  #%-2d 0x%" PRIX64 " : %s\n",
@@ -2718,7 +2933,7 @@ namespace plPriv {
                     bool isFuncValid = (SymFromInlineContext(proc, ptr, curContext, 0, symInfo)!=0);
                     bool isLineValid = (SymGetLineFromInlineContext(proc, ptr, curContext, 0, &displacement, &line)!=0);
                     ++curContext;
-#if PL_IMPL_STACKTRACE_COLOR==1
+#if PL_IMPL_CONSOLE_COLOR==1
                     PL_CRASH_STACKTRACE_DUMP_INFO_("inl", "\033[93m", "\033[36m", "\033[0m");
 #else
                     PL_CRASH_STACKTRACE_DUMP_INFO_("inl", "", "", "");
@@ -2730,7 +2945,7 @@ namespace plPriv {
             bool isFuncValid = (SymFromAddr         (proc, ptr, 0, symInfo)!=0);
             bool isLineValid = (SymGetLineFromAddr64(proc, ptr-1, &displacement, &line)!=0);
             snprintf(depthStr, sizeof(depthStr), "#%-2d", depth-skipDepthQty);
-#if PL_IMPL_STACKTRACE_COLOR==1
+#if PL_IMPL_CONSOLE_COLOR==1
             PL_CRASH_STACKTRACE_DUMP_INFO_(depthStr, "\033[93m", "\033[36m", "\033[0m");
 #else
             PL_CRASH_STACKTRACE_DUMP_INFO_(depthStr, "", "", "");
@@ -3100,7 +3315,7 @@ namespace plPriv {
                        ((cliRequestNbr==cliRequestQty-1)? 0 : 2+bufferFullMessageLength)) { // minimum size to store a truncated response, if not last command
                         // Not enough space in response buffer
                         plAssert(rspOffset+2+bufferFullMessageLength<=PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY); // It should by design
-                        plgMarker(PL_VERBOSE, "error", "Not enough space in the response buffer");
+                        plgLogError(PL_VERBOSE, "error", "Not enough space in the response buffer");
                         br[rspOffset+0] = (((int)PL_ERROR)>>8)&0xFF;
                         br[rspOffset+1] = (((int)PL_ERROR)>>0)&0xFF;
                         snprintf((char*)&br[rspOffset+2], bufferFullMessageLength+1, "CLI response buffer is full");
@@ -3147,7 +3362,7 @@ namespace plPriv {
             ic.threadInitCvTx.notify_one();
         }
 
-        plgMarker(PL_VERBOSE, "threading", "End of Palanteer reception loop");
+        plgLogInfo(PL_VERBOSE, "threading", "End of Palanteer reception loop");
     }
 
 #endif // if PL_NOCONTROL==0
@@ -3420,6 +3635,31 @@ namespace plPriv {
             }
             src.writeAck = 0; // Clean the write acknowledgement, for the next cycle
 
+            // Copy the remaining values
+            dst.threadId = src.threadId;
+            dst.flags    = src.flags;
+            dst.lineNbr  = src.lineNbr;
+
+            // Log params case (special because the layout is an exception to the structure)
+            if(src.flags==PL_FLAG_TYPE_LOG_PARAM) {
+                // Raw copy of the payload, starting from the 4th byte. It contains up to 4 packed values
+                memcpy(((uint8_t*)&dst)+4, ((uint8_t*)&src)+4, sizeof(EventExt)-4);
+                // Update the string data: replace the pointer with the index
+                int dataOffset = 0;
+                for(int paramTypeShift=0; paramTypeShift<=12; paramTypeShift+=3) {
+                    int paramType = (dst.lineNbr>>paramTypeShift)&0x7;
+                    if(paramType==PL_FLAG_TYPE_DATA_NONE) break;
+                    if(paramType==PL_FLAG_TYPE_DATA_STRING) {
+                        uint8_t* payload = ((uint8_t*)&dst)+4+dataOffset;
+                        const char* name = *(const char**)payload;
+                        hashStr_t strNameHash  = hashString(name); // Runtime hash (as the string is dynamic, no choice)
+                        PL_PRIV_PROCESS_STRING(strNameHash, name, *(uint32_t*)payload);
+                        globalCtx.dynStringPool.release((DynString_t*)name);
+                    }
+                    dataOffset += (paramType>=PL_FLAG_TYPE_DATA_S64)? 8 : 4;
+                }
+                continue;
+            }
             // Memory case (special because many infos to fit)
             if(src.flags==PL_FLAG_TYPE_ALLOC_PART || src.flags==PL_FLAG_TYPE_DEALLOC_PART) {
                 dst.memSize = src.extra;
@@ -3457,11 +3697,6 @@ namespace plPriv {
                 }
             }
 
-            // Copy the remaining values
-            dst.threadId = src.threadId;
-            dst.flags    = src.flags;
-            dst.lineNbr  = src.lineNbr;
-
             // Copy data fields
             dst.PL_PRIV_RAW_FIELD = src.PL_PRIV_RAW_FIELD; // Enough to copy all types except strings (endianness will be handled on server side)
             if(src.flags==PL_FLAG_TYPE_DATA_STRING) {
@@ -3495,9 +3730,9 @@ namespace plPriv {
 
         // Some saturation are detected?
         int isSaturated = globalCtx.isBufferSaturated.exchange(0);
-        if(isSaturated) plMarker("SATURATION", "EVENT BUFFER IS FULL. PLEASE INCREASE ITS SIZE FOR VALID MEASUREMENTS");
+        if(isSaturated) plLogError("SATURATION", "EVENT BUFFER IS FULL. PLEASE INCREASE ITS SIZE FOR VALID MEASUREMENTS");
         isSaturated = globalCtx.isDynStringPoolEmpty.exchange(0);
-        if(isSaturated) plMarker("SATURATION", "DYNAMIC STRING POOL IS EMPTY. PLEASE INCREASE ITS SIZE FOR VALID MEASUREMENTS");
+        if(isSaturated) plLogError("SATURATION", "DYNAMIC STRING POOL IS EMPTY. PLEASE INCREASE ITS SIZE FOR VALID MEASUREMENTS");
 
         // Write (file case) or send (socket case) the buffer
         if(eventQty || stringQty) plgBegin(PL_VERBOSE, "sending scopes");
@@ -3798,7 +4033,7 @@ namespace plPriv {
         globalCtx.enabled        = true;
         globalCtx.collectEnabled = true;
         plgDeclareThread(PL_VERBOSE, "Palanteer/Transmission");
-        plgMarker(PL_VERBOSE, "threading", "Start of Palanteer transmission loop");
+        plgLogInfo(PL_VERBOSE, "threading", "Start of Palanteer transmission loop");
 
         ic.lastSentEventBufferTick = PL_GET_CLOCK_TICK_FUNC();
         ic.txThreadId              = PL_GET_SYS_THREAD_ID();  // So that we can identify this thread if it crashes
@@ -3811,13 +4046,13 @@ namespace plPriv {
                 plPriv::ThreadInfo_t& ti = plPriv::globalCtx.threadInfos[tId];
                 uint32_t bi = globalCtx.bankAndIndex.fetch_add(1);
                 EventInt& e = globalCtx.collectBuffers[bi>>31][bi&EVTBUFFER_MASK_INDEX];
+                e.threadId     = (uint8_t)tId;  // We are obliged to expand the event building due to this field...
+                e.flags        = PL_FLAG_TYPE_THREADNAME;
+                e.lineNbr      = 0;
                 e.filenameHash = PL_STRINGHASH("");
                 e.nameHash     = ti.nameHash;
                 e.filename     = PL_EXTERNAL_STRINGS?0:"";
                 e.name         = ti.name[0]? ti.name : 0;
-                e.lineNbr      = 0;
-                e.threadId     = (uint8_t)tId;  // We are obliged to expand the event building due to this field...
-                e.flags        = PL_FLAG_TYPE_THREADNAME;
                 e.PL_PRIV_RAW_FIELD = 0;
                 e.writeAck     = 1;
                 ++tId;
@@ -3876,7 +4111,7 @@ namespace plPriv {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 #endif // if defined(_WIN32) && PL_IMPL_CONTEXT_SWITCH==1
-        plgMarker(PL_VERBOSE, "threading", "End of Palanteer transmission loop");
+        plgLogInfo(PL_VERBOSE, "threading", "End of Palanteer transmission loop");
         collectEvents(true); // Flush the previous bank
         collectEvents(true); // Flush the current bank
         collectEvents(true); // Flush the last collect thread round infos
@@ -4010,12 +4245,12 @@ plCrash(const char* message)
 #endif
 
     // Log and display the crash message
-    plMarkerDyn("CRASH", message);
-#if PL_IMPL_STACKTRACE_COLOR==1
+    plLogError("CRASH", "%s", message);
+#if PL_IMPL_CONSOLE_COLOR==1
     PL_IMPL_PRINT_STDERR("\033[91m", true, false);  // Red
 #endif
     PL_IMPL_PRINT_STDERR(message, true, false);
-#if PL_IMPL_STACKTRACE_COLOR==1
+#if PL_IMPL_CONSOLE_COLOR==1
     PL_IMPL_PRINT_STDERR("\033[0m", true, false); // Standard
 #endif
     PL_IMPL_PRINT_STDERR("\n", true, false);
@@ -4056,12 +4291,12 @@ void* operator new[](std::size_t size) noexcept(false)                 { void* p
 void* operator new  (std::size_t size, const std::nothrow_t &) throw() { void* ptr = PL_NEW_(ptr, size); return(ptr); }
 void* operator new[](std::size_t size, const std::nothrow_t &) throw() { void* ptr = PL_NEW_(ptr, size); return(ptr); }
 
-void operator delete  (void* ptr) throw()                         { PL_DELETE_(ptr); }
-void operator delete[](void* ptr) throw()                         { PL_DELETE_(ptr); }
-void operator delete  (void* ptr, std::size_t size) throw()       { PL_DELETE_(ptr); PL_UNUSED(size); }
-void operator delete[](void* ptr, std::size_t size) throw()       { PL_DELETE_(ptr); PL_UNUSED(size); }
-void operator delete  (void *ptr, const std::nothrow_t &) throw() { PL_DELETE_(ptr); }
-void operator delete[](void *ptr, const std::nothrow_t &) throw() { PL_DELETE_(ptr); }
+void operator delete  (void* ptr) noexcept                        { PL_DELETE_(ptr); }
+void operator delete[](void* ptr) noexcept                        { PL_DELETE_(ptr); }
+void operator delete  (void* ptr, std::size_t size) noexcept      { PL_DELETE_(ptr); PL_UNUSED(size); }
+void operator delete[](void* ptr, std::size_t size) noexcept      { PL_DELETE_(ptr); PL_UNUSED(size); }
+void operator delete  (void *ptr, const std::nothrow_t&) noexcept { PL_DELETE_(ptr); }
+void operator delete[](void *ptr, const std::nothrow_t&) noexcept { PL_DELETE_(ptr); }
 
 #endif // #if !defined(PL_BUG_CLANG_ASAN_NEW_OVERLOAD)
 #endif // if PL_NOEVENT==0 && PL_IMPL_OVERLOAD_NEW_DELETE==1
@@ -4137,6 +4372,22 @@ plSetServer(const char* serverAddr, int serverPort)
 {
     snprintf(plPriv::implCtx.serverAddr, sizeof(plPriv::implCtx.serverAddr), "%s", serverAddr);
     plPriv::implCtx.serverPort = serverPort;
+}
+
+
+void
+plSetLogLevelRecord(plLogLevel level)
+{
+    plAssert(level>=PL_LOG_LEVEL_ALL && level<=PL_LOG_LEVEL_NONE, level);
+    plPriv::globalCtx.minLogLevelRecord = level;
+}
+
+
+void
+plSetLogLevelConsole(plLogLevel level)
+{
+    plAssert(level>=PL_LOG_LEVEL_ALL && level<=PL_LOG_LEVEL_NONE, level);
+    plPriv::globalCtx.minLogLevelConsole = level;
 }
 
 
@@ -4468,10 +4719,11 @@ plInitAndStart(const char* appName, plMode mode, const char* buildName, int serv
     if(ic.cswitchPollEnabled) {
         ADD_TLV_FLAG(PL_TLV_HAS_CSWITCH_INFO);
     }
+    plPriv::globalCtx.originNs = PL_GET_SYSTEM_CLOCK_NS();  // The global system date
 #if PL_SHORT_DATE==1
     header[offset+ 0] = PL_TLV_HAS_SHORT_DATE>>8; header[offset+1] = PL_TLV_HAS_SHORT_DATE&0xFF;
     header[offset+ 2] = 0; header[offset+3] = 8; // 8 bytes payload
-    tmp = PL_GET_SYSTEM_CLOCK_NS();  // The global system date
+    tmp = plPriv::globalCtx.originNs;
     header[offset+ 4] = (tmp>>56)&0xFF; header[offset+ 5] = (tmp>>48)&0xFF;
     header[offset+ 6] = (tmp>>40)&0xFF; header[offset+ 7] = (tmp>>32)&0xFF;
     header[offset+ 8] = (tmp>>24)&0xFF; header[offset+ 9] = (tmp>>16)&0xFF;

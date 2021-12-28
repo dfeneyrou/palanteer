@@ -53,7 +53,24 @@ def plText(name):
     pass
 
 
+# Deprecated function
 def plMarker(category, msg):
+    pass
+
+
+def plLogDebug(category, msg):
+    pass
+
+
+def plLogInfo(category, msg):
+    pass
+
+
+def plLogWarn(category, msg):
+    pass
+
+
+def plLogError(category, msg):
     pass
 
 
@@ -82,4 +99,12 @@ def plRegisterCli(handler, name, spec, descr):
 
 
 def plFreezePoint():
+    pass
+
+
+def plSetLogLevelRecord(logLevel):
+    pass
+
+
+def plSetLogLevelConsole(logLevel):
     pass

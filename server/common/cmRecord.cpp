@@ -109,13 +109,13 @@ cmRecord::getEventChunk(chunkLoc_t pos, const bsVec<cmRecord::Evt>* lastLiveEvtC
         finalBufferSize = cmChunkSize*sizeof(Evt);
         plAssert(expectedDiskSize<=finalBufferSize);
         int fileSize = (int)fread(_fileChunkBuffer, 1, expectedDiskSize, _fdChunks);
-        if(fileSize!=expectedDiskSize) { plMarker("weird", "Event chunk data read failed"); }
+        if(fileSize!=expectedDiskSize) { plLogWarn("weird", "Event chunk data read failed"); }
         plgBegin(ITCACHE, "Decompression");
         cmDecompressChunk(_fileChunkBuffer, fileSize, (u8*)&buf[0], &finalBufferSize);
         plgEnd(ITCACHE, "Decompression");
     } else {
         finalBufferSize = (int)fread(&buf[0], 1, expectedDiskSize, _fdChunks);
-        if(finalBufferSize!=expectedDiskSize) { plMarker("weird", "Event chunk data read failed"); }
+        if(finalBufferSize!=expectedDiskSize) { plLogWarn("weird", "Event chunk data read failed"); }
     }
     plgEnd(ITCACHE, "Disk read");
     if(finalBufferSize!=cmChunkSize*sizeof(Evt)) buf.resize(finalBufferSize/sizeof(Evt)); // May happen on the last chunk
@@ -169,13 +169,13 @@ cmRecord::getElemChunk(chunkLoc_t pos, const bsVec<u32>* lastLiveLocChunk) const
         finalBufferSize = cmElemChunkSize*sizeof(u32);
         plAssert(expectedDiskSize<=finalBufferSize);
         int fileSize = (int)fread(_fileChunkBuffer, 1, expectedDiskSize, _fdChunks);
-        if(fileSize!=expectedDiskSize) { plMarker("weird", "Event chunk data read failed"); }
+        if(fileSize!=expectedDiskSize) { plLogWarn("weird", "Event chunk data read failed"); }
         plgBegin(ITCACHE, "Decompression");
         cmDecompressChunk(_fileChunkBuffer, fileSize, (u8*)&buf[0], &finalBufferSize);
         plgEnd(ITCACHE, "Decompression");
     } else {
         finalBufferSize = (int)fread(&buf[0], 1, expectedDiskSize, _fdChunks);
-        if(finalBufferSize!=expectedDiskSize) { plMarker("weird", "Event chunk data read failed"); }
+        if(finalBufferSize!=expectedDiskSize) { plLogWarn("weird", "Event chunk data read failed"); }
     }
     plgEnd(ITCACHE, "Disk read");
     if(finalBufferSize!=cmElemChunkSize*sizeof(u32)) buf.resize(finalBufferSize/sizeof(u32)); // May happen on the last chunk
@@ -389,8 +389,8 @@ cmRecord::Delta::reset(void)
     errorQty = 0;
     coreUsageChunkLocs.clear();
     coreUsageLastLiveEvtChunk.clear();
-    markerChunkLocs.clear();
-    markerLastLiveEvtChunk.clear();
+    logChunkLocs.clear();
+    logLastLiveEvtChunk.clear();
     lockNtfChunkLocs.clear();
     lockNtfLastLiveEvtChunk.clear();
     lockUseChunkLocs.clear();
@@ -398,7 +398,7 @@ cmRecord::Delta::reset(void)
     locks.clear();
     threads.clear();
     elems.clear();
-    markerCategories.clear();
+    logCategories.clear();
     strings.clear();
     updatedThreadIds.clear();
     updatedElemIds.clear();
@@ -420,7 +420,7 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
     memEventQty    = delta->memEventQty;
     ctxSwitchEventQty = delta->ctxSwitchEventQty;
     lockEventQty   = delta->lockEventQty;
-    markerEventQty = delta->markerEventQty;
+    logEventQty    = delta->logEventQty;
 
     // Size (=0) is a marker/sentinel for the "end of chunk"
     // When this size is found, the "live data chunk" is used instead of the disk content
@@ -457,11 +457,11 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
     }
     delta->updatedStrings.clear();
 
-    // Marker categories
-    for(int i=markerCategories.size(); i<delta->markerCategories.size(); ++i) {
-        markerCategories.push_back(delta->markerCategories[i]);
+    // Log categories
+    for(int i=logCategories.size(); i<delta->logCategories.size(); ++i) {
+        logCategories.push_back(delta->logCategories[i]);
     }
-    plAssert(markerCategories.size()==delta->markerCategories.size());
+    plAssert(logCategories.size()==delta->logCategories.size());
 
     // New locks
     for(int i=locks.size(); i<delta->locks.size(); ++i) {
@@ -527,7 +527,7 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
         dst.memEventQty  = src.memEventQty;
         dst.ctxSwitchEventQty = src.ctxSwitchEventQty;
         dst.lockEventQty = src.lockEventQty;
-        dst.markerEventQty = src.markerEventQty;
+        dst.logEventQty  = src.logEventQty;
 
         // Update thread levels
         for(int j=dst.levels.size(); j<src.levels.size(); ++j) dst.levels.push_back({}); // New levels
@@ -576,7 +576,7 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
     UPDATE_FROM_DELTA((*delta), (*this), lockUse);
     UPDATE_FROM_DELTA((*delta), (*this), lockNtf);
     UPDATE_FROM_DELTA((*delta), (*this), coreUsage);
-    UPDATE_FROM_DELTA((*delta), (*this), marker);
+    UPDATE_FROM_DELTA((*delta), (*this), log);
 
     // New elems
     doNeedConfigUpdate = doNeedConfigUpdate || elems.size()!=delta->elems.size();
@@ -631,15 +631,17 @@ cmRecord::updateFromDelta(cmRecord::Delta* delta)
 
 
 void
-cmRecord::buildMarkerCategories(void)
+cmRecord::buildLogCategories(void)
 {
     // Loop on threads and categories
     for(int tId=0; tId<threads.size(); ++tId) {
         const Thread& t = threads[tId];
-        for(int categoryId=0; categoryId<markerCategories.size(); ++categoryId) {
-            u64 itemHashPath = bsHashStepChain(t.threadHash, markerCategories[categoryId], cmConst::MARKER_NAMEIDX);
-            int* elemIdxPtr  = elemPathToId.find(itemHashPath, cmConst::MARKER_NAMEIDX);
-            if(elemIdxPtr) markerElems.push_back( { *elemIdxPtr, tId, categoryId } );
+        for(int categoryId=0; categoryId<logCategories.size(); ++categoryId) {
+            for(int logLevel=0; logLevel<=cmConst::MAX_LOGLEVEL_QTY; ++logLevel) {
+                u64 itemHashPath = bsHashStepChain(t.threadHash, logLevel, _strings[logCategories[categoryId]].hash, cmConst::LOG_NAMEIDX);
+                int* elemIdxPtr  = elemPathToId.find(itemHashPath, cmConst::LOG_NAMEIDX);
+                if(elemIdxPtr) logElems.push_back( { *elemIdxPtr, tId, logLevel, categoryId } );
+            }
         }
     }
 }
@@ -721,7 +723,7 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     READ_INT(record->memEventQty,       "read the thread mem  event quantity");
     READ_INT(record->ctxSwitchEventQty, "read the thread context switch event quantity");
     READ_INT(record->lockEventQty,      "read the thread lock event quantity");
-    READ_INT(record->markerEventQty,    "read the thread marker event quantity");
+    READ_INT(record->logEventQty,       "read the thread log event quantity");
 
     // Read the streams
     READ_INT(length, "read the stream quantity");
@@ -779,7 +781,7 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
         READ_INT(rt.memEventQty,       "read the thread mem  event quantity");
         READ_INT(rt.ctxSwitchEventQty, "read the thread context switch event quantity");
         READ_INT(rt.lockEventQty,      "read the thread lock event quantity");
-        READ_INT(rt.markerEventQty,    "read the thread marker event quantity");
+        READ_INT(rt.logEventQty,       "read the thread log event quantity");
 
         // Nesting level quantity
         int nestingLevelQty;
@@ -900,19 +902,19 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
         if((int)fread(&record->coreUsageChunkLocs[0], sizeof(chunkLoc_t), length, recFd)!=length) LOAD_ERROR("read the core usage chunk indexes");
     }
 
-    READ_INT(length, "read the marker chunk quantity");
-    if(length<0 || length>SANE_MAX_EVENT_QTY/cmChunkSize) LOAD_ERROR("handle the abnormal marker chunk qty");
+    READ_INT(length, "read the log chunk quantity");
+    if(length<0 || length>SANE_MAX_EVENT_QTY/cmChunkSize) LOAD_ERROR("handle the abnormal log chunk qty");
     else if(length>0) {
-        record->markerChunkLocs.resize(length);
-        if((int)fread(&record->markerChunkLocs[0], sizeof(chunkLoc_t), length, recFd)!=length) LOAD_ERROR("read the marker chunk indexes");
+        record->logChunkLocs.resize(length);
+        if((int)fread(&record->logChunkLocs[0], sizeof(chunkLoc_t), length, recFd)!=length) LOAD_ERROR("read the log chunk indexes");
     }
 
     // Load the category list
-    READ_INT(length, "read the marker category quantity");
-    if(length<0) LOAD_ERROR("handle the abnormal marker category qty");
+    READ_INT(length, "read the log category quantity");
+    if(length<0) LOAD_ERROR("handle the abnormal log category qty");
     else if(length>0) {
-        record->markerCategories.resize(length);
-        if((int)fread(&record->markerCategories[0], sizeof(int), length, recFd)!=length) LOAD_ERROR("read the marker category list");
+        record->logCategories.resize(length);
+        if((int)fread(&record->logCategories[0], sizeof(int), length, recFd)!=length) LOAD_ERROR("read the log category list");
     }
 
     READ_INT(length, "read the lock notification chunk quantity");
@@ -1026,8 +1028,8 @@ cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
     for(int tId=0; tId<record->threads.size(); ++tId) record->updateThreadString(tId);
     record->sortStrings();
 
-    // Build the marker categories items
-    record->buildMarkerCategories();
+    // Build the log categories items
+    record->buildLogCategories();
 
     return record;
 }

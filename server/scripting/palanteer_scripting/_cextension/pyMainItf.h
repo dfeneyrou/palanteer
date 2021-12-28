@@ -50,8 +50,8 @@ public:
     void getUnresolvedElemInfos(pyiDebugSpecInfo** infoArray, int* infoQty);
 
     // Interface for the common library
-    void log(cmLogKind kind, const bsString& msg);
-    void log(cmLogKind kind, const char* format, ...)
+    void logToConsole(cmLogKind kind, const bsString& msg);
+    void logToConsole(cmLogKind kind, const char* format, ...)
 #if defined(__clang__) || defined(__GNUC__)
         __attribute__ ((format (printf, 3, 4))) // Check format at compile time
 #endif

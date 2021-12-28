@@ -28,6 +28,7 @@ This API aims at being simple to use. As multi-threading would introduce a lot o
     For a proper usage of monitoring in production, it is recommended to:
      - use a light instrumentation (i.e. manual instrumentation) to maintain the optimal program performances and limit the network flow
      - not record in a file at the same time. Indeed, for ever-lasting runs, the limit of 2 billion events is bound to be reached.
+     - avoid dynamic strings, or strings which always differ. Use rather structured/hierarchical events or printf-like logs (which are structured internally)
 
 !!! warning
     The module is not thread-safe, it is up to the user to add protections if multi-threading is really required.
@@ -422,9 +423,9 @@ for e in palanteer.data_collect_events(unwanted=["Error"], frozen_threads=["Main
 
 An Evt object has the following fields:
 | Field    | Description                                                                                                                         |
-| ---      | ---                                                                                                                                 |
+|----------|-------------------------------------------------------------------------------------------------------------------------------------|
 | thread   | thread name                                                                                                                         |
-| kind     | the type of event, among `data`, `marker`, `lock use`, `lock wait`, `lock ntf`                                                      |
+| kind     | the type of event, among `data`, `log`, `lock use`, `lock wait`, `lock ntf`                                                         |
 | path     | a list of names from the root event to the captured event name. The event name is always path[-1]                                   |
 | value    | the value of the event. The type depends on the event. For "scopes", the value is the duration in nanosecond                        |
 | date_ns  | the event date in nanosecond. The origin is the date of the connection to the program                                               |
@@ -721,9 +722,9 @@ Here are some advises:
  - Record in a file while the script is executing, then check in the viewer that the targeted events are really present and with the expected structure.
 
 <br/>
-** I cannot retrieve marker events**
+** I cannot retrieve log events**
 
-Ensure that the EvtSpec refers to the category of the marker, not to its message (which is the event "value").
+Ensure that the EvtSpec refers to the category of the log, not to its message (which is the event "value").
 
 <br/>
 **Is it ok to have several events with the same name?**

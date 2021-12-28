@@ -35,15 +35,6 @@
 #include "vwPlatform.h"
 #include "vwFileDialog.h"
 
-/*
-  1) Finish the text export in text views
-    - add support for computation per chunk
-    - add the GUI automata to ask for a filename and check for already existing one
-    - write in a file, not on screen
-  2) Export marker views. Same interface and behavior than text.
-  3) Export the plot & histogram  as CSV
-  4?) Export the profile view ?
-*/
 
 // Initiate an export automata
 // ===========================
@@ -88,7 +79,44 @@ vwMain::initiateExportText(int threadId, s64 startTimeNs, int startNestingLevel,
 
 
 void
-vwMain::initiateExportPlot(int elemIdx, s64 startTimeNs, s64 endTimeNs)
+vwMain::initiateExportLog(const bsVec<int>& logElemIdxArray, s64 startTimeNs, s64 endTimeNs, int dumpedQty)
+{
+    if(_isExportOnGoing || _backgroundComputationInUse || _exportText.state!=IDLE || !_record) return;
+
+    _exportLog.it.init(_record, startTimeNs, 0., logElemIdxArray, {});
+
+
+    // Precompute the thread name max length
+    _exportLog.maxThreadNameLength = 1;
+    for(int elemIdx : logElemIdxArray) {
+        const cmRecord::Elem& elem = _record->elems[elemIdx];
+        int length = (int)strlen(getFullThreadName(elem.threadId));
+        if(length>_exportLog.maxThreadNameLength) _exportLog.maxThreadNameLength = length;
+
+    }
+
+    // Precompute the category max length
+    _exportLog.maxCategoryLength = 1;
+    for(int catIdx=0; catIdx<_record->logCategories.size(); ++catIdx) {
+        int catNameIdx = _record->logCategories[catIdx];
+        int length = _record->getString(catNameIdx).value.size();
+        if(length>_exportLog.maxCategoryLength) _exportLog.maxCategoryLength = length;
+    }
+
+    bsString filenameProposal = osGetDirname(getConfig().getLastFileExportPath())+bsString(PL_DIR_SEP)+
+        (_record->appName + ".log").filterForFilename();
+    _fileDialogExportLog->open(filenameProposal);
+    _exportLog.state       = FILE_DIALOG;
+    _exportLog.startTimeNs = startTimeNs;
+    _exportLog.endTimeNs   = endTimeNs;
+    _exportLog.dumpedQty   = dumpedQty;
+    _isExportOnGoing       = true;
+    _backgroundComputationInUse = true;
+}
+
+
+void
+vwMain::initiateExportPlot(int elemIdx, s64 startTimeNs, s64 endTimeNs, int logParamIdx)
 {
     if(_isExportOnGoing || _backgroundComputationInUse || _exportPlot.state!=IDLE || !_record) return;
 
@@ -97,6 +125,7 @@ vwMain::initiateExportPlot(int elemIdx, s64 startTimeNs, s64 endTimeNs)
     _fileDialogExportPlot->open(filenameProposal);
     _exportPlot.state       = FILE_DIALOG;
     _exportPlot.elemIdx     = elemIdx;
+    _exportPlot.logParamIdx = logParamIdx;
     _exportPlot.startTimeNs = startTimeNs;
     _exportPlot.endTimeNs   = endTimeNs;
     _isExportOnGoing        = true;
@@ -226,7 +255,7 @@ vwMain::handleExportCTF(void)
                             (evt.flags&PL_FLAG_SCOPE_BEGIN)? "B":"E", streamId, threadId, evt.vS64);
                     lastDate = evt.vS64;
                 }
-                else if(eType==PL_FLAG_TYPE_MARKER) {
+                else if(eType==PL_FLAG_TYPE_LOG) { // @#FIXME This case cannot happen with the hierarchical iterator. An aggregator is required
                     fprintf(exp.fileHandle, "{\"name\": \"%s\", \"ph\": \"i\", \"pid\": %d, \"tid\": %d, \"ts\": %" PRId64 ", \"s\": \"t\"},\n",
                             _record->getString(evt.filenameIdx).value.toChar(), streamId, threadId, evt.vS64);
                     lastDate = evt.vS64;
@@ -407,6 +436,7 @@ vwMain::handleExportText(void)
 
         // Compute during a slice of time
         bsUs_t endComputationTimeUs = bsGetClockUs() + vwConst::COMPUTATION_TIME_SLICE_US; // Time slice of computation
+        int  timeFormat = getConfig().getTimeFormat();
         cmRecord::Evt evt;
         s64  lastDate = 0;
         bool isIteratorOk = false;
@@ -421,7 +451,7 @@ vwMain::handleExportText(void)
                (flagsType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && flagsType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) {
                 lastDate = evt.vS64;
                 if(exp.endTimeNs>=0 && evt.vS64>exp.endTimeNs) break;
-                fprintf(exp.fileHandle, "%-28s %*s", getNiceTime(evt.vS64, 0), 2*nestingLevel, "");
+                fprintf(exp.fileHandle, "%-28s %*s", getFormattedTimeString(evt.vS64, timeFormat), 2*nestingLevel, "");
             }
             else fprintf(exp.fileHandle, "%-27s %*s", "", 2*nestingLevel, "");
 
@@ -433,7 +463,7 @@ vwMain::handleExportText(void)
                 if(flagsType==PL_FLAG_TYPE_LOCK_WAIT) fprintf(exp.fileHandle, "%-32s [LOCK AVAILABLE]\n", name);
                 else fprintf(exp.fileHandle, "< %s\n", name);
             }
-            else if(flagsType==PL_FLAG_TYPE_MARKER)        fprintf(exp.fileHandle, "%-32s [MARKER '%s']\n", _record->getString(evt.filenameIdx).value.toChar(), name);
+            else if(flagsType==PL_FLAG_TYPE_LOG)           fprintf(exp.fileHandle, "%-32s [LOG '%s']\n", _record->getString(evt.filenameIdx).value.toChar(), name);
             else if(flagsType==PL_FLAG_TYPE_LOCK_ACQUIRED) fprintf(exp.fileHandle, "%-32s [LOCK ACQUIRED]\n", name);
             else if(flagsType==PL_FLAG_TYPE_LOCK_RELEASED) fprintf(exp.fileHandle, "%-32s [LOCK RELEASED]\n", name);
             else if(flagsType==PL_FLAG_TYPE_LOCK_NOTIFIED) fprintf(exp.fileHandle, "%-32s [LOCK NOTIFIED]\n", name);
@@ -454,6 +484,130 @@ vwMain::handleExportText(void)
 
         bool openPopupModal = true;
         if(ImGui::BeginPopupModal("In progress##WaitExportText",
+                                  &openPopupModal, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize)) {
+            char tmpStr[128];
+            ImGui::TextColored(vwConst::gold, "Exporting in text...");
+            snprintf(tmpStr, sizeof(tmpStr), "%d %%", computationLevel);
+            ImGui::ProgressBar(0.01f*computationLevel, ImVec2(-1,ImGui::GetTextLineHeight()), tmpStr);
+            if(computationLevel==100) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+        if(!openPopupModal) computationLevel = 100;  // Cancelled by used
+
+        // End of computation
+        if(computationLevel>=100) {
+            fclose(exp.fileHandle);
+            exp.fileHandle = 0;
+            exp.state = IDLE;
+            _isExportOnGoing = false;
+            _backgroundComputationInUse = false;
+        }
+    } // End of effective saving per chunk
+}
+
+
+void
+vwMain::handleExportLog(void)
+{
+    constexpr const char* levelStr[4] = { "debug", "info", "warn", "error" };
+    ExportLog& exp = _exportLog;
+
+    // Display the file dialog to get the name of the capture
+    if(exp.state==FILE_DIALOG) {
+        if(_fileDialogExportLog->draw(getConfig().getFontSize())) dirty();
+        if(_fileDialogExportLog->hasSelection()) {
+            const bsVec<bsString>& result = _fileDialogExportLog->getSelection();
+            if(result.empty()) {
+                _fileDialogExportLog->clearSelection();
+                exp.state = IDLE;
+                _isExportOnGoing = false;
+                _backgroundComputationInUse = false;
+            } else {
+                getConfig().setLastFileExportPath(result[0]);
+                exp.state = CONFIRMATION_DIALOG;
+            }
+        }
+    }
+
+    if(exp.state==CONFIRMATION_DIALOG) {
+        if(osFileExists(_fileDialogExportLog->getSelection()[0])) {
+            ImGui::OpenPopup("File already exists##LogFileAlreadyExists");
+        } else {
+            exp.state = EFFECTIVE_SAVE;
+        }
+
+        if(ImGui::BeginPopupModal("File already exists##LogFileAlreadyExists", 0, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Please confirm the file overwrite\n\n");
+            ImGui::Separator();
+            if(ImGui::Button("Yes", ImVec2(120, 0)) || ImGui::IsKeyPressedMap(ImGuiKey_Enter)) {
+                exp.state = EFFECTIVE_SAVE;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SetItemDefaultFocus();
+            ImGui::SameLine();
+            if(ImGui::Button("Cancel", ImVec2(120, 0))) {
+                ImGui::CloseCurrentPopup();
+                _fileDialogExportLog->clearSelection();
+                exp.state = IDLE;
+                _isExportOnGoing = false;
+                _backgroundComputationInUse = false;
+            }
+            ImGui::EndPopup();
+        }
+    }
+
+    if(exp.state==EFFECTIVE_SAVE) {
+
+        // Task initialization
+        if(exp.fileHandle==0) {
+
+            // Open the export file
+            const bsString& filename = _fileDialogExportLog->getSelection()[0];
+            exp.fileHandle = osFileOpen(filename, "w");
+            if(!exp.fileHandle) {
+                notifyErrorForDisplay(ERROR_GENERIC, bsString("Unable to open the file for writing: ") + filename);
+                _fileDialogExportLog->clearSelection();
+                exp.state = IDLE;
+                _isExportOnGoing = false;
+                _backgroundComputationInUse = false;
+                return;
+            }
+            ImGui::OpenPopup("In progress##WaitExportLog");
+        }
+
+        // Compute during a slice of time
+        bsUs_t endComputationTimeUs = bsGetClockUs() + vwConst::COMPUTATION_TIME_SLICE_US; // Time slice of computation
+        int  timeFormat = getConfig().getTimeFormat();
+        s64  lastDate = 0;
+        bool isIteratorOk = false;
+        AggCacheItem aggrEvt;
+
+        while(_record) {
+
+            if(!(isIteratorOk=exp.it.getNextEvent(aggrEvt))) break;
+
+            fprintf(exp.fileHandle, "%s  [%-5s]  [%-*s] [%-*s] %s\n",
+                    getFormattedTimeString(aggrEvt.evt.vS64, timeFormat),
+                    levelStr[bsMinMax(aggrEvt.evt.lineNbr&0x7FFF, 0, 3)],
+                    exp.maxThreadNameLength, getFullThreadName(aggrEvt.evt.threadId),
+                    exp.maxCategoryLength, _record->getString(aggrEvt.evt.nameIdx).value.toChar(),
+                    aggrEvt.message.toChar());
+
+            if(bsGetClockUs()>endComputationTimeUs) break;
+            if(exp.dumpedQty>=0 && (--exp.dumpedQty)<0) { isIteratorOk = false; break; }
+        }
+
+        // Computations are finished?
+        int computationLevel = 0;
+        if(!_record || !isIteratorOk) computationLevel = 100;
+        else if(exp.endTimeNs>=0) {  // Date based end criteria
+            computationLevel = bsMinMax((int)(100.*((double)(lastDate-exp.startTimeNs)/(double)(exp.endTimeNs-exp.startTimeNs))), 1, 100);
+        }
+        else computationLevel = bsMax(10, 100-exp.dumpedQty); // Does not matter as line quantity based end criteria should finish in 1 cycle anyway...
+        dirty();  // No idle
+
+        bool openPopupModal = true;
+        if(ImGui::BeginPopupModal("In progress##WaitExportLog",
                                   &openPopupModal, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_AlwaysAutoResize)) {
             char tmpStr[128];
             ImGui::TextColored(vwConst::gold, "Exporting in text...");
@@ -546,11 +700,11 @@ vwMain::handleExportPlot(void)
             // Initialize the relevant iterator and write the legend (not very "CSV" compatible)
             cmRecord::Elem& elem = _record->elems[exp.elemIdx];
             int eType = elem.flags&PL_FLAG_TYPE_MASK;
-            if(eType==PL_FLAG_TYPE_MARKER) {
-                fprintf(exp.fileHandle, "# Date (ns), marker text   /   Marker '%s' from thread '%s' from app '%s'\n",
+            if(eType==PL_FLAG_TYPE_LOG) {
+                fprintf(exp.fileHandle, "# Date (ns), log text   /   Log '%s' from thread '%s' from app '%s'\n",
                         _record->getString(elem.nameIdx).value.toChar(), _record->getString(_record->threads[elem.threadId].nameIdx).value.toChar(),
                         _record->appName.toChar());
-                exp.itMarker.init (_record, exp.elemIdx, exp.startTimeNs, 0.);
+                exp.itLog.init(_record, exp.elemIdx, exp.startTimeNs, 0.);
             }
             else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) {
                 fprintf(exp.fileHandle, "# Date (ns), notifier thread name   /   Lock '%s' notification from app '%s'\n",
@@ -578,21 +732,32 @@ vwMain::handleExportPlot(void)
 
         cmRecord::Evt evt;
         s64  lastDate = exp.startTimeNs;
-        bool isIteratorOk = false, isCoarseScope = false;
+        bool isIteratorOk = false, isCoarse = false;
         s64  ptTimeNs; double ptValue;
 
         if(_record) {
 
-            if(eType==PL_FLAG_TYPE_MARKER) {
-                while((isIteratorOk=exp.itMarker.getNextMarker(isCoarseScope, evt))) {
-                    fprintf(exp.fileHandle, "%" PRId64 ",%s\n", evt.vS64,
-                            _record->getString(evt.filenameIdx).value.toChar());
+            if(eType==PL_FLAG_TYPE_LOG) {
+                bsVec<cmLogParam> params;
+                while((isIteratorOk=exp.itLog.getNextLog(isCoarse, evt, params))) {
+                    if(exp.logParamIdx>=0 && exp.logParamIdx<params.size()) {
+                        const cmLogParam& param = params[exp.logParamIdx];
+                        switch(param.paramType) {
+                        case PL_FLAG_TYPE_DATA_S32:    fprintf(exp.fileHandle, "%" PRId64 ",%d\n", evt.vS64, param.vInt); break;
+                        case PL_FLAG_TYPE_DATA_U32:    fprintf(exp.fileHandle, "%" PRId64 ",%u\n", evt.vS64, param.vU32); break;
+                        case PL_FLAG_TYPE_DATA_S64:    fprintf(exp.fileHandle, "%" PRId64 ",%" PRId64 "\n", evt.vS64, param.vS64); break;
+                        case PL_FLAG_TYPE_DATA_U64:    fprintf(exp.fileHandle, "%" PRId64 ",%" PRIu64 "\n", evt.vS64, param.vU64); break;
+                        case PL_FLAG_TYPE_DATA_FLOAT:  fprintf(exp.fileHandle, "%" PRId64 ",%f\n",  evt.vS64, param.vFloat);  break;
+                        case PL_FLAG_TYPE_DATA_DOUBLE: fprintf(exp.fileHandle, "%" PRId64 ",%lf\n", evt.vS64, param.vDouble); break;
+                        case PL_FLAG_TYPE_DATA_STRING: fprintf(exp.fileHandle, "%" PRId64 ",%s\n", evt.vS64,  _record->getString(param.vStringIdx).value.toChar()); break;
+                        }
+                    }
                     lastDate = evt.vS64;
                     if(lastDate>exp.endTimeNs || bsGetClockUs()>endComputationTimeUs) break;
                 }
             }
             else if(eType==PL_FLAG_TYPE_LOCK_NOTIFIED) {
-                while((isIteratorOk=exp.itLockNtf.getNextLock(isCoarseScope, evt))) {
+                while((isIteratorOk=exp.itLockNtf.getNextLock(isCoarse, evt))) {
                     fprintf(exp.fileHandle, "%" PRId64 ",%s\n", evt.vS64,
                             _record->getString(_record->threads[evt.threadId].nameIdx).value.toChar());
                     lastDate = evt.vS64;
@@ -658,7 +823,7 @@ vwMain::handleExports(void)
             _fileDialogExportScreenshot->open(filenameProposal);
             _exportScreenshot.state = FILE_DIALOG;
             _isExportOnGoing = true;
-            plMarker("menu", "Open screenshot export file dialog");
+            plLogInfo("menu", "Open screenshot export file dialog");
         }
     }
 
@@ -667,6 +832,7 @@ vwMain::handleExports(void)
 
     handleExportCTF();
     handleExportText();
+    handleExportLog();
     handleExportPlot();
     handleExportScreenshot();
 }

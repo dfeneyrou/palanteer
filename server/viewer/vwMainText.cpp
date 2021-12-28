@@ -60,7 +60,7 @@ vwMain::addText(int id, int threadId, u64 threadUniqueHash, int startNestingLeve
     }
     _texts.push_back( { id, threadId, threadUniqueHash, startNestingLevel, startLIdx } );
     setFullScreenView(-1);
-    plMarker("user", "Add a text view");
+    plLogInfo("user", "Add a text view");
     return true;
 }
 
@@ -236,7 +236,7 @@ vwMain::drawText(Text& t)
 
     // Some init
     ImGui::BeginChild("text", ImVec2(0,0), false, ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_AlwaysVerticalScrollbar |
-                      ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
+                      ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoNavInputs);  // Display area is virtual so self-managed
     prepareText(t); // Ensure cache is up to date, even after window creation
     if(t.cachedStartParents.empty()) { ImGui::EndChild(); return; } // Sanity
     const float winX = ImGui::GetWindowPos().x;
@@ -244,6 +244,7 @@ vwMain::drawText(Text& t)
     const float winWidth      = ImGui::GetWindowContentRegionMax().x;
     const float winHeight     = ImGui::GetWindowSize().y;
     const float fontHeight    = ImGui::GetTextLineHeightWithSpacing();
+    const float fontHeightIntra = ImGui::GetTextLineHeight();
     const float textPixMargin = ImGui::GetStyle().ItemSpacing.x;
     const float mouseX        = ImGui::GetMousePos().x;
     const float mouseY        = ImGui::GetMousePos().y;
@@ -258,14 +259,15 @@ vwMain::drawText(Text& t)
     char valueStr[maxMsgSize];
 
     // Did the user click on the scrollbar? (detection based on an unexpected position change)
-    float lastScrollPos = ImGui::GetScrollY();
-    if(!t.didUserChangedScrollPos && !t.didUserChangedScrollPosExt && bsAbs(lastScrollPos-t.lastScrollPos)>=1.) {
+    float curScrollPosX = ImGui::GetScrollX();
+    float lastScrollPosY = ImGui::GetScrollY();
+    if(!t.didUserChangedScrollPos && !t.didUserChangedScrollPosExt && bsAbs(lastScrollPosY-t.lastScrollPosY)>=1.) {
         plgScope(TEXT, "New user scroll position from ImGui");
-        plgData(TEXT, "expected pos", t.lastScrollPos);
-        plgData(TEXT, "new pos", lastScrollPos);
+        plgData(TEXT, "expected pos", t.lastScrollPosY);
+        plgData(TEXT, "new pos", lastScrollPosY);
         int nestingLevel;
         u32 lIdx;
-        cmGetRecordPosition(_record, t.threadId, (s64)(lastScrollPos/normalizedScrollHeight*_record->durationNs), nestingLevel, lIdx);
+        cmGetRecordPosition(_record, t.threadId, (s64)(lastScrollPosY/normalizedScrollHeight*_record->durationNs), nestingLevel, lIdx);
         t.setStartPosition(nestingLevel, lIdx);
     }
 
@@ -359,10 +361,6 @@ vwMain::drawText(Text& t)
         plgData(TEXT, "Set new scroll pos from user", t.cachedScrollRatio*normalizedScrollHeight);
         ImGui::SetScrollY((float)(t.cachedScrollRatio*normalizedScrollHeight));
     }
-    // Mark the virtual total size
-    t.lastScrollPos = ImGui::GetScrollY();
-    ImGui::SetCursorPosY(normalizedScrollHeight);
-    plgData(TEXT, "Current scroll pos", t.lastScrollPos);
 
     // Compute initial state for all levels
     const bsVec<ImVec4>& palette = getConfig().getColorPalette(true);
@@ -392,11 +390,14 @@ vwMain::drawText(Text& t)
 
     // Draw the text
     // =============
+    int timeFormat = getConfig().getTimeFormat();
     float y = winY;
-    int nestingLevel = 0;
-    float mouseTimeBestY = -1.;
-    s64 mouseTimeBestTimeNs = -1;
-    s64 newMouseTimeNs = -1;
+    float mouseTimeBestY      = -1.;
+    float maxOffsetX          =  0.;
+    int   nestingLevel        =  0;
+    s64   mouseTimeBestTimeNs = -1;
+    s64   newMouseTimeNs      = -1;
+
     for(const auto& tci : t.cachedItems) {
         // Get the cached item
         const cmRecord::Evt& evt = tci.evt;
@@ -411,7 +412,7 @@ vwMain::drawText(Text& t)
         valueStr[0] = 0;
         const char* name = _record->getString(evt.nameIdx).value.toChar();
         bool      isHexa = _record->getString(evt.nameIdx).isHexa;
-        int      lineQty = _record->getString(evt.nameIdx).lineQty; // Maybe overriden (marker case)
+        int      lineQty = _record->getString(evt.nameIdx).lineQty; // Maybe overriden
         if(flags&PL_FLAG_SCOPE_BEGIN) {
             if(flagsType==PL_FLAG_TYPE_LOCK_WAIT) {
                 snprintf(nameStr, maxMsgSize, "%s", name);
@@ -426,10 +427,10 @@ vwMain::drawText(Text& t)
             }
             else snprintf(nameStr, maxMsgSize, "< %s", name);
         }
-        else if(flagsType==PL_FLAG_TYPE_MARKER) {
-            // For markers, category is stored instead of evt.name and message instead of evt.filename
+        else if(flagsType==PL_FLAG_TYPE_LOG) {  // Dead code
+            // For logs, category is stored instead of evt.name and message instead of evt.filename
             snprintf(nameStr, maxMsgSize, "%s", _record->getString(evt.filenameIdx).value.toChar());
-            snprintf(valueStr, maxMsgSize, "[MARKER '%s']", name);
+            snprintf(valueStr, maxMsgSize, "[LOG '%s']", name);
             flagsType = PL_FLAG_TYPE_DATA_TIMESTAMP;
             lineQty = _record->getString(evt.filenameIdx).lineQty; // Update
         }
@@ -453,17 +454,20 @@ vwMain::drawText(Text& t)
 
         switch(flagsType) {
         case PL_FLAG_TYPE_DATA_NONE:      break;
-        case PL_FLAG_TYPE_DATA_TIMESTAMP: snprintf(timeStr,  maxMsgSize, "%f s", 0.000000001*evt.vS64); break;
+        case PL_FLAG_TYPE_DATA_TIMESTAMP: snprintf(timeStr,  maxMsgSize, "%s", getFormattedTimeString(evt.vS64, timeFormat)); break;
         case PL_FLAG_TYPE_DATA_S32:       snprintf(valueStr, maxMsgSize, isHexa?"%X":"%d",   evt.vInt); break;
         case PL_FLAG_TYPE_DATA_U32:       snprintf(valueStr, maxMsgSize, isHexa?"%X":"%u",   evt.vU32); break;
         case PL_FLAG_TYPE_DATA_S64:       snprintf(valueStr, maxMsgSize, isHexa?"%lX":"%ld", evt.vS64); break;
         case PL_FLAG_TYPE_DATA_U64:       snprintf(valueStr, maxMsgSize, isHexa?"%lX":"%lu", evt.vU64); break;
         case PL_FLAG_TYPE_DATA_FLOAT:     snprintf(valueStr, maxMsgSize, "%f",  evt.vFloat); break;
         case PL_FLAG_TYPE_DATA_DOUBLE:    snprintf(valueStr, maxMsgSize, "%lf", evt.vDouble); break;
-        case PL_FLAG_TYPE_DATA_STRING:    snprintf(valueStr, maxMsgSize, "%s",  _record->getString(evt.vStringIdx).value.toChar()); break;
+        case PL_FLAG_TYPE_DATA_STRING:
+            snprintf(valueStr, maxMsgSize, "%s",  _record->getString(evt.vStringIdx).value.toChar());
+            lineQty = bsMax(lineQty, _record->getString(evt.vStringIdx).lineQty);
+            break;
         default:                          snprintf(valueStr, maxMsgSize, "<BAD TYPE %d>", flagsType);
         };
-        float heightPix = fontHeight*lineQty;
+        float heightPix = fontHeight+fontHeightIntra*(lineQty-1);
 
         // Update the level info
         flagsType = (flags&PL_FLAG_TYPE_MASK); // Put back the original value, which may have been modified for display's needs
@@ -490,11 +494,11 @@ vwMain::drawText(Text& t)
             }
 
             // Update the best fit for the mouse time display (yellow horizontal line)
-            if((flags&PL_FLAG_SCOPE_BEGIN) && _mouseTimeNs>=li.scopeStartTimeNs && li.scopeStartTimeNs>mouseTimeBestTimeNs) {
+            if((flags&PL_FLAG_SCOPE_BEGIN) && _mouseTimeNs>=li.scopeStartTimeNs && li.scopeStartTimeNs>=mouseTimeBestTimeNs) {
                 mouseTimeBestTimeNs = li.scopeStartTimeNs;
                 mouseTimeBestY      = y+heightPix;
             }
-            else if((flags&PL_FLAG_SCOPE_END) && _mouseTimeNs>=li.scopeEndTimeNs && li.scopeEndTimeNs>mouseTimeBestTimeNs) {
+            else if((flags&PL_FLAG_SCOPE_END) && _mouseTimeNs>=li.scopeEndTimeNs && li.scopeEndTimeNs>=mouseTimeBestTimeNs) {
                 mouseTimeBestTimeNs = li.scopeEndTimeNs;
                 mouseTimeBestY      = y+heightPix;
             }
@@ -585,14 +589,20 @@ vwMain::drawText(Text& t)
 
         // Display the text background if highlighted
         if(doHighlight) {
-            DRAWLIST->AddRectFilled(ImVec2(winX, y), ImVec2(winX+winWidth, y+heightPix), vwConst::uGrey48);
+            DRAWLIST->AddRectFilled(ImVec2(winX, y), ImVec2(winX+curScrollPosX+winWidth, y+heightPix), vwConst::uGrey48);
         }
         // Display the date if any
+        float offsetX = winX-curScrollPosX+textPixMargin;
         if(timeStr[0]!=0) {
-            DRAWLIST->AddText(ImVec2(winX+textPixMargin, y), vwConst::uWhite, timeStr);
+            DRAWLIST->AddText(ImVec2(offsetX, y), vwConst::uWhite, timeStr);
+            int changedOffset = 0;
+            while(timeStr[changedOffset] && timeStr[changedOffset]==t.lastDateStr[changedOffset]) ++changedOffset;
+            DRAWLIST->AddText(ImVec2(offsetX, y), vwConst::uGrey128, timeStr, timeStr+changedOffset);
+            snprintf(t.lastDateStr, sizeof(t.lastDateStr),"%s", timeStr);
         }
+        offsetX += charWidth*(getFormattedTimeStringCharQty(timeFormat)+nestingLevel*2);
+
         // Display the name of the item
-        float offsetX = winX+textPixMargin+charWidth*(14+nestingLevel*2);
         DRAWLIST->AddText(ImVec2(offsetX, y), color1, nameStr);
         // Display the value
         float offsetX2 = bsMax(ImGui::CalcTextSize(nameStr).x, 20.f*charWidth)+2.f*charWidth;
@@ -608,8 +618,10 @@ vwMain::drawText(Text& t)
             DRAWLIST->AddLine(ImVec2(offsetX, y), ImVec2(offsetX, (float)levelElems[nestingLevel].yScopeStart), color2);
             levelElems[nestingLevel].yScopeStart = -1;
         }
+        offsetX += offsetX2 + ImGui::CalcTextSize(valueStr).x;
 
         // Next line
+        if(offsetX>maxOffsetX) maxOffsetX = offsetX;
         if(y>winY+winHeight) break;
         y += heightPix;
     } // End of list on cached items
@@ -617,9 +629,50 @@ vwMain::drawText(Text& t)
     // Finish the vertical marker for the scope, at the bottom
     for(int i=0; i<nestingLevel; ++i) {
         if(y-levelElems[i].yScopeStart>0) {
-            float offsetX = winX+textPixMargin+charWidth*(14+i*2);
+            float offsetX = winX-curScrollPosX+textPixMargin+charWidth*(getFormattedTimeStringCharQty(timeFormat)+i*2);
             DRAWLIST->AddLine(ImVec2(offsetX, y), ImVec2(offsetX, (float)levelElems[i].yScopeStart), levelElems[i].color);
         }
+    }
+
+    // Drag with middle button
+    if(isWindowHovered && ImGui::IsMouseDragging(1)) {
+        // Start a range selection
+        if(t.rangeSelStartNs<0 && mouseTimeBestTimeNs>=0) {
+            t.rangeSelStartNs = mouseTimeBestTimeNs;
+            t.rangeSelStartY  = mouseTimeBestY;
+        }
+
+        // Drag on-going: display the selection box with transparency and range
+        if(t.rangeSelStartNs>=0 && t.rangeSelStartNs<mouseTimeBestTimeNs) {
+            char tmpStr[128];
+            float y1 = t.rangeSelStartY-fontHeight;
+            float y2 = mouseTimeBestY;
+            constexpr float arrowSize = 4.f;
+            // White background
+            DRAWLIST->AddRectFilled(ImVec2(winX, y1), ImVec2(winX+curScrollPosX+winWidth, y2), IM_COL32(255,255,255,128));
+            // Range line
+            DRAWLIST->AddLine(ImVec2(mouseX, y1), ImVec2(mouseX, y2), vwConst::uBlack, 2.f);
+            // Arrows
+            DRAWLIST->AddLine(ImVec2(mouseX, y1), ImVec2(mouseX-arrowSize, y1+arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(mouseX, y1), ImVec2(mouseX+arrowSize, y1+arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(mouseX, y2), ImVec2(mouseX-arrowSize, y2-arrowSize), vwConst::uBlack, 2.f);
+            DRAWLIST->AddLine(ImVec2(mouseX, y2), ImVec2(mouseX+arrowSize, y2-arrowSize), vwConst::uBlack, 2.f);
+            // Text
+            snprintf(tmpStr, sizeof(tmpStr), "{ %s }", getNiceDuration(mouseTimeBestTimeNs-t.rangeSelStartNs));
+            ImVec2 tb = ImGui::CalcTextSize(tmpStr);
+            float x3 = mouseX-0.5f*tb.x;
+            DRAWLIST->AddRectFilled(ImVec2(x3-5.f, mouseY-tb.y-5.f), ImVec2(x3+tb.x+5.f, mouseY-5.f), IM_COL32(255,255,255,192));
+            DRAWLIST->AddText(ImVec2(x3, mouseY-tb.y-5.f), vwConst::uBlack, tmpStr);
+        }
+    }
+    // Drag ended: set the selected range view
+    else if(isWindowHovered && t.rangeSelStartNs>=0) {
+        if(t.rangeSelStartNs<mouseTimeBestTimeNs) {
+            ensureThreadVisibility(t.syncMode, t.threadId);
+            s64 newRangeNs = mouseTimeBestTimeNs-t.rangeSelStartNs;
+            synchronizeNewRange(t.syncMode, t.rangeSelStartNs-(newRangeNs>>4), newRangeNs+(newRangeNs>>3)); // ~12% wider range
+        }
+        t.rangeSelStartNs = -1;
     }
 
     // Display and update the mouse time
@@ -690,10 +743,16 @@ vwMain::drawText(Text& t)
                        "-#Mouse wheel#| Scroll text faster\n"
                        "-#Ctrl-Mouse wheel#| Time zoom views of the same group\n"
                        "-#Left mouse click#| Time synchronize views of the same group\n"
+                       "-#Middle button mouse dragging#| Measure/select a time range\n"
                        "-#Double left mouse click#| Time and range synchronize views of the same group\n"
                        "-#Right mouse click#| Open menu for plot/histogram\n"
                        "\n"
                        );
+
+    // Mark the virtual total size
+    t.lastScrollPosY = ImGui::GetScrollY();
+    ImGui::SetCursorPos(ImVec2(maxOffsetX+curScrollPosX-winX, normalizedScrollHeight));
+    plgData(TEXT, "Current scroll pos", t.lastScrollPosY);
 
     ImGui::EndChild();
 }

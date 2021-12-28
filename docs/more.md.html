@@ -111,8 +111,8 @@ Some projects may need a "dynamic event selection", i.e. embed all or a part of 
 In this case, the code is always included and an additional test is done at run-time to check if the event shall be generated or not. <br/>
 This scheme is not included inside `Palanteer` for several reasons:
   * there are many ways to implement it
-  * it shall be used carefully so that the hierarchical tree is not corrupted if the logging is enabled "in the middle" of a run
-    * theoretically, logging shall be enabled when each thread is at the root of the logging tree. Else some "end" scope will not have any corresponding "begin" event.
+  * it shall be used carefully so that the hierarchical tree is not corrupted if the tracing is enabled "in the middle" of a run
+    * theoretically, tracing shall be enabled when each thread is at the root of the tracing tree. Else some "end" scope will not have any corresponding "begin" event.
 
 A dynamic selection provides more flexibility but decreases performances (due to the additional test and instruction cache effects). <br/>
 Note also that compile time and dynamic selection can be combined.
@@ -120,7 +120,7 @@ Note also that compile time and dynamic selection can be combined.
 !!! warning
     A general recommendation is to be careful with the friction induced by the wrapped instrumentation API. <br/>
     Indeed, it is tempting to add a dynamic "topic" field, an importance level, etc... <br/>
-    If all these fields shall be provided by the developer at each event logging, the underneath side-effect is that the instrumentation quality may degrade.
+    If all these fields shall be provided by the developer at each event tracing, the underneath side-effect is that the instrumentation quality may degrade.
 
 The proposals below are just some non-exhaustive examples.
 
@@ -129,7 +129,7 @@ The proposals below are just some non-exhaustive examples.
 Example of identification of the dynamic groups with a global enumeration and a global variable for the filtering level. <br/>
 The user interface is based on a generic macro wrapper, which is simple and works in all cases but is less readable:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ c++
-// Dynamic logging context
+// Dynamic tracing context
 enum DynGroup { DEBUG, DETAIL, INFO, CRITICAL };
 DynGroup globalFilteringLevel = INFO;  // Events below this level are not generated. This variable is controlled externally
 
@@ -147,40 +147,40 @@ WRAP(DEBUG, plgVar(FRUIT, a, i, tmpVar));  // PL_GROUP_FRUIT must be set to 0 or
 
 **Proposal 2: opaque handler based dynamic selection and dedicated wrappers**
 
-Example of identification of the dynamic groups with an "opaque logger" structure whose state is controlled externally. <br/>
+Example of identification of the dynamic groups with an "opaque tracer" structure whose state is controlled externally. <br/>
 The user interface is based on a dedicated wrapper which is more readable than the generic wrapper but requires wrapping each of the ~40 `Palanteer` API independently. <br/>
 For variadic macros (with variable number of argument) like `plVar`, it involves entering a bit more in the marvelous world of the preprocessor.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ c++
-// Opaque (for the user) logger structure
-struct DynLogger {
+// Opaque (for the user) tracer structure
+struct DynTracer {
     const char* name;  // Could be an enum, or a number. Any kind of identifier
     bool isEnabled;
 };
 
-// Dynamic logging context
-constexpr int MAX_LOGGER_QTY = 128;
-DynLogger globalLoggerArray[MAX_LOGGER_QTY];  // Be careful with reallocations if you use a std::vector
-int globalLoggerQty = 0;
-std::mutex loggerMutex;
+// Dynamic tracing context
+constexpr int MAX_TRACER_QTY = 128;
+DynTracer globalTracerArray[MAX_TRACER_QTY];  // Be careful with reallocations if you use a std::vector
+int globalTracerQty = 0;
+std::mutex tracerMutex;
 
-// Create an instance of a logger that can be activated dynamically
-DynLogger*
-createLogger(const char* name)
+// Create an instance of a tracer that can be activated dynamically
+DynTracer*
+createTracer(const char* name)
 {
-    std::lock_guard&lt;std::mutex&gt; guard(loggerMutex);
-    plAssert(globalLoggerQty&lt;MAX_LOGGER_QTY);
-    globalLoggerArray[globalLoggerQty] = { name, false };  // C++14 at least
-    return &globalLoggerArray[globalLoggerQty++];
+    std::lock_guard&lt;std::mutex&gt; guard(tracerMutex);
+    plAssert(globalTracerQty&lt;MAX_TRACER_QTY);
+    globalTracerArray[globalTracerQty] = { name, false };  // C++14 at least
+    return &globalTracerArray[globalTracerQty++];
 }
 
-// Set the active state of a logger
+// Set the active state of a tracer
 bool
-setLoggerEnable(const char* name, bool state)
+setTracerEnable(const char* name, bool state)
 {
-    std::lock_guard&lt;std::mutex&gt; guard(loggerMutex);
-    for(int i=0; i&lt;globalLoggerQty; ++i) {  // Indeed, this simple example is not optimal
-        if(strcmp(globalLoggerArray[i].name, name)!=0) continue;
-        globalLoggerArray[i].isEnabled = state;
+    std::lock_guard&lt;std::mutex&gt; guard(tracerMutex);
+    for(int i=0; i&lt;globalTracerQty; ++i) {  // Indeed, this simple example is not optimal
+        if(strcmp(globalTracerArray[i].name, name)!=0) continue;
+        globalTracerArray[i].isEnabled = state;
         return true;
     }
     return false;
@@ -198,20 +198,20 @@ setLoggerEnable(const char* name, bool state)
 // ======
 #define PL_GROUP_FRUIT 1
 
-// Create the logger for a particular topic
-DynLogger* logBio = createLogger("Fruits and vegetables");
+// Create the tracer for a particular topic
+DynTracer* logBio = createTracer("Fruits and vegetables");
 
 // Set its state
-setLoggerEnable("Fruits and vegetables", true);
+setTracerEnable("Fruits and vegetables", true);
 
-// Log events for this topic by passing the topic logger which contains the dynamic enable state "isEnabled"
+// Log events for this topic by passing the topic tracer which contains the dynamic enable state "isEnabled"
 mygData(logBio, FRUIT, "My fruit", "banana");  // PL_GROUP_FRUIT must be set to 0 or 1 beforehand
 myVar  (logBio,   a, i, tmpVar);
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! error Important
-    The easiest way to avoid hierarchical tree corruption is to set the logging state dynamically but before any event logging. <br/>
-    If it needs to be changed at any moment, you have to ensure that the logging state change is applied at the root of the tree for the concerned threads, else the tree structure will be corrupted.
+    The easiest way to avoid hierarchical tree corruption is to set the tracing state dynamically but before any event tracing. <br/>
+    If it needs to be changed at any moment, you have to ensure that the tracing state change is applied at the root of the tree for the concerned threads, else the tree structure will be corrupted.
 
 
 ### Supported languages
@@ -293,7 +293,7 @@ The instrumentation library currently has full support for the following OS:
  * Linux (Debian, Ubuntu...), 32 and 64 bits
  * Windows 10 (always 64 bits)
 
-The event logging mechanism is OS independent but many side features are not. This explains why additional work may be required for any other operating systems.
+The event tracing mechanism is OS independent but many side features are not. This explains why additional work may be required for any other operating systems.
 
 Ideally, porting on a new platform/OS shall be possible without any `Palanteer` code modification, just by adding some OS dedicated code. <br/>
 This task has been prepared to be that way, but without any guarantee (it really depends on the OS constraints). <br/>

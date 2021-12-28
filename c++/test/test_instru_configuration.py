@@ -218,7 +218,7 @@ def test_usepl1_saturated_string_buffer():
     """Config PL_IMPL_STRING_BUFFER_BYTE_QTY=128"""
     build_target("testprogram", "USE_PL=1 PL_IMPL_STRING_BUFFER_BYTE_QTY=128")
 
-    data_configure_events(CRASH_SPEC + [EvtSpec("test_marker")])
+    data_configure_events(CRASH_SPEC + [EvtSpec("test_log")])
     try:
         launch_testprogram(
             pass_first_freeze_point=True
@@ -227,15 +227,15 @@ def test_usepl1_saturated_string_buffer():
     except ConnectionError:
         CHECK(False, "No connection")
 
-    status, answer = program_cli("test::marker msg=[[cool]]")
-    CHECK(status == 0, "CLI creating a marker was called successfully", status, answer)
-    events = data_collect_events(wanted="test_marker")
-    CHECK(status == 0, "The marker has been received successfully", status, answer)
+    status, answer = program_cli("test::log msg=[[cool]]")
+    CHECK(status == 0, "CLI creating a log was called successfully", status, answer)
+    events = data_collect_events(wanted="test_log")
+    CHECK(status == 0, "The log has been received successfully", status, answer)
 
     status, answer = program_cli(
-        "test::marker msg=[[%s]]" % ("a" * 130)
+        "test::log msg=[[%s]]" % ("a" * 130)
     )  # Too long a string for the buffer
-    events = data_collect_events(wanted="test_marker", timeout_sec=1.0)
+    events = data_collect_events(wanted="test_log", timeout_sec=1.0)
     CHECK(
         not process_is_running(),
         "The process stopped as expected due to a failed assertion",

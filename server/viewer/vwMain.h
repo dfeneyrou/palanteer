@@ -80,8 +80,8 @@ public:
     void notifyNewCli(int streamId, u32 nameIdx, int paramSpecIdx, int descriptionIdx);
     void notifyFilteredEvent(int elemIdx, int flags, u64 nameHash, s64 dateNs, u64 value);
 
-    void log(cmLogKind kind, const bsString& msg);
-    void log(cmLogKind kind, const char* format, ...)
+    void logToConsole(cmLogKind kind, const bsString& msg);
+    void logToConsole(cmLogKind kind, const char* format, ...)
 #if defined(__clang__) || defined(__GNUC__)
         __attribute__ ((format (printf, 3, 4))) // Check format at compile time
 #endif
@@ -91,9 +91,9 @@ public:
     enum ProfileKind { TIMINGS, MEMORY, MEMORY_CALLS };
     bool addProfileScope (int id, ProfileKind kind, int threadId, int nestingLevel, u32 scopeLIdx);
     bool addProfileRange(int id, ProfileKind kind, int threadId, u64 threadUniqueHash, s64 startTimeNs, s64 timeRangeNs);
-    bool addHistogram  (int id, u64 threadUniqueHash, u64 hashPath,  int elemIdx, s64 startTimeNs, s64 timeRangeNs);
+    bool addHistogram  (int id, u64 threadUniqueHash, u64 hashPath,  int elemIdx, s64 startTimeNs, s64 timeRangeNs, int logParamIdx);
     bool addText       (int id, int threadId, u64 threadUniqueHash=0, int startNestingLevel=0, u32 startLIdx=0);
-    bool addMarker     (int id, s64 startTimeNs=0);
+    bool addLog     (int id, s64 startTimeNs=0);
     bool addTimeline   (int id);
     bool addMemoryTimeline(int id);
 
@@ -101,6 +101,9 @@ public:
     void        dirty(void); // Force several frame of redrawing
     const char* getNiceDate(const bsDate& date, const bsDate& now) const;
     const char* getNiceTime(s64 ns, s64 tickNs, int bank=0) const;
+    const char* getNiceFullTime(s64 ns) const;  // With hours and minutes
+    int         getFormattedTimeStringCharQty(int timeFormat);
+    const char* getFormattedTimeString(s64 ns, int timeFormat) const;
     const char* getNiceDuration(s64 ns, s64 displayRangeNs=0, int bank=0) const;
     const char* getNiceByteSize(s64 byteSize) const;
     const char* getNiceBigPositiveNumber(u64 number, int bank=0) const;
@@ -128,7 +131,7 @@ private:
     void drawMemoryTimelines(void);
     void drawProfiles(void);
     void drawTexts(void);
-    void drawMarkers(void);
+    void drawLogs(void);
     void drawPlots(void);
     void drawHistograms(void);
 
@@ -169,7 +172,7 @@ private:
     void displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& dataChildren, const cmRecord::Evt& evt, s64 durationNs);
     void getSynchronizedRange(int syncMode, s64& startTimeNs, s64& timeRangeNs);
     void synchronizeNewRange(int syncMode, s64 startTimeNs, s64 timeRangeNs);
-    void synchronizeText(int syncMode, int threadId, int level, int lIdx, s64 timeNs, u32 idToIgnore=(u32)-1);
+    void synchronizeText(int syncMode, int threadId, int level, u32 lIdx, s64 timeNs, u32 idToIgnore=(u32)-1);
     void synchronizeThreadLayout(void);
     void ensureThreadVisibility(int syncMode, int threadId);
     inline s64 getUpdatedRange(int deltaWheel, s64 newRangeNs) {
@@ -194,6 +197,7 @@ private:
     vwFileDialog*  _fileDialogImport        = 0;
     vwFileDialog*  _fileDialogExportChromeTF = 0;
     vwFileDialog*  _fileDialogExportText    = 0;
+    vwFileDialog*  _fileDialogExportLog     = 0;
     vwFileDialog*  _fileDialogExportPlot    = 0;
     vwFileDialog*  _fileDialogExportScreenshot = 0;
     vwFileDialog*  _fileDialogSelectRecord  = 0;
@@ -238,6 +242,29 @@ private:
     RangeMenuItem _rangeMenuItems[4]; // For the contextual menu (empty+full+group1+group2)
     int           _rangeMenuSelection = 0;
 
+    // Iterator aggregator
+    struct AggCacheItem {
+        cmRecord::Evt evt;
+        int           elemIdx;
+        u32           lIdx;
+        s64           timeNs;
+        double        value;
+        bsString      message;
+        int           lineQty;
+    };
+    struct AggregatedIterator {
+        void init(cmRecord* initRecord, s64 initStartTimeNs, double nsPerPix,
+                  const bsVec<int>& logElemIdxArray, const bsVec<int>& hTreeElemIdxArray);
+        bool getNextEvent(AggCacheItem& evt);
+        s64  getPreviousTime(int rewindItemQty);
+        bsVec<cmRecordIteratorLog>  logElemIts, logElemStartIts;
+        bsVec<AggCacheItem>         logElemsEvts;
+        bsVec<cmRecordIteratorElem> hTreeElemIts, hTreeElemStartIts;
+        bsVec<AggCacheItem>         hTreeElemsEvts;
+        cmRecord* record;
+        s64       startTimeNs;
+    };
+
     // Component to handle time range automatas (animation, scrolling, etc...). Used by timeline, memory and plot
     struct TimeRangeBase {
         // Fields
@@ -246,9 +273,10 @@ private:
         s64 timeRangeNs     = -1;
         s64 rangeSelStartNs = 0;
         s64 rangeSelEndNs   = 0;
-        DragMode dragMode      = NONE;
-        int      syncMode      = 1;   // 0: isolated, 1+: group
-        ImGuiID newDockId      = 0xFFFFFFFF;    // 0xFFFFFFFF: use the automatic one
+        DragMode dragMode   = NONE;
+        int      syncMode   = 1;   // 0: isolated, 1+: group
+        ImGuiID  newDockId  = 0xFFFFFFFF;    // 0xFFFFFFFF: use the automatic one
+        int      logLevel   = 0;
         bool   didUserChangedScrollPos = false; // When changed internally, not through ImGui
         bool   isCacheDirty     = true;
         bool   isNew            = true;
@@ -257,9 +285,9 @@ private:
         int    ctxDraggedId         = -1; // Group & threads dragging automata
         bool   ctxDraggedIsGroup    = false;
         bool   ctxDoOpenContextMenu = false;
-        u32    ctxScopeLIdx          = PL_INVALID;
-        float  lastWinWidth    = 0.f;  // Width Change invalidates the cache (min scope resolution change)
-        int    viewThreadId    = -1;  // Used in conjunction with valuePerThread
+        u32    ctxScopeLIdx         = PL_INVALID;
+        float  lastWinWidth = 0.f;  // Width Change invalidates the cache (min scope resolution change)
+        int    viewThreadId = -1;  // Used in conjunction with valuePerThread
         double valuePerThread[vwConst::QUANTITY_THREADID]; // In order to control the thread visibility with the scrollbar
         // Animation
         bsUs_t animTimeUs = 0;
@@ -328,7 +356,7 @@ private:
         cmRecord::Evt e;
     };
     struct TlCachedLockNtf {
-        bool   isCoarse;
+        bool  isCoarse;
         float timePix;
         cmRecord::Evt e;
     };
@@ -336,11 +364,12 @@ private:
         bsVec<TlCachedLockScope>        scopes;
         bsVec<bsVec<TlCachedLockScope>> waitingThreadScopes; // Per cmRecord::locks[].waitingThreadIds
     };
-    struct TlCachedMarker {
-        bool   isCoarse;
-        int    elemIdx;
+    struct TlCachedLog {
+        bool  isCoarse;
+        int   elemIdx;
         float timePix;
         cmRecord::Evt e;
+        bsString message;
     };
     struct Timeline : TimeRangeBase {
         bsString getDescr(void) const;
@@ -352,7 +381,7 @@ private:
         bsVec<int>                     cachedLockOrderedIdx;
         bsVec<bsVec<TlCachedLockNtf>>  cachedLockNtf;
         bsVec<bsVec<TlCachedLockScope>> cachedLockWaitPerThread;
-        bsVec<bsVec<TlCachedMarker>>   cachedMarkerPerThread;
+        bsVec<bsVec<TlCachedLog>>       cachedLogPerThread;
         bsVec<bsVec<TlCachedSwitch>>   cachedSwitchPerThread;
         bsVec<bsVec<TlCachedSoftIrq>>  cachedSoftIrqPerThread;
         bsVec<bsVec<TlCachedCore>>     cachedUsagePerCore;
@@ -578,9 +607,9 @@ private:
         u64 threadUniqueHash;
         int startNLevel;
         u32 startLIdx;
-        float  lastScrollPos = 0.f;
-        float  lastWinHeight = 0.f; // Any growth dirties the cache (need more lines...)
-        int  syncMode        = 1;  // 0 = isolated, 1+ = group
+        float lastScrollPosY = 0.f;
+        float lastWinHeight  = 0.f; // Any growth dirties the cache (need more lines...)
+        int   syncMode       = 1;  // 0 = isolated, 1+ = group
         ImGuiID newDockId    = 0xFFFFFFFF;       // 0xFFFFFFFF: use the automatic one
         bool didUserChangedScrollPos    = false; // When changed internally (arrow keys, drag...)
         bool didUserChangedScrollPosExt = false; // When changed externally (timeline synchro...)
@@ -592,6 +621,9 @@ private:
         s64  firstTimeNs  = 0;
         s64  lastTimeNs   = 0;
         float dragReminder = 0.f;
+        s64   rangeSelStartNs = -1;
+        float rangeSelStartY  = 0.;
+        char  lastDateStr[256];
         // Contextual menu
         int ctxNestingLevel = 0;
         int ctxScopeLIdx    = 0;
@@ -610,44 +642,45 @@ private:
             startLIdx    = lIdx;
             isCacheDirty = true;
             isWindowSelected = true;
+            rangeSelStartNs = -1;
         }
     };
     bsVec<Text> _texts;
     void prepareText(Text& t);
     void drawText(Text& t);
 
-    // Marker windows
+    // Log windows
     // ==============
-    struct MarkerCacheItem {
+    struct LogCacheItem {
         cmRecord::Evt evt;
         int           elemIdx;
+        int           lineQty;
+        bsString      message;
     };
-    struct MarkerAggregatedIterator {
-        void init(cmRecord* record, const bsVec<int>& elemIdxArray, s64 initStartTimeNs,
-                  int itemMaxQty, bsVec<MarkerCacheItem>& items);
-        s64  getPreviousTime(int itemQty);
-        s64  startTimeNs = 0;
-        bsVec<cmRecordIteratorMarker> itElems;
-        bsVec<MarkerCacheItem>        itElemsEvts;
-    };
-    struct Marker {
+    struct LogView {
         int uniqueId;
         int maxCategoryLength   = 1;
         int maxThreadNameLength = 1;
-        float  lastScrollPos = 0.f;
-        float  lastWinHeight = 0.f; // Any growth dirties the cache (need more lines...)
-        int    syncMode      = 1;  // 0 = isolated, 1+ = group
+        float lastScrollPos = 0.f;
+        float lastWinHeight = 0.f; // Any growth dirties the cache (need more lines...)
+        int   syncMode      = 1;  // 0 = isolated, 1+ = group
         ImGuiID newDockId    = 0xFFFFFFFF;         // 0xFFFFFFFF: use the automatic one
-        bool   didUserChangedScrollPos = false;
-        bool   isNew        = true;
-        bool   isCacheDirty = true;
-        bool   isWindowSelected = true;
-        bool   isDragging     = false;
-        float  dragReminder   = 0.f;
-        s64    forceTimeNs    = -1;
-        s64    startTimeNs    = 0;
+        bool  didUserChangedScrollPos = false;
+        bool  isNew        = true;
+        bool  isCacheDirty = true;
+        bool  isWindowSelected = true;
+        bool  isDragging     = false;
+        float dragReminder   = 0.f;
+        s64   forceTimeNs    = -1;
+        s64   startTimeNs    = 0;
+        int   dateFormatSelection = 0;
+        int   levelSelection = 0;
+        s64   rangeSelStartNs = -1;
+        float rangeSelStartY  = 0.;
         bsVec<bool> threadSelection;
         bsVec<bool> categorySelection;
+        bsVec<int> logElemIdxArray;
+        char lastDateStr[256];
         bool isFilteredOnThread   = false;
         bool isFilteredOnCategory = false;
         // Contextual menu
@@ -655,8 +688,8 @@ private:
         u32  ctxNameIdx      = 0;
         // Cache (rebuilt if dirty)
         float cachedScrollRatio = 0.f;
-        bsVec<MarkerCacheItem> cachedItems;
-        MarkerAggregatedIterator aggregatedIt;
+        bsVec<LogCacheItem> cachedItems;
+        AggregatedIterator aggregatedIt;
         // Helpers
         bsString getDescr(void) const;
         void setStartPosition(s64 timeNs, int idToIgnore=-1, bool doSelectWindow=false) {
@@ -664,12 +697,13 @@ private:
             forceTimeNs  = timeNs;
             isCacheDirty = true;
             didUserChangedScrollPos = true;
+            rangeSelStartNs = -1;
             isWindowSelected = doSelectWindow;
         }
     };
-    bsVec<Marker> _markers;
-    void prepareMarker(Marker& t);
-    void drawMarker(Marker& t);
+    bsVec<LogView> _logViews;
+    void prepareLog(LogView& t);
+    void drawLog(LogView& t);
 
     // Search windows
     // ==============
@@ -679,14 +713,8 @@ private:
         double value;
         int    elemIdx;
         u32    lIdx;
-    };
-    struct SearchAggregatedIterator {
-        void init(cmRecord* record, u32 selectedNameIdx, u64 threadBitmap, s64 initStartTimeNs,
-                  int itemMaxQty, bsVec<SearchCacheItem>& items);
-        s64  getPreviousTime(int itemQty);
-        s64  startTimeNs = 0;
-        bsVec<cmRecordIteratorElem> itElems;
-        bsVec<SearchCacheItem>      itElemsEvts;
+        bsString message;
+        int    messageLineQty;
     };
     struct Search {
         int uniqueId;
@@ -700,19 +728,22 @@ private:
         bsVec<bool> threadSelection;
         bool isFilteredOnThread  = false;
         int  maxThreadNameLength = 1;
-        float  lastScrollPos = 0.f;
-        float  lastWinHeight = 0.f; // Any growth dirties the cache (need more lines...)
-        int    syncMode      = 1;  // 0 = isolated, 1+ = group
+        char  lastDateStr[256];
+        float lastScrollPos = 0.f;
+        float lastWinHeight = 0.f; // Any growth dirties the cache (need more lines...)
+        int   syncMode      = 1;  // 0 = isolated, 1+ = group
         ImGuiID newDockId    = 0xFFFFFFFF;         // 0xFFFFFFFF: use the automatic one
-        bool   didUserChangedScrollPos = false; // When changed externally (timeline synchro...)
-        bool   isNew        = true;
-        bool   isCacheDirty = true;
-        bool   isWindowSelected = true;
-        bool   isDragging   = false;
-        float  dragReminder = 0.f;
-        float  lastMouseY   = 0.f;
-        s64    forceTimeNs  = -1;
-        s64    startTimeNs  = 0;
+        bool  didUserChangedScrollPos = false; // When changed externally (timeline synchro...)
+        bool  isNew        = true;
+        bool  isCacheDirty = true;
+        bool  isWindowSelected = true;
+        bool  isDragging   = false;
+        float dragReminder = 0.f;
+        float lastMouseY   = 0.f;
+        s64   forceTimeNs  = -1;
+        s64   startTimeNs  = 0;
+        s64   rangeSelStartNs = -1;
+        float rangeSelStartY  = 0.;
         // Contextual menu
         int  ctxThreadId     = 0;
         int  ctxNestingLevel = 0;
@@ -721,13 +752,14 @@ private:
         // Cache (rebuilt if dirty)
         float cachedScrollRatio = 0.f;
         bsVec<SearchCacheItem> cachedItems;
-        SearchAggregatedIterator aggregatedIt;
+        AggregatedIterator aggregatedIt;
         // Helpers
         void setStartPosition(s64 timeNs, int idToIgnore=-1) {
             if(idToIgnore==uniqueId) return;
             forceTimeNs  = timeNs;
             isCacheDirty = true;
             didUserChangedScrollPos = true;
+            rangeSelStartNs = -1;
         }
         void reset(void) {
             input[0] = 0;
@@ -753,6 +785,7 @@ private:
         bsVec<int> existingPlotWindowIndices;
         s64        startTimeNs;
         s64        timeRangeNs;
+        int        logParamIdx = -1;
         bsString comboSelectionString;
         int      comboSelectionExistingIdx = -1;
         int      comboSelectionNewIdx      = -1;
@@ -765,6 +798,7 @@ private:
     bsVec<int>          _plotMenuNewPlotCount;
     bool                _plotMenuWithRemoval;
     int                 _plotMenuSpecificCurveIdx;
+    int                 _plotMenuLogParamQty;
     float               _plotMenuNamesWidth  = 0.f;
     bool                _plotMenuAddAllNames = true;
     bool                _plotMenuHasScopeChildren = false;
@@ -778,6 +812,7 @@ private:
         s64    timeNs;
         double value;
         u32    lIdx;
+        int    flagLogParam;  // Only for logs
         cmRecord::Evt evt;
     };
     struct PlotCurve {
@@ -786,6 +821,7 @@ private:
         int  elemIdx;
         bool isEnabled;
         bool isHexa;
+        int  logParamIdx = -1;
         // Cached
         double absYMin = +1e300; // Absolute min/max (should not change too much after initial global range)
         double absYMax = -1e300;
@@ -817,6 +853,7 @@ private:
     bool prepareGraphContextualMenu(int threadId, int nestingLevel, u32 lIdx, s64 startTimeNs, s64 timeRangeNs,
                                     bool withChildren=true, bool withRemoval=false);
     void prepareGraphContextualMenu(int elemIdx, s64 startTimeNs, s64 timeRangeNs, bool addAllNames, bool withRemoval);
+    void prepareGraphLogContextualMenu(int elemIdx, s64 startTimeNs, s64 timeRangeNs, bool withRemoval);
 
 
     // Histogram
@@ -833,9 +870,10 @@ private:
         double absMaxValue = -1e300;
         bsVec<double> maxValuePerBin;
         cmRecordIteratorElem   itGen;
-        cmRecordIteratorMarker itMarker;
+        cmRecordIteratorLog    itLog;
         cmRecordIteratorLockNtf itLockNtf;
         cmRecordIteratorLockUseGraph itLockUse;
+        bool boundaryDiscoveryPhase;  // First pass required for log parameters
     };
     struct Histogram {
         // Parameters
@@ -848,6 +886,7 @@ private:
         s64      timeRangeNs;
         int      computationLevel;
         bool     isHexa;
+        int      logParamIdx;
         // View
         double   viewZoom      = 1.;
         double   viewStartX    = 0.;
@@ -861,6 +900,7 @@ private:
         float    legendPosX = 0.8f; // Window ratio coordinates of the center
         float    legendPosY = 0.05f;
         DragMode legendDragMode = NONE;
+        int      valueType      = 0;
         bool     isCacheDirty   = true;
         bool     isFirstRun     = true;
         bool     isNew          = true;
@@ -999,10 +1039,19 @@ private:
         int dumpedQty;
         FILE* fileHandle = 0;
     };
+    struct ExportLog {
+        ExportState state = IDLE;
+        AggregatedIterator it;
+        int maxCategoryLength, maxThreadNameLength;
+        s64 startTimeNs, endTimeNs;
+        int dumpedQty;
+        FILE* fileHandle = 0;
+    };
     struct ExportPlot {
         ExportState state = IDLE;
         int elemIdx;
-        cmRecordIteratorMarker itMarker;
+        int logParamIdx;  // Applicable only for logs
+        cmRecordIteratorLog itLog;
         cmRecordIteratorLockNtf itLockNtf;
         cmRecordIteratorLockUseGraph itLockUse;
         cmRecordIteratorElem itGeneric;
@@ -1012,15 +1061,18 @@ private:
     ExportChromeTraceFormat _exportCTF;
     ExportScreenshot        _exportScreenshot;
     ExportText              _exportText;
+    ExportLog               _exportLog;
     ExportPlot              _exportPlot;
     bool _isExportOnGoing = false;
     void handleExportCTF(void);
     void handleExportScreenshot(void);
     void handleExportText(void);
+    void handleExportLog(void);
     void handleExportPlot(void);
     void handleExports(void);
     void initiateExportText(int threadId, s64 startTimeNs, int startNestingLevel, u32 startLIdx, s64 endTimeNs, int dumpedQty);
-    void initiateExportPlot(int elemIdx, s64 startTimeNs, s64 endTimeNs);
+    void initiateExportLog(const bsVec<int>& logElemIdxArray, s64 startTimeNs, s64 endTimeNs, int dumpedQty);
+    void initiateExportPlot(int elemIdx, s64 startTimeNs, s64 endTimeNs, int logParamIdx);
     void initiateExportCTF(void);
 
     // Inter-thread messages

@@ -37,8 +37,8 @@ Recording simultaneously [up to 8 streams](#multistream) (i.e., from different p
 <table width=100%>
 <tr><td>
 
-- **Simple logging of meaningful atomic events**
- - Time scopes, variable values, locks, markers, memory allocations, context switches...
+- **Simple tracing of meaningful atomic events**
+ - Time scopes, variable values, locks, logs, memory allocations, context switches...
  - Global structure from the event hierarchy
  - Typed (string, timestamp, float, integer...)
  - C++
@@ -74,7 +74,7 @@ Recording simultaneously [up to 8 streams](#multistream) (i.e., from different p
 
 - **Memory usage tracking**
  - Detect allocation hot spots, big allocators, temporary allocations...
- - Leak detection (based on logged events)
+ - Leak detection (based on traced events)
 
 </td> <td>
 
@@ -157,10 +157,9 @@ Recording simultaneously [up to 8 streams](#multistream) (i.e., from different p
 
 ## C++ Features
 
-### Easy logging
+### Easy tracing
 
-Each call to the instrumentation library is a piece of information on the execution of your program. <br/>
-The term "logging" in `Palanteer` does not relate to a generic string but to a typed, specialized and atomic data.
+Each call to the instrumentation library is a piece of information on the execution of your program.
 
 The [instrumentation API](instrumentation_api_cpp.md.html) is straightforward and simple. As an example, the most representative ones are:
  - **plScope**: start a named timestamp measurement, automatically closed at the end of the C++ scope
@@ -172,28 +171,86 @@ Example:
 // Declare the name of your thread (optional, it helps visualization, persistence of config and scripting)
 plDeclareThread("Worker 1");
 
-// Named variable value logging
+// Named variable value tracing
 plData("Monster health", monsterHealth);
 
-// Variable logging, shorter equivalent to plData("monsterHealth", monsterHealth)
+// Variable tracing, shorter equivalent to plData("monsterHealth", monsterHealth)
 plVar(monsterHealth);
 
-// Multiple variable logging, shorter equivalent to the multiple calls with one variable
+// Multiple variable tracing, shorter equivalent to the multiple calls with one variable
 plVar(monsterHealth, monsterAttackCoef, monsterName);
 
-// Text logging
+// Text tracing
 plText("stage", "Level one reached");
 
 // Timestamped scope (automatically closed at C++ scope end)
 plScope("superFunction");
-
-// Add a marker (special event that is highlighted in timeline graphs)
-plMarker("user input", "Left arrow pressed");
-
-// ...
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 All your data, whatever the quantity, can be smoothly visualized. And all of them can be viewed at least as a curve or histogram.
+
+
+### Easy and efficient logging
+
+The `plLog` instrumentation family processes a timestamped printf-like messages with a level and category, on record and/or on console. <br/>
+The user provided category is a way to later filter efficiently the logs per topic, and the available nested levels are `Debug`, `Info`, `Warn` and `Error`.<br/>
+The full description is available [here](instrumentation_api_cpp.md.html#logs).
+
+!!!
+    Using logs is straightforward as no complex configurable is required. <br/>
+    Console display is even enabled without `Palanteer` service initialization.
+
+Example:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+plLogDebug("input", "Key '%c' pressed", pressedKeyChar);
+
+plLogInfo("output", "The resulting value of the phase %-20s is %g with the code 0x%08x", phaseStr, floatResult, errorCode);
+
+plLogWarn("phase", "End of a computation");
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The minimum level for displaying the logs on console is dynamically configurable with [`plSetLogLevelConsole(level)`](instrumentation_api_cpp.md.html#plsetloglevelconsole). Default is `Warn`.<br/>
+While runtime performances are degraded when printing on console, displaying on console allows efficient debugging or tuning of programs under development. <br/>
+Moreover, the cost of the log can be fully removed once the program is finished by using the [groups of instrumentation](base_concepts.md.html#c++specific/groups).
+
+In a similar way, the minimum level for recording the logs is dynamically configurable with [`plSetLogLevelRecord(level)`](instrumentation_api_cpp.md.html#plsetloglevelrecord). Default is all.
+
+
+**Comparison with some other loggers**
+
+All tools have to make some design decisions which impact the efficiency of their features, performances, usability or addressed use-cases. <br/>
+In order to understand the use-cases where the logging service of `Palanteer` is interesting, let's compare it with some well established logger:
+  - `spdlog`: feature-rich and popular C++ logging library
+  - `Nanolog (Stanford)`: claimed to be the most efficient logger (runtime and used space).
+
+|                                       | Palanteer                                           | Nanolog (Stanford)                     | spdlog                                                                  |
+|---------------------------------------|-----------------------------------------------------|----------------------------------------|-------------------------------------------------------------------------|
+| **Supported OS:**                     | (2) Windows, Linux                                  | (3) Linux                              | **(1) Windows, UNIX like, Mac, Android**                                |
+| **Installation:**                     | **(1) Single header file**                          | (2) Small library                      | (2) Header only (but very slow compilation) or library                  |
+| **C++ min requirement:**              | **(1) C++11**                                       | (3) C++17                              | **(1) C++11**                                                           |
+| **String formatting**                 | printf syntax                                       | printf syntax                          | `fmt` style                                                             |
+| **Easy to start:**                    | Just 1 include and start logging                    | Just 1 include and start logging       | Just 1 include and start logging                                        |
+| **Easy to master:**                   | **(1) printf-like API with level and category**     | **(1) printf-like API with level**     | (3) OOP API with `fmt` syntax and logger/sink concepts                  |
+| **Extensible:**                       | (2) No, only built-in types                         | (2) No, only built-in types            | **(1) Yes, custom formatter can be added. Also supports binary arrays** |
+| **Log files**                         | (2) Only one file                                   | (2) Only one file                      | **(1) Various log targets (rotating, daily...)**                        |
+| **Compile time selection of logs**    | **(1) Per user-defined groups of logs**             | (3) All or nothing                     | (2) Some can be filtered by level                                       |
+| **Obfuscation of static strings**     | **(1) Yes**                                         | (2) No                                 | (2) No                                                                  |
+| **Structured context**                | **(1) Yes, context can be added through scopes**    | (2) No                                 | (2) No                                                                  |
+| **Runtime cost per log [^perftest]:** | (2) 19.2 ns                                         | **(1) 10.7 ns**                        | (3) 1250 ns (unable to reproduce the figures on spdlog github)          |
+| **Log file size  [^perftest]:**       | (2) 18 MB (with indexing), need a tool to visualize | **(1) 7 MB, need a tool to visualize** | (3) 70 MB, human readable                                               |
+| **Compilation time[^compiltest]:**    | **(1) 2800 logs/s**                                 | (3) 265 log/s                          | (2) 470 logs/s (with the static library mode)                           |
+
+
+[^perftest] The performance test is a 1 million time loop on logging "Simple log message with 1 parameter %d" (adapted for `fmt` case) in a multithreaded capable configuration, on a AMD Ryzen 7 5700U.
+It measures in all cases only the writing inside the internal queue (no formatting nor output). <br/>
+`Palanteer` figures are obtained with the provided test program and the unit tests (for compilation speed).
+
+[^compiltest] This test is based on the compilation time difference between a file and the same file with 1000 calls to logging with 1 parameter, on a AMD Ryzen 7 5700U.
+
+**Synthesis**:
+  - `Nanolog`'s strength is its (rightly) claimed CPU and storage size efficiency, at the expense of any other kind of features (it is after all the outcome of a PhD thesis).
+  - `spdlog`'s strength is its complete logging feature list. Its richness and flexibility comes at a price: average global performance (runtime, compilation time...) and not so easy configuration.
+  - `Palanteer`'s strength is its good performances (runtime, compilation time...) and its adequation for application observation with additional traced context and visualization tool. The lack of choice for the log files (only 1 file) closes the door for permanent logging solutions. Its currently limited OS support may also be a problem.
 
 ### Automatic functions instrumentation (GCC only)
 
@@ -221,7 +278,7 @@ Each group can independently be compiled or fully ignored (zero instructions in 
 
 Per-topic instrumentation is a powerful tool for code quality:
  - Deep instrumentation can be kept without any impact inside the code and re-activated only when needed
- - Groups cover both logging and assertions, they generalize the standard NDEBUG flag
+ - Groups cover tracing, logging and assertions, they generalize the standard NDEBUG flag
  - Performance cost versus instrumentation level is fully under user control
 
 The "group" instrumentation API is directly derived from the general ones by replacing the prefix `pl` with `plg` and inserting the group name as first parameter.
@@ -233,23 +290,23 @@ The "group" instrumentation API is directly derived from the general ones by rep
 
 // => Use the same API but with prefix *plg* instead of *pl* and the group name as first parameter
 
-// Named variable value logging
+// Named variable value tracing
 plgData(MYGROUP, "Monster health", monsterHealth);
 
-// Variable logging, shorter equivalent to plgData(MYGROUP, "monsterHealth", monsterHealth)
+// Variable tracing, shorter equivalent to plgData(MYGROUP, "monsterHealth", monsterHealth)
 plgVar(MYGROUP, monsterHealth);
 
-// Multiple variable logging, shorter equivalent to the multiple calls with one variable
+// Multiple variable tracing, shorter equivalent to the multiple calls with one variable
 plgVar(MYGROUP, monsterHealth, monsterAttackCoef, monsterName);
 
-// Text logging
+// Text tracing
 plgText(MYGROUP, "stage", "Level one reached");
 
 // Scope tracking (automatically closed at scope end)
 plgScope(MYGROUP, "superFunction");
 
-// Add a marker (special event that is highlighted in timeline graphs)
-plgMarker(MYGROUP, "user input", "Left arrow pressed");
+// Add a printf-like log
+plgLogInfo(MYGROUP, "user input", "Key %c pressed", input_pressed_key);
 
 // ...
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -357,13 +414,13 @@ In the example above, the last assertion outputs the text below, optionally foll
 
 Most features of `Palanteer` can be selected individually at compile time.
 
-
 | Feature name                                                                                                      | Constant                                                             | Default                            |
 |-------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------|:-----------------------------------|
-| [Event logging](#easylogging)                                                                                     | Enabled if `USE_PL`==1 and `PL_NOEVENT` is not 1                     | Disabled (`USE_PL` not defined)    |
+| [Event tracing](#easytracing)                                                                                     | Enabled if `USE_PL`==1 and `PL_NOEVENT` is not 1                     | Disabled (`USE_PL` not defined)    |
+| [Log console display](#easylogging)                                                                               | Enabled if `USE_PL`==1                                               | Disabled (`USE_PL` not defined)    |
 | [`Palanteer` assertions](#enhancedassertions)                                                                     | Enabled if `USE_PL`==1 and `PL_NOASSERT` is not 1                    | Disabled (`USE_PL` not defined)    |
 | [Remote control](#remotecontrol)                                                                                  | Enabled if `USE_PL`==1 and `PL_NOCONTROL` is not 1                   | Disabled (`USE_PL` not defined)    |
-| [Event logging from group _YYY_](base_concepts.md.html#groups)                                                    | Enabled if event logging is enabled and `PL_GROUP_YYY` is 1          | `PL_GROUP_YYY` **must** be defined |
+| [Event tracing from group _YYY_](base_concepts.md.html#groups)                                                    | Enabled if event tracing is enabled and `PL_GROUP_YYY` is 1          | `PL_GROUP_YYY` **must** be defined |
 | [Assertions from group _YYY_](base_concepts.md.html##groups)                                                      | Enabled if `Palanteer` assertions is enabled and `PL_GROUP_YYY` is 1 | `PL_GROUP_YYY` **must** be defined |
 | [External strings](#externalstrings)                                                                              | Enabled if `PL_EXTERNAL_STRINGS` is set to 1                         | Disabled                           |
 | [Simple (standard) `Palanteer` assertions](#enhancedassertions)                                                   | Enabled if `PL_SIMPLE_ASSERT` is set to 1                            | Enhanced assertions                |
@@ -381,7 +438,7 @@ Python features differ from the C++ ones because of the nature of the language, 
 
 ### Automatic partial instrumentation
 
-The CPython interpreter offers dedicated profiling hooks that `Palanteer` leverages to automatically log:
+The CPython interpreter offers dedicated profiling hooks that `Palanteer` leverages to automatically trace:
  - Entering or leaving a function
  - Raised exception, caught or not
  - Memory allocations (at the interpreter level)
@@ -412,11 +469,11 @@ Options for case (2):
  -s &lt;server IP address&gt; Set the server IP address (default is 127.0.0.1)
  -p &lt;server TCP port&gt;   Set the server port       (default is 59059)
  -f &lt;filename.pltraw&gt;   Save the profiling data into a file to be imported in the Palanteer viewer (default=remote connection)
- -nf                    Do not automatically log the functions              (default=log functions)
- -ne                    Do not automatically log the exceptions             (default=log exception)
- -nm                    Do not log the memory allocations                   (default=log memory allocations)
- -ng                    Do not automatically log the garbage collector runs (default=log gc)
- -c                     Do automatically log the C functions                (default=only python functions)
+ -nf                    Do not automatically trace the functions              (default=trace functions)
+ -ne                    Do not automatically trace the exceptions             (default=trace exception)
+ -nm                    Do not trace the memory allocations                   (default=trace memory allocations)
+ -ng                    Do not automatically trace the garbage collector runs (default=trace gc)
+ -c                     Do automatically trace the C functions                (default=only python functions)
  -w                     Wait for server connection (Palanteer viewer or scripting module). Applicable only in case of remote connection.
  -m                     Run the app as a module (similar to python's "-m" option)
 
@@ -458,7 +515,7 @@ This option is activated by using the mode `PL_MODE_STORE_IN_FILE` in the initia
 The content of the `.pltraw` file is simply the exact payload sent to the server in case of connection. <br/>
 Importing such file in the viewer is equivalent of a replay of the program transmission, but from a file.
 
-The file size is 24 times the event quantity (note that memory operations take 2 events), plus the size of all unique strings and a slight protocol overhead.
+The file size is 24 times (12 times in compact mode) the event quantity (note that memory operations take 2 events), plus the size of all unique strings and a light protocol overhead.
 
 Example with the test program. The resulting `example_record.pltraw` shall be imported in the viewer (menu bar `File->Import`):
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
@@ -784,7 +841,7 @@ Maximum : 500
 ./remoteScript.py python3 example.py  0.86s user 0.02s system 33% cpu 2.624 total
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In this "heavy logging in loop" scenario, the scripting part is the bottleneck,
+In this "heavy tracing in loop" scenario, the scripting part is the bottleneck,
 hence the small difference between the `C++` and the `Python` program execution times.
 
 ### Palanteer viewer
@@ -956,7 +1013,7 @@ Assert+2 integers code size                | 80.0 bytes/assert            |
 Compilation speed (-O0)                    | 1731 event/s                 |
 Compilation speed (-O2)                    | 451 event/s                  |
 Event code size (-O2)                      | 64 bytes/event               |
-Event logging runtime                      | 6.1 ns                       |
+Event tracing runtime                      | 6.1 ns                       |
 Palanteer code size - Context switch (-O2) | 12320 bytes                  |
 Palanteer code size - Control part (-O2)   | 28696 bytes                  |
 Palanteer code size - Total (-O2)          | 66152 bytes                  |
@@ -976,7 +1033,7 @@ Assert+2 integers code size                | 91.0 bytes/assert            |
 Compilation speed (-Od)                    | 878 event/s                  |
 Compilation speed (-O2)                    | 241 event/s                  |
 Event code size (-O2)                      | 66 bytes/event               |
-Event logging runtime                      | 4.3 ns                       |
+Event tracing runtime                      | 4.3 ns                       |
 Palanteer code size - Context switch (-O2) | 2560 bytes                   |
 Palanteer code size - Control part (-O2)   | 40448 bytes                  |
 Palanteer code size - Total (-O2)          | 313344 bytes                 |
@@ -990,14 +1047,14 @@ Palanteer include - USE_PL=1 + impl.       | 0.648 s                      |
 Some details on the test:
  * `abcdefghij` and `i` are integers
  * The tested assertions are `plAssert(abcdefghij++)` and `plAssert(abcdefghij++, abcdefghij, i)`
- * The tested event logging is `plVar(abcdefghij)`
+ * The tested event tracing is `plVar(abcdefghij)`
 
 
 **Synthesis of the results**
 
-* **Logging cost**: around 5 ns (very optimistic figure, probably due to the used small loop) for ~65 bytes of code size (on x64 instructions set)
-  * The few nanosecond timing ensures that logging performances are accurate
-  * Note: it does not mean that the system is able to log 200 million event/s, the bottleneck is the event processing on server side (see next indicator (2)).
+* **Tracing cost**: around 5 ns (very optimistic figure, probably due to the used small loop) for ~65 bytes of code size (on x64 instructions set)
+  * The few nanosecond timing ensures that tracing performances are accurate
+  * Note: it does not mean that the system is able to trace 200 million event/s, the bottleneck is the event processing on server side (see next indicator (2)).
 
 * **Compilation speed**: at least ~900 event/s in debug mode. This is acceptable even for an heavily instrumented file, especially compared to the usual C++ compilation speed.
   * the timings with an optimized build are 4 times slower but are consistent with the global compilation slow down, nothing specific to `Palanteer`.
@@ -1010,7 +1067,7 @@ Some details on the test:
   * Include of disabled instrumentation library is costless (few milliseconds)
   * As for Linux, the cost of including the enabled instrumentation library is very close to the cost of the inner inclusion of `#include <thread>`, and depending on the other includes of the C++ standard library, this cost may be masked.
 
-* The asserts and event logging code size and duration are roughly consistent across OSes.
+* The asserts and event tracing code size and duration are roughly consistent across OSes.
    * the core instrumentation code size is not
 
 
@@ -1038,7 +1095,7 @@ Processing rate     : 4.725 million event/s
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! note Synthesis
-    - The event logging in a "for loop" is around 25 ns in average
+    - The event tracing in a "for loop" is around 25 ns in average
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
     for(int i=0; i&ltiterationQty; ++i) {
         plBegin("TestLoop");
@@ -1052,7 +1109,7 @@ Processing rate     : 4.725 million event/s
 !!! warning Important
    In case of running out of instrumentation resources, namely free space in event collection buffer or dynamic string from the pre-allocated pool,
    threads busy-wait until the collection thread recycles them. <br/>
-   A marker "`SATURATION`" is also inserted in the `Palanteer` collection thread to indicate the degradation of the logging quality. <br/>
+   An error log "`SATURATION`" is also inserted in the `Palanteer` collection thread to indicate the degradation of the tracing quality. <br/>
    This shall be fixed by increasing the available resources on the instrumentation side. <br/>
 
 ### C++ memory usage
@@ -1122,7 +1179,7 @@ Processing rate     : 1.726 million event/s
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! note Synthesis
-    - The event logging in a "for loop" is around 700 ns in average
+    - The event tracing in a "for loop" is around 700 ns in average
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
     for i in range(loopQty):
         plBegin("TestLoop")
@@ -1132,9 +1189,9 @@ Processing rate     : 1.726 million event/s
     }
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     - We see that the bottleneck is the instrumentation side, for both OS
-      - Python is an interpreted language, and despite the fact that most of the logging task is done in the C extension library, it has a cost
+      - Python is an interpreted language, and despite the fact that most of the tracing task is done in the C extension library, it has a cost
     - Windows results are ~30% faster than on Linux, this is probably due to the lack of CPU on Linux VM (software GL renderer taking at least 1 CPU)
-    - The logging rate of ~1.5 million event/s looks acceptable, but remember that it is program-bounded and the program shall do something else than logging...
+    - The tracing rate of ~1.5 million event/s looks acceptable, but remember that it is program-bounded and the program shall do something else than tracing...
 
 
 ## Third party dependencies

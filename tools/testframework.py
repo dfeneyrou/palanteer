@@ -37,7 +37,7 @@ A test is a Python function identified by a decorator:
 The test execution order is per suite, then per filename (in case a suite is located in different files),
 then per location inside files.
 
-A suite can be "prepared" and "cleaned" with functions having resectively the following decorators:
+A suite can be "prepared" and "cleaned" with functions having respectively the following decorators:
  * @prepare_suite("suite name")
  * @clean_suite  ("suite name")
 Some global preparation and cleaning can be done by using an empty suite name.
