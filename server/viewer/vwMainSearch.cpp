@@ -103,7 +103,7 @@ vwMain::drawSearch(void)
     // Open search window
     // ==================
     // Show window?
-    bool isCtrlFHit = ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(KC_F);
+    bool isCtrlFHit = ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(KC_F) && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopup);
     if(isCtrlFHit && !getConfig().getWindowSearchVisibility()) {
         getConfig().setWindowSearchVisibility(true);
         s.isWindowSelected = true;
@@ -135,6 +135,7 @@ vwMain::drawSearch(void)
     }
     // User clicked to dismiss the search window?
     if(!isOpenWindow) {
+        s.isInputPopupOpen = false;
         getConfig().setWindowSearchVisibility(false);
         for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(PL_INVALID);
         setFullScreenView(-1);
@@ -219,9 +220,12 @@ vwMain::drawSearch(void)
     // User hit Ctrl-F and it is not a "show window"?
     if(isCtrlFHit && !s.isWindowSelected) {
         if(ImGui::IsItemActive()) { // Already under focus => hide
+            s.isInputPopupOpen = false;
             getConfig().setWindowSearchVisibility(false);
             for(Profile& prof : _profiles) if(s.threadSelection[prof.threadId]) prof.notifySearch(PL_INVALID);
             setFullScreenView(-1);
+            ImGui::End();
+            return;
         }
         else {
             s.isWindowSelected = true;  // else set focus

@@ -268,6 +268,9 @@ vwMain::drawLog(LogView& lv)
     const float mouseY    = ImGui::GetMousePos().y;
     const bool isWindowHovered = ImGui::IsWindowHovered();
 
+    // Get keyboard focus on window hovering
+    if(isWindowHovered && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) ImGui::SetWindowFocus();
+
     constexpr int maxMsgSize = 256;
     char tmpStr [maxMsgSize];
     lv.lastDateStr[0] = 0;  // No previous displayed date

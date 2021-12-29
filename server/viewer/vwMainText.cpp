@@ -258,6 +258,9 @@ vwMain::drawText(Text& t)
     char nameStr [maxMsgSize];
     char valueStr[maxMsgSize];
 
+    // Get keyboard focus on window hovering
+    if(isWindowHovered && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) ImGui::SetWindowFocus();
+
     // Did the user click on the scrollbar? (detection based on an unexpected position change)
     float curScrollPosX = ImGui::GetScrollX();
     float lastScrollPosY = ImGui::GetScrollY();

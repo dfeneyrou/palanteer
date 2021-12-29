@@ -517,6 +517,9 @@ vwMain::drawHistogram(int histogramIdx)
     const float vMargin   = 10.f;
     const float pointSize = 3.f;
 
+    // Get keyboard focus on window hovering
+    if(isWindowHovered && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) ImGui::SetWindowFocus();
+
     Histogram& h = _histograms[histogramIdx];
     prepareHistogram(h); // Ensure cache is up to date, even at window creation
     const bool isDiscrete   = !h.discreteLkup.empty();
