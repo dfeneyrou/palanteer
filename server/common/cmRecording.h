@@ -102,6 +102,15 @@ private:
         int        mStreamNameLkup[cmConst::MAX_STREAM_QTY]; // Only the one of the original name is used
     };
 
+    struct ElemMRBuild {
+        double value;
+        s64    timeNs;
+    };
+    struct LevelMRBuild {
+        double lastValue;;
+        s64    lastTimeNs;;
+        bsVec<ElemMRBuild> items;
+    };
     struct ElemBuild {
         u64 hashPath;
         u64 partialHashPath;  // Does not include the thread hash, if "isThreadHashed".
@@ -118,7 +127,9 @@ private:
         int  isThreadHashed;  // If true, the hashPath has a final step with threadPath
         double absYMin =  1e300;
         double absYMax = -1e300;
-        s64    lastTimeNs = 0;
+        double lastValue   = -1e300;
+        s64    firstTimeNs = 0;
+        s64    lastTimeNs  = -1;
         bool   hasDeltaChanges = false;
         bsVec<u32>    chunkLIdx; // Data here is the LIdx of the corresponding couple (thread/nesting level)
         bsVec<s64>    chunkTimes;
@@ -127,7 +138,7 @@ private:
         bsVec<chunkLoc_t>    chunkLocs;
         bsVec<bsVec<cmRecord::ElemMR>> mrSpeckChunks;  // Meant to be fully in memory
         bsVec<int>           lastMrSpeckChunksIndexes;
-        bsVec<bsVec<double>> workMrValues; // Not stored, used to build the pyramid with min/max function on value
+        bsVec<LevelMRBuild>  workMrValues; // Not stored, used to build the pyramid
     };
 
 #define LOC_STORAGE_REC(name)                         \
@@ -279,7 +290,7 @@ private:
     bsVec<u8>               _workingCompressionBuffer; // For compression
     bsVec<u32>              _workingNewMRScopes;     // For scope chunk writing
     bsVec<cmRecord::ElemMR> _workingNewMRElems;      // For Elem chunk writing
-    bsVec<double>           _workingNewMRElemValues; // For Elem chunk writing
+    bsVec<ElemMRBuild>      _workingNewMRElemValues; // For Elem chunk writing
 
     // Delta record
     int        _recLastSizeStrings = 0;

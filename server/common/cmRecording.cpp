@@ -1474,40 +1474,26 @@ cmRecording::writeElemChunk(ElemBuild& elem, bool isLast)
 
         // Compute the first MR speck size, lIdx and value
         plgBegin(REC, "Compute MR level 0");
-        if(elem.doRepresentScope) {
-            // The speck is the biggest gap between two points. Suitable for agglomerated scopes representation
-            for(u32 j=0; j<realSize; j+=cmMRElemSize) {
-                s64 speckNs     = elem.chunkTimes[j]-elem.lastTimeNs;
-                u32 selectedIdx = bsMin(j+cmMRElemSize-1, realSize-1);  // Take the last one in case of equal values
-                for(u32 i=j; i<j+cmMRElemSize-1 && i<realSize-1; ++i) {
-                    speckNs = bsMax(speckNs, elem.chunkTimes[i+1]-elem.chunkTimes[i]);
-                    if(elem.chunkValues[selectedIdx]<elem.chunkValues[i]) selectedIdx = i; // Hardcoded choice: highest value
-                    elem.lastTimeNs = elem.chunkTimes[i+1];
-                }
-                _workingNewMRElems     .push_back( { (u32)(speckNs>>10), elem.chunkLIdx[selectedIdx] } ); // Speck Size unit is Ns/1024
-                _workingNewMRElemValues.push_back(elem.chunkValues[selectedIdx]);
-            }
+        // The speck is the time delta with the full resolution start point. Suitable for plot representation (i.e. subsampling)
+        if(elem.lastTimeNs<0) {
+            elem.firstTimeNs = elem.lastTimeNs = elem.chunkTimes[0];
         }
-        else {
-            // The speck is the time delta with the full resolution start point. Suitable for plot representation (i.e. subsampling)
-            bool takeMax = true;
-            for(u32 j=0; j<realSize; j+=cmMRElemSize) {
-                u32 selectedIdx = bsMin(j+cmMRElemSize-1, realSize-1);
-                if(takeMax) {  // Hardcoded choice: alternate highest and lowest values
-                    for(u32 i=j; i<j+cmMRElemSize-1 && i<realSize-1; ++i) {
-                        if(elem.chunkValues[selectedIdx]<elem.chunkValues[i]) selectedIdx = i;
-                    }
-                } else {
-                    for(u32 i=j; i<j+cmMRElemSize-1 && i<realSize-1; ++i) {
-                        if(elem.chunkValues[selectedIdx]>elem.chunkValues[i]) selectedIdx = i;
-                    }
+        for(u32 j=0; j<realSize; j+=cmMRElemSize) {
+            u32    selectedIdx = j;
+            double selectedDeltaValue = -1.;
+            for(u32 i=j; i<j+cmMRElemSize-1 && i<realSize-1; ++i) {
+                double deltaValue = bsAbs(elem.chunkValues[i]-elem.lastValue);
+                if(selectedDeltaValue<deltaValue) {  // Maximizes the delta with previous value, to better catch extremum
+                    selectedIdx = i;
+                    selectedDeltaValue = deltaValue;
                 }
-                s64 speckNs     = elem.chunkTimes[bsMin(j+cmMRElemSize, realSize)-1]-elem.lastTimeNs;
-                elem.lastTimeNs = elem.chunkTimes[bsMin(j+cmMRElemSize, realSize)-1];
-                _workingNewMRElems     .push_back( { (u32)(speckNs>>10), elem.chunkLIdx[selectedIdx] } ); // Speck Size unit is Ns/1024
-                _workingNewMRElemValues.push_back(elem.chunkValues[selectedIdx]);
-                takeMax = !takeMax;
             }
+            s64 lastChunkTimeNs = elem.chunkTimes[bsMin(j+cmMRElemSize, realSize)-1];
+            s64 speckNs = lastChunkTimeNs-elem.lastTimeNs;
+            elem.lastTimeNs = lastChunkTimeNs;
+            _workingNewMRElems     .push_back( { (u32)(speckNs>>10), elem.chunkLIdx[selectedIdx] } ); // Speck Size unit is Ns/1024
+            _workingNewMRElemValues.push_back( { elem.chunkValues[selectedIdx], elem.lastTimeNs } );
+            elem.lastValue  = elem.chunkValues[selectedIdx];
         }
         plgEnd(REC, "Compute MR level 0");
 
@@ -1519,48 +1505,51 @@ cmRecording::writeElemChunk(ElemBuild& elem, bool isLast)
 
     // Update the multi-resolution pyramid for scope data
     plgBegin(REC, "Update MR pyramid");
-    bsVec<bsVec<cmRecord::ElemMR> >& h  = elem.mrSpeckChunks;
-    bsVec<bsVec<double> >&           hv = elem.workMrValues;
+    bsVec<bsVec<cmRecord::ElemMR> >& h = elem.mrSpeckChunks;
+    bsVec<LevelMRBuild>& buildLvl = elem.workMrValues;
     if(!_workingNewMRElems.empty() && h.empty()) {
-        h .push_back( { } );
-        hv.push_back( { } );
+        h.push_back( { } );
+        h.back().reserve(cmMRElemSize);
+        buildLvl.push_back( { _workingNewMRElemValues[0].value, elem.firstTimeNs } );
+        buildLvl.back().items.reserve(cmMRElemSize);
     }
 
     // Update the pyramid
     for(int bidx=0; bidx<_workingNewMRElems.size(); ++bidx) {
 
         // Add the new data in the MR level 0
-        h [0].push_back(_workingNewMRElems[bidx]);
-        hv[0].push_back(_workingNewMRElemValues[bidx]);
+        h[0].push_back(_workingNewMRElems[bidx]);
+        buildLvl[0].items.push_back(_workingNewMRElemValues[bidx]);
 
         // Update the pyramid
         for(int hLvl=0; hLvl<h.size(); ++hLvl) {
-            bsVec<cmRecord::ElemMR>& hl  = h[hLvl];
-            bsVec<double>&           hlv = hv[hLvl];
+            bsVec<cmRecord::ElemMR>& hl = h[hLvl];
+            LevelMRBuild& bl = buildLvl[hLvl];
             int hlSize = hl.size();
-            if(hlSize==1) break;                // Last level has size one and means that we stop here
             if((hlSize%cmMRElemSize)!=0) break; // This level is not complete, nothing more to build at the moment
 
             // Aggregate the speck size on the last batch of data and add it in upper hierarchical level
-            u32 speckUs = 0;
-            u32 selectedIdx = hlSize-cmMRElemSize;  // Favorise the latest point in case of equal values
-            bool isMax = elem.doRepresentScope || (h.size()==hLvl+1) || (h[hLvl+1].size()&1)==0;
+            u32    selectedIdx = hlSize-cmMRElemSize;
+            double selectedDeltaValue = -1.;
             for(int i=hlSize-cmMRElemSize; i<hlSize; ++i) {
-                if(elem.doRepresentScope) speckUs  = bsMax(speckUs, hl[i].speckUs); // Density     rule
-                else                      speckUs += hl[i].speckUs;                 // Subsampling rule
-                if(isMax) {
-                    if(hlv[selectedIdx]<hlv[i]) selectedIdx = i;
-                } else {
-                    if(hlv[selectedIdx]>hlv[i]) selectedIdx = i;
+                double deltaValue = bsAbs(bl.items[i].value-bl.lastValue);
+                if(selectedDeltaValue<deltaValue) {  // Maximizes the delta with previous value, to better catch extrema
+                    selectedIdx = i;
+                    selectedDeltaValue = deltaValue;
                 }
             }
+            s64 speckNs   = bl.items[hlSize-1].timeNs - bl.lastTimeNs;
+            bl.lastValue  = bl.items[selectedIdx].value;
+            bl.lastTimeNs = bl.items[hlSize-1].timeNs;
             // Add an entry in upper hierarchical level
             if(h.size()==hLvl+1) {
-                h .push_back(bsVec<cmRecord::ElemMR>()); h .back().reserve(cmMRElemSize);
-                hv.push_back(bsVec<double>());           hv.back().reserve(cmMRElemSize);
+                h.push_back(bsVec<cmRecord::ElemMR>());
+                h.back().reserve(cmMRElemSize);
+                buildLvl.push_back({ buildLvl[hLvl].lastValue, elem.firstTimeNs });
+                buildLvl.back().items.reserve(cmMRElemSize);
             }
-            h [hLvl+1].push_back( { speckUs, h[hLvl][selectedIdx].lIdx } );
-            hv[hLvl+1].push_back(hv[hLvl][selectedIdx]);
+            h[hLvl+1].push_back( { (u32)(speckNs>>10), h[hLvl][selectedIdx].lIdx } );
+            buildLvl[hLvl+1].items.push_back( { buildLvl[hLvl].items[selectedIdx].value, bl.lastTimeNs } );
         }
     }
     plgEnd(REC, "Update MR pyramid");
@@ -1569,8 +1558,8 @@ cmRecording::writeElemChunk(ElemBuild& elem, bool isLast)
     if(!isLast) return;
     bool lastLevelModified = false;
     for(int hLvl=0; hLvl<h.size(); ++hLvl) {
-        bsVec<cmRecord::ElemMR>& hl  = h[hLvl];
-        bsVec<double>&           hlv = hv[hLvl];
+        bsVec<cmRecord::ElemMR>& hl = h[hLvl];
+        LevelMRBuild& bl = buildLvl[hLvl];
         int hlSize = hl.size();
         if(hlSize==1) break;
         int remainingChunkSize = hlSize%cmMRElemSize;
@@ -1578,20 +1567,25 @@ cmRecording::writeElemChunk(ElemBuild& elem, bool isLast)
         if(remainingChunkSize==0) remainingChunkSize += cmMRElemSize;
 
         // Aggregate the speck size on the last batch of data and add it in upper hierarchical level
-        u32 speckUs = 0;
         u32 selectedIdx   = hlSize-remainingChunkSize;
+        double selectedDeltaValue = -1.;
         for(int i=hlSize-remainingChunkSize; i<hlSize; ++i) {
-            if(elem.doRepresentScope) speckUs  = bsMax(speckUs, hl[i].speckUs); // Density     rule
-            else                      speckUs += hl[i].speckUs;                 // Subsampling rule
-            if(hlv[selectedIdx]<hlv[i]) selectedIdx = i;
+            double deltaValue = bsAbs(bl.items[i].value-bl.lastValue);
+            if(selectedDeltaValue<deltaValue) {  // Maximizes the delta with previous value, to better catch extrema
+                selectedIdx = i;
+                selectedDeltaValue = deltaValue;
+            }
         }
         // Add an entry in upper hierarchical level
+        s64 speckNs   = bl.items[hlSize-1].timeNs - bl.lastTimeNs;
+        bl.lastValue  = bl.items[selectedIdx].value;
+        bl.lastTimeNs = bl.items[hlSize-1].timeNs;
         if(h.size()==hLvl+1) {
-            h .push_back(bsVec<cmRecord::ElemMR>()); h .back().reserve(cmMRElemSize);
-            hv.push_back(bsVec<double>());    hv.back().reserve(cmMRElemSize);
+            h.push_back(bsVec<cmRecord::ElemMR>());
+            buildLvl.push_back({ buildLvl[hLvl].lastValue, elem.firstTimeNs });
         }
-        h [hLvl+1].push_back( { speckUs, h[hLvl][selectedIdx].lIdx } );
-        hv[hLvl+1].push_back(hv[hLvl][selectedIdx]);
+        h[hLvl+1].push_back( { (u32)(speckNs>>10), h[hLvl][selectedIdx].lIdx } );
+        buildLvl[hLvl+1].items.push_back( { buildLvl[hLvl].items[selectedIdx].value, bl.lastTimeNs } );
         lastLevelModified = true;
     }
 
