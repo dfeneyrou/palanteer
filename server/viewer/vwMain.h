@@ -545,7 +545,7 @@ private:
         ImGuiID newDockId = 0xFFFFFFFF; // 0xFFFFFFFF: use the automatic one
         bool isFlameGraph = false;
         bool isFlameGraphDownward = true;
-        bool isWindowSelected = true;
+        bool isWindowSelected = false;
         bool isNew        = true;
         bool isFirstRun   = true;
         int  cmDataIdx    = -1;
@@ -904,7 +904,7 @@ private:
         bool     isCacheDirty   = true;
         bool     isFirstRun     = true;
         bool     isNew          = true;
-        bool     isWindowSelected = true;
+        bool     isWindowSelected = false;
         // Constant data
         bsVec<HistoData> fullResData;
         double absMinValue;
