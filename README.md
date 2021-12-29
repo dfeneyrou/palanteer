@@ -12,7 +12,7 @@ Simple code instrumentation, mostly automatic in Python, delivers powerful featu
   - **Visual and interactive observation** of records: hierarchical logs, timeline, plot, histogram, flame graph...
   - **Remote command call and events observation can be scripted in Python**: deep testing has never been simpler
   - **C++**:
-    - ultra-light single-header cross-platform instrumentation library
+    - ultralight single-header cross-platform instrumentation library
     - [printf-like nanosecond logging](https://dfeneyrou.github.io/palanteer/index.html#easyandefficientlogging) with level, category and graphable arguments
     - compile time selection of [groups of instrumentation](https://dfeneyrou.github.io/palanteer/base_concepts.md.html#c++specific/groups)
     - compile-time hashing of [static strings](https://dfeneyrou.github.io/palanteer/base_concepts.md.html#staticanddynamicstrings) to minimize their cost
@@ -156,7 +156,7 @@ if __name__ == "__main__":
 Both examples above (C++ and Python) can be remotely controlled with a simple Python script.
 
 Typical usages are:
-  - Tests based on stimulations/configuration with CLI and events observation, as data can also be traced
+  - Tests based on stimulation/configuration with CLI and events observation, as data can also be traced
   - Evaluation of the program performance
   - Monitoring
   - ...
@@ -251,7 +251,7 @@ plLogWarn("phase", "End of a computation");
 An [internal comparison](https://dfeneyrou.github.io/palanteer/index.html#easyandefficientlogging) with the popular `spdlog` and the performant `Nanolog` (Standford) shows that`Palanteer`:
   - is ~50x faster at runtime than `spdlog` and only twice slower than `Nanolog`
   - is 6x faster for compiling a log call than `spdlog` and 10x faster than `Nanolog`
-  - provides more flexiblity on the log selection at compile time, and the possibility to obfuscate all static strings.
+  - provides more flexibility on the log selection at compile time, and the possibility to obfuscate all static strings.
   - can provide more context around logs, like simultaneous tracing, and a powerful viewer for filtering and visualizing (all log arguments can be graphed)
 
 

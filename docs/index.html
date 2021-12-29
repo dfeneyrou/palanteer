@@ -12,7 +12,7 @@
 
 1. An **instrumentation library** for programs to rule them all. <br/> Provides the instrumentation API and remote communication capabilities.
   - C++:
-    - ultra-light single-header cross-platform library
+    - ultralight single-header cross-platform library
     - [very low](#c++instrumentationperformance) overhead
     - compile time selection of [groups of instrumentation](base_concepts.md.html#c++specific/groups)
     - support of [Fibers / userland threads](instrumentation_api_cpp.md.html#virtualthreads)
@@ -231,7 +231,7 @@ In order to understand the use-cases where the logging service of `Palanteer` is
 | **String formatting**                 | printf syntax                                       | printf syntax                          | `fmt` style                                                             |
 | **Easy to start:**                    | Just 1 include and start logging                    | Just 1 include and start logging       | Just 1 include and start logging                                        |
 | **Easy to master:**                   | **(1) printf-like API with level and category**     | **(1) printf-like API with level**     | (3) OOP API with `fmt` syntax and logger/sink concepts                  |
-| **Extensible:**                       | (2) No, only built-in types                         | (2) No, only built-in types            | **(1) Yes, custom formatter can be added. Also supports binary arrays** |
+| **Extensible:**                       | (2) No, only builtin types                         | (2) No, only builtin types            | **(1) Yes, custom formatter can be added. Also supports binary arrays** |
 | **Log files**                         | (2) Only one file                                   | (2) Only one file                      | **(1) Various log targets (rotating, daily...)**                        |
 | **Compile time selection of logs**    | **(1) Per user-defined groups of logs**             | (3) All or nothing                     | (2) Some can be filtered by level                                       |
 | **Obfuscation of static strings**     | **(1) Yes**                                         | (2) No                                 | (2) No                                                                  |
@@ -250,7 +250,7 @@ It measures in all cases only the writing inside the internal queue (no formatti
 **Synthesis**:
   - `Nanolog`'s strength is its (rightly) claimed CPU and storage size efficiency, at the expense of any other kind of features (it is after all the outcome of a PhD thesis).
   - `spdlog`'s strength is its complete logging feature list. Its richness and flexibility comes at a price: average global performance (runtime, compilation time...) and not so easy configuration.
-  - `Palanteer`'s strength is its good performances (runtime, compilation time...) and its adequation for application observation with additional traced context and visualization tool. The lack of choice for the log files (only 1 file) closes the door for permanent logging solutions. Its currently limited OS support may also be a problem.
+  - `Palanteer`'s strength is its good performances (runtime, compilation time...) and its adequacy for application observation with additional traced context and visualization tool. The lack of choice for the log files (only 1 file) closes the door for permanent logging solutions. Its currently limited OS support may also be a problem.
 
 ### Automatic functions instrumentation (GCC only)
 
@@ -323,7 +323,7 @@ Instrumenting the code, to track its execution, obviously means more accessible 
 There is at least 2 cases where this might be a problem:
 
   - **Obfuscation**: if the production code embeds some instrumentation, the corresponding text strings are present in clear in the binary
-  - **Binary size reduction**: in embeded software, each byte matters. On the other side, instrumentation or any kind of observation is critical to be able to debug efficiently
+  - **Binary size reduction**: in embedded software, each byte matters. On the other side, instrumentation or any kind of observation is critical to be able to debug efficiently
 
 Both cases above are solved by using the "external strings" feature, simply by compiling with the flag `PL_EXTERNAL_STRINGS` set to 1.
 In this mode, all static strings used by `Palanteer` are stripped out at compilation time, only their hash remain in the binary.
@@ -432,7 +432,7 @@ Most features of `Palanteer` can be selected individually at compile time.
 Python features differ from the C++ ones because of the nature of the language, interpreted, dynamic and high level. For instance:
   - No concept of "compile-time"
   - No need for enhanced assertions
-  - Built-in profiling API available
+  - Builtin profiling API available
   - More automation possible thanks to looser control on the hardware
   - ...
 
@@ -481,7 +481,7 @@ Note 1: in case of connection to the server and -w is not used and no server is 
 Note 2: on both Windows and Linux, context switch information is available only with root privileges (OS limitation)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-And with additional manual instrumentations, even better knowledge can be collected:
+And with additional manual instrumentation, even better knowledge can be collected:
   - content of variables (integral types or strings)
   - manual scopes inside functions
   - lock usage
@@ -489,7 +489,7 @@ And with additional manual instrumentations, even better knowledge can be collec
 
 ## Common features
 
-The features below are common to both C++ and Python instrumentations.
+The features below are common to both C++ and Python instrumentation.
 
 ### Offline recording
 
@@ -1120,7 +1120,7 @@ This may seem annoying but it is the price to pay to remove any interference wit
 
 !!!
     In a desktop environment, the default values should let you have a smooth experience without tweaking them. <br/>
-    In an embdedded or memory constrained environment, the compile-time configuration variables will be precious.
+    In an embedded or memory constrained environment, the compile-time configuration variables will be precious.
 
 All the allocations are done at initialization time in `plInitAndStart`, except for the lookup which tracks the string hashes which can be resized if needed. <br/>
 The initial size of this lookup is configurable, so it is possible to prevent any reallocation if you have an estimation of the quantity of unique strings that the program will use. <br/>
@@ -1205,10 +1205,10 @@ Its additional dependencies, listed below, are already snapshotted inside this r
 
 
 | Dependency name                  | License type                | URL                                            | Used by           | Location in the project      |
-| ---------                        | -----------                 | ----                                           | ---               | --------                     |
+|----------------------------------|-----------------------------|------------------------------------------------|-------------------|------------------------------|
 | Khronos OpenGL API and Extension | MIT                         | https://www.khronos.org/registry/OpenGL/api/GL | Viewer            | server/external/             |
 | Dear ImGui                       | MIT                         | https://github.com/ocornut/imgui               | Viewer            | server/external/imgui        |
-| stb_image                        | Public domain               | https://github.com/nothings/stb                | Viewer            | server/external/stb_image.h  |
+| stb                              | Public domain               | https://github.com/nothings/stb                | Viewer            | server/external/stb*.h       |
 | Fonts 'Roboto-Medium.ttf'        | Apache License, Version 2.0 | https://fonts.google.com/specimen/Roboto       | Viewer            | server/viewer/vwFontData.cpp |
 | ZStandard                        | BSD                         | https://facebook.github.io/zstd                | Viewer, scripting | server/external/zstd         |
 | Markdeep                         | BSD                         | https://casual-effects.com/markdeep            | Documentation     | doc/                         |
@@ -1244,7 +1244,7 @@ The big lines are:
 
 !!! Tip
     To be extra clear:
-      - when instrumenting a program with `Palanteer`, there is **no constraint to open the source code** of a program if distributed (instrumentations are under MIT license)
+      - when instrumenting a program with `Palanteer`, there is **no constraint to open the source code** of a program if distributed (instrumentation is under MIT license)
       - on the other side, any modification or reuse of the server code (viewer or scripting module) is subjected to the AGPL v3+ license, if distributed
 
 

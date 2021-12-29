@@ -25,7 +25,7 @@ Three types of configuration parameter exist:
 
 !!! warning
     For the sake of consistency, never override a parameter of the second type directly in each instrumented file.<br/>
-    First, it is not convenient. And if you miss one file, unconsistent configuration can lead to undefined behavior.
+    First, it is not convenient. And if you miss one file, inconsistent configuration can lead to undefined behavior.
 
 Defining your own configuration can be done safely in several ways (non-exhaustive):
 
@@ -181,7 +181,7 @@ As the library uses small inlined functions during tracing for efficiency reason
   1. the file `palanteer.h` (because "header only" library so it contains functions during event tracing)
   2. all inlined standard library functions used during tracing, directly or indirectly
 
-Thanks to the GCC flag `-finstrument-functions-exclude-file-list` excluding file by substring pattern matching, enforcing (1) is straighforward. <br/>
+Thanks to the GCC flag `-finstrument-functions-exclude-file-list` excluding file by substring pattern matching, enforcing (1) is straightforward. <br/>
 The (2) depends on the GCC installation paths.
 
 On a Debian 11, the exclusion parameter value `-finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/` does the job, the last two parameters excludes all the standard library calls. <br/>
@@ -406,7 +406,7 @@ If your system meets the requirements, just set `PL_IMPL_STACKTRACE` to 1 in the
 
 ### PL_IMPL_CONSOLE_COLOR
 
-This parameter simply enables the usage of terminal escape codes to add color into the text messages of the built-in stacktrace handler.
+This parameter simply enables the usage of terminal escape codes to add color into the text messages of the builtin stacktrace handler.
 
 The default value is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -416,12 +416,12 @@ The default value is:
 ### PL_IMPL_STACKTRACE_FUNC
 
 Getting a stacktrace is very dependent on the Operating System. <br/>
-At the moment, `Palanteer` provides built-in handlers only for Linux and Windows.
+At the moment, `Palanteer` provides builtin handlers only for Linux and Windows.
 
 This macro points to the function called to retrieve the stacktrace and dump it with both with `PL_IMPL_PRINT_STDERR` and as text in the record. <br/>
-In order to implement the feature for another Operating System, this macto shall be overriden.
+In order to implement the feature for another Operating System, this macro shall be overridden.
 
-The default value is (built-in function):
+The default value is (builtin function):
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
 #define PL_IMPL_STACKTRACE_FUNC() plPriv::crashLogStackTrace()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -431,7 +431,7 @@ The default value is (built-in function):
 This macro points to the last function called to terminate the program when an assertion fails or a signal is received. <br/>
 Before this call and if applicable, the record is already flushed to the server and stacktraces are already dumped).
 
-The typical use case for overriding this macro is on an embeded system where "exiting" has no meaning.
+The typical use case for overriding this macro is on an embedded system where "exiting" has no meaning.
 
 The default value is simply calling the system exit function:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -472,8 +472,8 @@ This configuration **must** be consistent in all source files using `Palanteer` 
 
 | Platform support                                  | Description                                     | Default  |
 | ---------                                         | -----------                                     | :----:   |
-| [PL_GET_CLOCK_TICK_FUNC](#pl_get_clock_tick_func) | Getter for the high resolution clock            | built-in |
-| [PL_GET_SYS_THREAD_ID](#pl_get_sys_thread_id)     | Getter for the current system thread identifier | built-in |
+| [PL_GET_CLOCK_TICK_FUNC](#pl_get_clock_tick_func) | Getter for the high resolution clock            | builtin |
+| [PL_GET_SYS_THREAD_ID](#pl_get_sys_thread_id)     | Getter for the current system thread identifier | builtin |
 
 ### PL_EXTERNAL_STRINGS
 
@@ -510,7 +510,7 @@ Virtual thread support is not enabled by default due to the additional allocatio
 
 [Dynamic strings](base_concepts.md.html#staticanddynamicstrings) are preallocated at initialization time for efficiency and fine control reasons. <br/>
 
-This constant defines the maximum dynamic string size in bytes (null terminaison included). <br/>
+This constant defines the maximum dynamic string size in bytes (null termination included). <br/>
 Larger strings are truncated.
 
 !!! tip Important
@@ -529,7 +529,7 @@ The selected hash function is the Fowler–Noll–Vo which is a good trade-off b
 
   * the compile time capability of C++11 (`constexpr` is pretty limited in this version)
   * the run-time performance for dynamic strings
-  * the discriminative power of the hash
+  * the discriminating power of the hash
 
 By default, the 64 bits version is used to ensure that virtually no collision happens. <br/>
 This constant forces the usage of the 32 bits version of FNV.
@@ -548,7 +548,7 @@ The [enhanced assertions feature](index.html#enhancedassertions) uses variadic t
 
 With this compilation flag it is possible to keep the "per category compilation" feature of the `Palanteer` assertions but revert to the lighter and standard behavior of assertions by ignoring the extra context parameters.
 
-The typical usage of this feature is in constrained embeded systems where code size really matters.
+The typical usage of this feature is in constrained embedded systems where code size really matters.
 
 The default value is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -576,7 +576,7 @@ The default value is:
 A "compact application model" is an instrumented program which transfers 50% less data with the server (12 bytes per events instead of 24). <br/>
 This applies both for storage on file and for connected mode.
 
-To be compatible with the "compact model", the following constraints shall be fullfilled:
+To be compatible with the "compact model", the following constraints shall be fulfilled:
   - At most 65535 unique strings are used
   - Only 32 bits types are used
     - If used, `double` and 64 bits integers are truncated to their 32 bits equivalent
@@ -602,12 +602,12 @@ The default value is:
 
 This macro points to the function which provides a high resolution clock stored on a uint64_t.
 
-The built-in function for Windows and Linux provide an efficient one, which is also compatible with the one of the context switch (the source of information may differ).
+The builtin function for Windows and Linux provide an efficient one, which is also compatible with the one of the context switch (the source of information may differ).
 
 !!!
     The value of the clock frequency does not matter as the clock is calibrated at initialization time.
 
-The default value is (built-in function):
+The default value is (builtin function):
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
 // Returned value is a uint64_t
 #define PL_GET_CLOCK_TICK_FUNC() plPriv::getClockTick()
@@ -627,7 +627,7 @@ The default value is (built-in function):
 #endif
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-## Troubleshootings
+## Troubleshooting
 
 **What is the recommended setting for small embedded devices?**
 
@@ -644,7 +644,7 @@ The remote control can also be disabled (with `PL_NOCONTROL=1`), but be able to 
 <br/>
 **I want to hide the events from the Palanteer threads**
 
-The events generated by the instrumentation library itself are controled by the group `PL_VERBOSE`, disabled by using the flag `-DPL_GROUP_PL_VERBOSE=0`
+The events generated by the instrumentation library itself are controlled by the group `PL_VERBOSE`, disabled by using the flag `-DPL_GROUP_PL_VERBOSE=0`
 
 !!! tip
     On Windows, a second group `PL_VERBOSE_CS_CBK` is used in the additional thread to handle the context switch, but is disabled by default (debug only).
@@ -692,7 +692,7 @@ In this case, the collided strings will simply be displayed with the value of th
 The string lookup generation tool checks for collision and returns a non zero status in this case, listing on stderr the colliding strings.
 
 The mechanism to use in this case is to use the configuration flag PL_HASH_SALT, initially set to 0. <br/>
-By giving it another positive value, all hashes are scrambled and collision is likely to disapear.
+By giving it another positive value, all hashes are scrambled and collision is likely to disappear.
 
 <br/>
 **I have a segmentation fault quickly after launching an auto-instrumented program**

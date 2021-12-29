@@ -51,7 +51,7 @@ As `Palanteer` is a tool which aims at increasing the quality of software in gen
 
   - Its development provided many real use cases (point 1) for instrumentation and visualization, along with some ideas of the associated user experience (point 3)
   - Profiling oneself helped spotting numerous bottlenecks and improved overall efficiency (point 2 and 3)
-  - Developing tests for the scripting module was another use case (point 1) which helped improving reliablility (point 2). The icing on the cake is that these tests are now used to detect regressions.
+  - Developing tests for the scripting module was another use case (point 1) which helped improving reliability (point 2). The icing on the cake is that these tests are now used to detect regressions.
 
 This self-appliance process raised many usability and quality concerns, led to many iterative reworks, and definitely changed what `Palanteer` is today.
 
@@ -91,7 +91,7 @@ Some reasons behind are:
 
   - debug code is extremely slow with the containers of the standard library. This is due to its heavily nested coding style and absence of inlining in debug mode
   - simple code is often better, at least for compilation time and full control
-  - some containers have knowingly bad performances because they target standard compliancy and genericity. Also because C++ ABI must stay stable.
+  - some containers have knowingly bad performances because they target standard compliance and genericity. Also because C++ ABI must stay stable.
     - Ex: `unordered_map` implementation is structured around an array of list which is not cache efficient and allocates frequently
   - it is always fun and interesting to develop one's own containers  (at least once)
 
@@ -238,7 +238,7 @@ Brief and partial thoughts:
     * Older C++ support is possible but would require more platform specific work (multithreading, atomic, non-standard thread_local...) and a reduction of the feature list (no enhanced assertions).
   * C
     * Like C++ releases before C++11, C11 support is possible but would require more platform specific work (multithreading) and a reduction of the feature list (no enhanced assertions, no automatic scope closing)
-    * atomic were introduced in C11, so ok
+    * atomic were introduced in C11, so OK
     * Automatic scope closing lacks RAII, or any defer mechanism (`cleanup` is a GCC 4.0+ and recent CLANG extension, so not official)
   * Other languages
     * Each language is unique, so is its potential API and set of features, on top of the fundamental event logging
@@ -311,7 +311,7 @@ The list of "porting points" are:
     * The main constraint comes from the compatibility of this thread ID getter with the ones processed in the context switches collection (if any), as they shall match.
  1. Program exit
     * Override the macro `PL_IMPL_CRASH_EXIT_FUNC` to point on the new program exit function.
-    * The default and standard C++ `quick_exit(1)` value should work for most system, except maybe the embeded ones.
+    * The default and standard C++ `quick_exit(1)` value should work for most system, except maybe the embedded ones.
  1. Communication channels
     * The standard communication is done through sockets (POSIX or Windows) or written in a file, via 4 functions (init, uninit, send, receive) <br/>
     * If `PL_IMPL_CUSTOM_COM_LAYER==1`, the following functions shall be redefined externally, after the `palanteer.h` include to be able to access the internal implementation state:
@@ -370,7 +370,7 @@ This section is an unordered collection of "pieces of advice", mostly common sen
   - Development efficiency is directly linked to it.
 
 - **Think as if you were the user of the software**
-  - All overcomplicated, under-explained or bizarre usage shall be re-considered.
+  - All over complicated, under-explained or bizarre usage shall be reconsidered.
   - An unhappy user or a user which does not understand how the program works, costs time and money.
   - Documentation is only a part of it, as for instance a good API is one which is easy to understand at first read and which does not give the freedom of misusing it.
 
@@ -384,12 +384,12 @@ This section is an unordered collection of "pieces of advice", mostly common sen
   - Keep the condition as a simple check, never perform actions inside an assertion as it may be disabled at compile time.
   - Never assert on external inputs, as they are not under control.
 
-- **For time related constant/variable, always include the unit in the name (exemple: `timeout_msec`)**
+- **For time related constant/variable, always include the unit in the name (example: `timeout_msec`)**
   - Such bugs due to confusion on units are so frequent and so easy to avoid...
   - Mistake on time units are the more representative, but this hint is applicable to all units as soon as there may be some ambiguity
 
 - **Use address sanitizers (ASAN)** whenever possible
-  - It is built-in in `gcc` and `clang`, enabled with a few compilation/linking flags
+  - It is builtin in `gcc` and `clang`, enabled with a few compilation/linking flags
   - The reported issues (uninitialized memory read, leaks...) would be very hard to track without such class of tool.
   - The performance of the Address Sanitizers is often around half of the one of the debug mode, so much more acceptable than the 10x slowdown of `valgrind` (which is a fantastic tool anyway).
   - If possible, tests shall be performed with ASAN builds in order to maximize the observation spectrum.
@@ -403,7 +403,7 @@ This section is an unordered collection of "pieces of advice", mostly common sen
 
 - **Software evolves, and matures with time and work**
   - Feedback from users or testers are critical to the maturation of the software. No feedback, no correct evolution.
-    - You do not need big surveys. Feedback from ~5 people are enough to get the big lines and filter out the outlier feedbacks.
+    - You do not need big surveys. Feedback from ~5 people are enough to get the big lines and filter out the outlier feedback.
   - Initial implementations usually have only one value: they "just work"
     - They are suboptimal in many ways, as the discovery of the topic and the code writing are done in parallel
     - Now that the global view is available, a second pass on the code is highly beneficial: simplification, optimization and better maintenance
@@ -422,7 +422,7 @@ This section is an unordered collection of "pieces of advice", mostly common sen
   - The first corresponds to high level tests
     - usually some user test cases
     - they stimulate a large spectrum of functionalities to make the expected global behavior
-    - they are like a "checksum" of the behaviors of the subcomponents of the system
+    - they are like a "checksum" of the behaviors of the sub components of the system
   - The second corresponds to unit tests or integration tests (or any partial system stimulation)
     - more of them are required for a good coverage
     - they are more appreciated by developers because closer to the software architecture and implementation
@@ -436,11 +436,11 @@ This section is an unordered collection of "pieces of advice", mostly common sen
     - the variability of its behavior in time. For instance, a hashtable is not likely to vary much.
       - tests too close to the implementation may be a burden to maintain for quickly evolving systems.
     - the dependencies of the system
-      - Dependencies can prevent proper testing, and stubbing them may distord the result of the test. Dilemma...
+      - Dependencies can prevent proper testing, and stubbing them may distort the result of the test. Dilemma...
     - the complexity of the behavior of the system
       - Complex behaviors imply a choice: higher test quantity or higher level tests
       - Complex behaviors should have pyramidal testing: high level tests an some lower level tests on its sub components, recursively
-    - the criticity of the system.
+    - the criticality of the system.
       - A fundamental component shall be tested with more care, as any issue may propagate in upper layers
       - Investigating an issue visible at a given level and whose root cause is at a lower level, is usually very costly as all upper layer hypothesis are considered first.
     - ...
@@ -456,7 +456,7 @@ This section is an unordered collection of "pieces of advice", mostly common sen
 ### A way to manage TODOs
 
 Source code is often written iteratively, from coarse lines to fine details, and rarely in a linear and exhaustive manner. <br/>
-Many limitations or problems are volontarily ignored during the code writing. They are put aside for later, so that
+Many limitations or problems are voluntarily ignored during the code writing. They are put aside for later, so that
 
   * The developer is not blocked working on details while the big structure is still unclear. Also a change in the big structure is likely to void current work.
   * The mental load does not saturate
@@ -473,21 +473,21 @@ This method has many good characteristics:
 
   * No friction, just write where you currently work.
   * The note is written at the place where it applies.
-  * This is compatible with a global TODO list file for the global ideas, roadmap etc...
+  * This is compatible with a global TODO list file for the global ideas, road map etc...
 
 ... and also raises some questions:
 
   * How to collect these notes which are spread all over the source code?
   * *"to rewrite"*, *"potential race condition"*, *"may be optimized easily"*, *"replace this number with a constant, instead"*, *"check with saturated input buffer"* ... these are not typical source code comments. <br/>
     They do not explain the code but rather describe some future actions on it. <br/>
-    We need a way to differenciate these notes from standard code annotations.
+    We need a way to differentiate these notes from standard code annotations.
 
 ==> For both raised questions, the choice of a text marker and a grep-like command should do the job.
 
 **Here is the full proposal:**
 
-  * just write notes directly in the code and mark them with a discriminative text of your choice (ex: '@', '#', '@#', '@@', ...)
-    * still compatible with a "main TODO" file for the roadmap or global ideas
+  * just write notes directly in the code and mark them with a discriminating text of your choice (ex: '@', '#', '@#', '@@', ...)
+    * still compatible with a "main TODO" file for the road map or global ideas
   * search the full project for the marker and collect the notes
   * Post-process them to refine the display (sorting, filtering, formatting...)
 

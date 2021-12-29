@@ -27,7 +27,7 @@ This API aims at being simple to use. As multi-threading would introduce a lot o
 !!!
     For a proper usage of monitoring in production, it is recommended to:
      - use a light instrumentation (i.e. manual instrumentation) to maintain the optimal program performances and limit the network flow
-     - not record in a file at the same time. Indeed, for ever-lasting runs, the limit of 2 billion events is bound to be reached.
+     - not record in a file at the same time. Indeed, for everlasting runs, the limit of 2 billion events is bound to be reached.
      - avoid dynamic strings, or strings which always differ. Use rather structured/hierarchical events or printf-like logs (which are structured internally)
 
 !!! warning
@@ -35,7 +35,7 @@ This API aims at being simple to use. As multi-threading would introduce a lot o
 
 ## Exceptions
 
-When the module encounters a non-recoverable problem, a specific exception is raised with an explanatory message. <br/>
+When the module encounters a nonrecoverable problem, a specific exception is raised with an explanatory message. <br/>
 This section presents the list of exceptions and when they are raised.
 
 **InitializationError** is raised when calling an API which requires that the module is initialized and it is not:
@@ -442,7 +442,7 @@ This function clears the buffered event waiting in the module for a polling call
 
 It is "deeper" than a dummy call to [`data_collect_events`](#data_collect_events) (i.e. and ignoring its content) because it also clears the events buffered inside the dynamic library.
 
-Its typical use is to start a fresh scenario after an unsynchronized CLI call which affects the generated events.
+Its typical use is to start a fresh scenario after a non-synchronized CLI call which affects the generated events.
 
 !!!
     Configuring a new set of event specs also "deeply" clears all previously buffered events.
@@ -643,8 +643,8 @@ The list of possible error messages is:
 | "No matching event path"                                         | some event with the right name have been found but the constraints on the path are not matching                                                                                                                                                                                                  |
 | "No matching parent event name"                                  | some event with the right name and path have been found but no parent event has a name corresponding to the one in the event spec                                                                                                                                                                |
 | "No matching parent event path"                                  | Everything is resolved except that the constraints on the parent event path are not matching                                                                                                                                                                                                     |
-| "'.' is not matching the event's root"                           | Everything is resolved except that the "." constraint is not fullfiled for the event                                                                                                                                                                                                             |
-| "'.' is not matching the parent event's root"                    | Everything is resolved except that the "." constraint is not fullfiled for the parent event                                                                                                                                                                                                      |
+| "'.' is not matching the event's root"                           | Everything is resolved except that the "." constraint is not fulfilled for the event                                                                                                                                                                                                             |
+| "'.' is not matching the parent event's root"                    | Everything is resolved except that the "." constraint is not fulfilled for the parent event                                                                                                                                                                                                      |
 | Inconsistent parent events, it shall be the same for all events" | Several couples (event, parent event) were found but with different parents. The first parent event found becomes the reference, others are ignored and are unresolved. <br/>This can be solved by being more specific on the different paths, or by splitting the event spec into several ones. |
 |                                                                  |                                                                                                                                                                                                                                                                                                  |
 
