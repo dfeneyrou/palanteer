@@ -310,6 +310,7 @@
 //-----------------------------------------------------------------------------
 
 #include <cstdint> // For sized types like uintXXX_t
+#include <cstddef>
 
 #if USE_PL==1
 
