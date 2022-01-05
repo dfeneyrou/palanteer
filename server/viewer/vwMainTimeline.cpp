@@ -125,7 +125,7 @@ TimelineDrawHelper::highlightGapIfHovered(s64 lastScopeEndTimeNs, float pixStart
         // Double click adjusts the view to it
         if(ImGui::IsMouseDoubleClicked(0) && !tl->isAnimating()) {
             forceRangeNs = vwConst::DCLICK_RANGE_FACTOR*durationNs;
-            forceStartNs = bsMax(startTimeNs+(s64)((lastScopeEndTimeNs-startTimeNs)/timeRangeNs*(timeRangeNs-forceRangeNs)), 0LL);
+            forceStartNs = bsMax(startTimeNs+(s64)((double)(lastScopeEndTimeNs-startTimeNs)/(double)timeRangeNs*(double)(timeRangeNs-forceRangeNs)), 0LL);
         }
     }
 };
@@ -187,7 +187,7 @@ TimelineDrawHelper::displayScope(int threadId, int nestingLevel, u32 scopeLIdx,
         if(ImGui::IsMouseDoubleClicked(0) && !tl->isAnimating()) {
             // Force the time range (will be processed later, as we are in the middle of current display)
             forceRangeNs = vwConst::DCLICK_RANGE_FACTOR*durationNs;
-            forceStartNs = bsMax(startTimeNs+(s64)((evt.vS64-startTimeNs)/timeRangeNs*(timeRangeNs-forceRangeNs)), 0LL);
+            forceStartNs = bsMax(startTimeNs+(s64)((double)(evt.vS64-startTimeNs)/(double)timeRangeNs*(double)(timeRangeNs-forceRangeNs)), 0LL);
             // Synchronize thread visibility
             main->ensureThreadVisibility(tl->syncMode, threadId);
             // Show memory details

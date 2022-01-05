@@ -531,7 +531,7 @@ cmRecordIteratorElem::getTimeRelativeIdx(int offset)
     // Get base fields
     plgScope(ITELEM, "cmRecordIteratorElem::getTimeRelativeIdx");
     plAssert(_mrLevel==-1); // Works only for full resolution
-    plAssert(_threadId<_record->threads.size());
+    plAssert(_threadId<_record->threads.size(), _threadId, _record->threads.size());
     const cmRecord::Thread& rt = _record->threads[_threadId];
     plAssert(_nestingLevel<rt.levels.size());
     const cmRecord::Elem& elem = _record->elems[_elemIdx];
