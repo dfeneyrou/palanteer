@@ -72,7 +72,7 @@ vwMain::drawMainMenuBar(void)
             ImGui::EndMenu();
         }
 
-        if(ImGui::BeginMenu("Window")) {
+        if(ImGui::BeginMenu("Navigation")) {
             bool state;
             state = getConfig().getWindowCatalogVisibility();
             if(ImGui::MenuItem("Catalog", NULL, &state)) {
@@ -86,22 +86,17 @@ vwMain::drawMainMenuBar(void)
                 _recordWindow.isWindowSelected = true;
                 plLogInfo("menu", "Change record view visibility");
             }
-            state = getConfig().getWindowSearchVisibility();
-            if(ImGui::MenuItem("Search", NULL, &state)) {
-                getConfig().setWindowSearchVisibility(state);
-                _search.isWindowSelected = true;
-                plLogInfo("menu", "Change search view visibility");
-            }
             state = getConfig().getWindowSettingsVisibility();
             if(ImGui::MenuItem("Settings", NULL, &state)) {
                 getConfig().setWindowSettingsVisibility(state);
                 _settingsWindow.isWindowSelected = true;
                 plLogInfo("menu", "Change settings view visibility");
             }
-            state = getConfig().getWindowConsoleVisibility();
-            if(ImGui::MenuItem("Log console", NULL, &state)) {
-                getConfig().setWindowConsoleVisibility(state);
-                plLogInfo("menu", "Change log console view visibility");
+            state = getConfig().getWindowSearchVisibility();
+            if(ImGui::MenuItem("Search", NULL, &state)) {
+                getConfig().setWindowSearchVisibility(state);
+                _search.isWindowSelected = true;
+                plLogInfo("menu", "Change search view visibility");
             }
             ImGui::EndMenu();
         }
@@ -229,6 +224,11 @@ vwMain::drawMainMenuBar(void)
             if(ImGui::MenuItem("Get started" )) {
                 plLogInfo("menu", "Show help");
                 _showHelp  = true;
+            }
+            bool state = getConfig().getWindowConsoleVisibility();
+            if(ImGui::MenuItem("Console", NULL, &state)) {
+                getConfig().setWindowConsoleVisibility(state);
+                plLogInfo("menu", "Change log console view visibility");
             }
             ImGui::Separator();
             if(ImGui::MenuItem("About")) {
