@@ -120,7 +120,7 @@ vwMain::vwMain(vwPlatform* platform, int rxPort, const bsString& overrideStorage
     _logConsole.logs.reserve(128);
 
     // Internals
-    _config    = new vwConfig(this, osGetProgramDataPath());
+    _config      = new vwConfig(this, osGetProgramDataPath());
     _storagePath = getConfig().getRecordStoragePath();
     if(!overrideStoragePath.empty()) {
         _storagePath = overrideStoragePath;
@@ -759,6 +759,9 @@ vwMain::loadRecord(const bsString& recordPath, int appIdx, int recIdx)
     // Apply the last workspace
     _screenLayoutToApply = getConfig().getCurrentLayout();
 
+    // Take the opportunity to save the global settings
+    getConfig().saveGlobal();
+
     dirty();
     return true;
 }
@@ -798,6 +801,7 @@ vwMain::clearRecord(void)
     // Save the configuration
     if(_record) {
         getConfig().saveApplication(_record->appName);
+        getConfig().saveGlobal();
     }
 
     // Reset views
