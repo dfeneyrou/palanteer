@@ -1033,6 +1033,7 @@ The effects of using virtual threads are:
 As for [OS threads](#pldeclarethread), a name can be given to virtual threads. <br/>
 This function associates the provided name to the external virtual thread identifier. The name of the OS thread is unchanged.
 
+This function can be called from any thread. Only the unique virtual thread identifier matters here.
 
 The declaration is:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
@@ -1048,14 +1049,11 @@ plDeclareVirtualThread("Fibers/Fiber %d", fiberId);
 Also as for OS threads, virtual threads can be grouped.
 
 !!! warning Important
-    The attach and detach calls for a non-declared virtual thread are ignored. <br/>
-    It is thus recommended to declare the virtual threads at resource creation time.
+    The attachment scopes of non-declared virtual thread are not displayed in the "locks and resources" timeline. <br/>
+    It is thus recommended to declare the virtual threads at resource creation time, to get most of the information.
 
 !!! warning
     Only the first declaration of each virtual thread is taken into account, all subsequent ones are ignored. <br/>
-
-!!!
-    This function can be called from any thread. Only the unique virtual thread identifier matters here.
 
 !!!
     This function can be called before the service is started. <br/>
