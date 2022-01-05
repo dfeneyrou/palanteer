@@ -321,8 +321,8 @@ vwMain::drawRecord(void)
                     ImGui::TableNextColumn();
                     ImGui::Text("%d", e.lineNbr);
                 }
+                ImGui::EndTable();
             } // End of table
-            ImGui::EndTable();
         } // Instrumentation error collapsible header
 
     }
