@@ -106,11 +106,13 @@ class vwConfig {
     // Thread layout
     struct ThreadLayout {
         int  threadId, groupNameIdx, colorIdx; // groupNameIdx=-1 means no group
-        bool isExpanded;
+        bool isExpanded, isVisible;
         u64  hash;
     };
     void setThreadExpanded(int threadId, bool isExpanded);
     bool getThreadExpanded(int threadId) const { return _threads[threadId].isExpanded; }
+    void setThreadVisible(int threadId, bool isVisible);
+    bool getThreadVisible(int threadId) const { return _threads[threadId].isVisible; }
     void setGroupExpanded(int groupNameIdx, bool isExpanded);
     bool getGroupExpanded(int groupNameIdx) const {
         for(const Group& g : _groups) if(g.nameIdx==groupNameIdx) return g.isExpanded;

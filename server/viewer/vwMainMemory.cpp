@@ -99,6 +99,7 @@ MemoryDrawHelper::getIvalueFromValue(vwMain::MemoryTimeline& mw, double value, i
     float vSpacing = main->getConfig().getTimelineVSpacing()*fontHeight;
     for(const vwConfig::ThreadLayout& ti : main->getConfig().getLayout()) {
         if(ti.threadId>=cmConst::MAX_THREAD_QTY) continue;                   // Skip "special threads" in the layout (cores, locks etc...)
+        if(!ti.isVisible) continue;
         if(mw.cachedThreadData[ti.threadId].maxAllocSizeValue==0) continue;  // Ignore threads without memory information
         threadId = ti.threadId;
         bool doDrawGroupHeader = (ti.groupNameIdx>=0 && ti.groupNameIdx!=lastGroupNameIdx);
@@ -126,6 +127,7 @@ MemoryDrawHelper::getValueFromIValue(vwMain::MemoryTimeline& mw, int threadId, d
     float vSpacing       = main->getConfig().getTimelineVSpacing()*fontHeight;
     for(const vwConfig::ThreadLayout& ti : main->getConfig().getLayout()) {
         if(ti.threadId>=cmConst::MAX_THREAD_QTY) continue;
+        if(!ti.isVisible) continue;
         if(mw.cachedThreadData[ti.threadId].maxAllocSizeValue==0) continue;  // Ignore threads without memory information
         bool doDrawGroupHeader = (ti.groupNameIdx>=0 && ti.groupNameIdx!=lastGroupNameIdx);
         bool isGroupExpanded   = ti.groupNameIdx<0 || main->getConfig().getGroupExpanded(ti.groupNameIdx);
@@ -150,6 +152,7 @@ MemoryDrawHelper::computeLayout(vwMain::MemoryTimeline& mw)
     for(const vwConfig::ThreadLayout& ti : main->getConfig().getLayout()) {
         // Get expansion state
         if(ti.threadId>=cmConst::MAX_THREAD_QTY) continue;                  // Skip "special threads" in the layout (cores, locks etc...)
+        if(!ti.isVisible) continue;
         if(mw.cachedThreadData[ti.threadId].maxAllocSizeValue==0) continue; // Ignore threads without memory information
         bool doDrawGroupHeader = (ti.groupNameIdx>=0 && ti.groupNameIdx!=lastGroupNameIdx);
         bool isGroupExpanded   = ti.groupNameIdx<0 || main->getConfig().getGroupExpanded(ti.groupNameIdx);
@@ -230,6 +233,7 @@ MemoryDrawHelper::drawMemoryCurves(vwMain::MemoryTimeline& mw)
     for(int layoutIdx=0; layoutIdx<cfg.getLayout().size(); ++layoutIdx) {
         const vwConfig::ThreadLayout& ti = cfg.getLayout()[layoutIdx];
         if(ti.threadId>=cmConst::MAX_THREAD_QTY) continue; // Skip "special threads" in the layout (cores, locks etc...)
+        if(!ti.isVisible) continue;
         int tId = ti.threadId;
         const vwMain::MemCachedThread& mct = mw.cachedThreadData[tId];
         if(mct.maxAllocSizeValue==0) continue; // Ignore threads without memory information

@@ -148,21 +148,49 @@ vwMain::drawRecord(void)
                 // Thread list
                 ImGui::TableNextColumn();
                 bool isThreadNodeOpen = ImGui::TreeNodeEx("Threads", ImGuiTreeNodeFlags_SpanFullWidth);
+                bool doOpenAllThreadMenu = false;
+                if(ImGui::IsItemClicked(2)) doOpenAllThreadMenu = true;
                 ImGui::TableNextColumn(); ImGui::TextColored(vwConst::grey, "%d", _record->threads.size());
                 if(isThreadNodeOpen) {
                     // Loop on thread layout instead of direct thread list, as the layout have sorted threads
+                    int threadVisibilityToToggle = -1; // Only one at a time anyway
                     for(int layoutIdx=0; layoutIdx<getConfig().getLayout().size(); ++layoutIdx) {
                         const vwConfig::ThreadLayout& ti = getConfig().getLayout()[layoutIdx];
                         if(ti.threadId>=cmConst::MAX_THREAD_QTY) continue;
                         ImGui::TableNextColumn();
+                        bool isVisible = ti.isVisible;
+                        ImGui::PushID(ti.threadId);
+                        if(ImGui::Checkbox("##VisibleThread", &isVisible)) threadVisibilityToToggle = ti.threadId;
+                        ImGui::SameLine();
                         ImGui::Text("%s", getFullThreadName(ti.threadId));
                         const auto& t = _record->threads[ti.threadId];
                         u32 threadEventQty = t.elemEventQty+t.memEventQty+t.ctxSwitchEventQty+t.lockEventQty+t.logEventQty;
                         ImGui::TableNextColumn();
                         ImGui::TextColored(vwConst::grey, "%s events (%d%%)", getNiceBigPositiveNumber(threadEventQty),
                                            (int)((100LL*threadEventQty+totalEventQty/2)/totalEventQty));
+                        ImGui::PopID();
+                    }
+                    if(threadVisibilityToToggle>=0) {
+                        getConfig().setThreadVisible(threadVisibilityToToggle, !getConfig().getThreadVisible(threadVisibilityToToggle));
+                        synchronizeThreadLayout();
                     }
                     ImGui::TreePop();
+                }
+
+                // All thread menu
+                if(doOpenAllThreadMenu) ImGui::OpenPopup("All thread menu");
+                if(ImGui::BeginPopup("All thread menu", ImGuiWindowFlags_AlwaysAutoResize)) {
+                    if(ImGui::MenuItem("Make all thread visible")) {
+                        for(const vwConfig::ThreadLayout& ti : getConfig().getLayout()) {
+                            if(ti.threadId<cmConst::MAX_THREAD_QTY) getConfig().setThreadVisible(ti.threadId, true);
+                        }
+                    }
+                    if(ImGui::MenuItem("Make all thread not visible"))  {
+                        for(const vwConfig::ThreadLayout& ti : getConfig().getLayout()) {
+                            if(ti.threadId<cmConst::MAX_THREAD_QTY) getConfig().setThreadVisible(ti.threadId, false);
+                        }
+                    }
+                    ImGui::EndPopup();
                 }
 
                 ImGui::EndTable();

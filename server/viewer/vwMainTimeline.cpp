@@ -1212,7 +1212,7 @@ vwMain::prepareTimeline(Timeline& tl)
         plgScope (TML, "Thread scopes");
         plgVar(TML, tId);
         const cmRecord::Thread& rt = _record->threads[tId];
-        bool isExpanded = getConfig().getGroupAndThreadExpanded(tId);
+        bool isExpanded = getConfig().getThreadVisible(tId) && getConfig().getGroupAndThreadExpanded(tId);
 
         // Cache the context switches
         bsVec<TlCachedSwitch>& cachedSwitches = tl.cachedSwitchPerThread[tId];
@@ -1559,6 +1559,7 @@ vwMain::drawTimeline(int tlWindowIdx)
     for(int layoutIdx=0; layoutIdx<layouts.size(); ++layoutIdx) {
         // Store the thread start Y
         const vwConfig::ThreadLayout& ti = layouts[layoutIdx];
+        if(!ti.isVisible) continue;
         tl.valuePerThread[ti.threadId] = yThread-(ctx.winY-ImGui::GetScrollY());
         vBarData[layoutIdx] = { ti.threadId, (float)tl.valuePerThread[ti.threadId] };
 
@@ -1623,6 +1624,7 @@ vwMain::drawTimeline(int tlWindowIdx)
     float yEnd     = yThread-(ctx.winY-ImGui::GetScrollY());
     float vBarCoef = ctx.winHeight/bsMax(1.f, yEnd);
     for(int layoutIdx=0; layoutIdx<layouts.size(); ++layoutIdx) {
+        if(!layouts[layoutIdx].isVisible) continue;
         bool isLast = (layoutIdx==layouts.size()-1);
         DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY+vBarCoef*vBarData[layoutIdx].yStart),
                                 ImVec2(ctx.winX+ctx.winWidth+vwConst::OVERVIEW_VBAR_WIDTH, ctx.winY+vBarCoef*(isLast? yEnd : vBarData[layoutIdx+1].yStart)),

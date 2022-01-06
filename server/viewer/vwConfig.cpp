@@ -410,7 +410,7 @@ vwConfig::notifyNewRecord(cmRecord* record)
         const cmRecord::String& s = record->getString(record->threads[threadId].nameIdx);
 
         // Store thread & group with canonical order
-        _threads[threadId] = { threadId, groupNameIdx, (int)(s.hash%_colorPaletteDark.size()), true, s.hash };
+        _threads[threadId] = { threadId, groupNameIdx, (int)(s.hash%_colorPaletteDark.size()), true, true, s.hash };
         _order.push_back(threadId);
         if(groupNameIdx>=0) {
             bool isPresent = false;
@@ -420,12 +420,12 @@ vwConfig::notifyNewRecord(cmRecord* record)
     }
 
     if(!record->locks.empty()) {
-        _threads[vwConst::LOCKS_THREADID] = { vwConst::LOCKS_THREADID, -1, 0, true, vwConst::LOCKS_THREADID }; // Hash equal to fixed ID
+        _threads[vwConst::LOCKS_THREADID] = { vwConst::LOCKS_THREADID, -1, 0, true, true, vwConst::LOCKS_THREADID }; // Hash equal to fixed ID
         int tmp = vwConst::LOCKS_THREADID; // Why tmp? Because constexpr in C++11 (fixed in C++17) is linked if odr-used...
         _order.push_back(tmp);
     }
     if(record->coreQty>0) {
-        _threads[vwConst::CORE_USAGE_THREADID] = { vwConst::CORE_USAGE_THREADID, -1, 0, true, vwConst::CORE_USAGE_THREADID }; // Hash equal to fixed ID
+        _threads[vwConst::CORE_USAGE_THREADID] = { vwConst::CORE_USAGE_THREADID, -1, 0, true, true, vwConst::CORE_USAGE_THREADID }; // Hash equal to fixed ID
         int tmp = vwConst::CORE_USAGE_THREADID; // Why tmp? Because constexpr in C++11 (fixed in C++17) is linked if odr-used...
         _order.push_back(tmp);
     }
@@ -458,13 +458,14 @@ vwConfig::notifyUpdatedRecord(cmRecord* record)
 
         // Threads
         int groupNameIdx = record->threads[threadId].groupNameIdx;
-        _threads[threadId] = { threadId, groupNameIdx, (int)(s.hash%_colorPaletteDark.size()), true, s.hash };
+        _threads[threadId] = { threadId, groupNameIdx, (int)(s.hash%_colorPaletteDark.size()), true,  true, s.hash };
 
         // Configuration
         for(ThreadLayout& tCfg : _liveConfigThreads) {
             if(tCfg.hash!=s.hash) continue;
             _threads[threadId].colorIdx   = tCfg.colorIdx;
             _threads[threadId].isExpanded = tCfg.isExpanded;
+            _threads[threadId].isVisible  = tCfg.isVisible;
             break;
         }
 
@@ -493,7 +494,7 @@ vwConfig::notifyUpdatedRecord(cmRecord* record)
     }
 
     if(!record->locks.empty() && _threads[vwConst::LOCKS_THREADID].hash==0) {
-        _threads[vwConst::LOCKS_THREADID] = { vwConst::LOCKS_THREADID, -1, 0, true, vwConst::LOCKS_THREADID }; // Hash equal to fixed ID
+        _threads[vwConst::LOCKS_THREADID] = { vwConst::LOCKS_THREADID, -1, 0, true, true, vwConst::LOCKS_THREADID }; // Hash equal to fixed ID
         for(ThreadLayout& tCfg : _liveConfigThreads) {
             if(tCfg.hash!=vwConst::LOCKS_THREADID) continue;
             _threads[vwConst::LOCKS_THREADID].colorIdx   = tCfg.colorIdx;
@@ -503,7 +504,7 @@ vwConfig::notifyUpdatedRecord(cmRecord* record)
     }
 
     if(record->coreQty>0 && _threads[vwConst::CORE_USAGE_THREADID].hash==0) {
-        _threads[vwConst::CORE_USAGE_THREADID] = { vwConst::CORE_USAGE_THREADID, -1, 0, true, vwConst::CORE_USAGE_THREADID }; // Hash equal to fixed ID
+        _threads[vwConst::CORE_USAGE_THREADID] = { vwConst::CORE_USAGE_THREADID, -1, 0, true, true, vwConst::CORE_USAGE_THREADID }; // Hash equal to fixed ID
         for(ThreadLayout& tCfg : _liveConfigThreads) {
             if(tCfg.hash!=vwConst::CORE_USAGE_THREADID) continue;
             _threads[vwConst::CORE_USAGE_THREADID].colorIdx   = tCfg.colorIdx;
@@ -598,6 +599,18 @@ vwConfig::setThreadExpanded(int threadId, bool isExpanded)
         plgScope(CFG, "setThreadExpanded");
         plgVar(CFG, threadId, isExpanded);
         _threads[threadId].isExpanded = isExpanded;
+        precomputeThreadExport();
+   }
+}
+
+
+void
+vwConfig::setThreadVisible(int threadId, bool isVisible)
+{
+    if(_threads[threadId].isVisible!=isVisible) {
+        plgScope(CFG, "setThreadVisible");
+        plgVar(CFG, threadId, isVisible);
+        _threads[threadId].isVisible = isVisible;
         precomputeThreadExport();
    }
 }
@@ -842,7 +855,7 @@ vwConfig::saveApplication(const bsString& appName)
     // Thread layout
     for(int i=0; i<_order.size(); ++i) {
         const ThreadLayout& t = _threads[_order[i]];
-        fprintf(fh, "thread %" PRIX64 " %d %d\n", t.hash, t.colorIdx, (int)t.isExpanded);
+        fprintf(fh, "thread %" PRIX64 " %d %d %d\n", t.hash, t.colorIdx, (int)t.isExpanded, (int)t.isVisible);
     }
 
     // Group layout
@@ -937,16 +950,16 @@ vwConfig::loadApplication(const bsString& appName)
         if(isKwFound) _lockLatencyUs = tmp1;
 
         // "thread" color, visibility. And implicitely the order
-        READ_APPLI(thread, 3, "%" PRIX64 " %d %d", &hash, &tmp1, &tmp2);
+        READ_APPLI(thread, 4, "%" PRIX64 " %d %d %d", &hash, &tmp1, &tmp2, &tmp3);
         if(isKwFound) {
             bool isFound = false;
             for(int tId=0; !isFound && tId<vwConst::QUANTITY_THREADID; ++tId) {
                 ThreadLayout& tl = _threads[tId];
                 if(hash!=tl.hash) continue;
-                tl.colorIdx  = tmp1; tl.isExpanded = tmp2; isFound = true; break;
+                tl.colorIdx  = tmp1; tl.isExpanded = tmp2; tl.isVisible = tmp3; isFound = true; break;
             }
             if(!isFound && _extraLines.size()<vwConst::MAX_EXTRA_LINE_PER_CONFIG) _extraLines.push_back(line);
-            _liveConfigThreads.push_back({-1, -1, tmp1, (bool)tmp2, hash});  // Save hash-> (order + config). Finalized in reorderThreadLayout
+            _liveConfigThreads.push_back({-1, -1, tmp1, (bool)tmp2, (bool)tmp3, hash});  // Save hash-> (order + config). Finalized in reorderThreadLayout
         }
 
         // "group" group visibility
@@ -1067,7 +1080,7 @@ vwConfig::reorderThreadLayout(void)
         if(isPresent) continue;
 
         // Insert the thread at a group-compatible place
-       if(groupCompatOrderIdx<0) {
+        if(groupCompatOrderIdx<0) {
             _order.push_back(tId);
         } else {
             _order.resize(_order.size()+1);
