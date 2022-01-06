@@ -239,18 +239,31 @@ cmRecord::loadExternalStrings(void)
     }
 
     int offset = 0;
-    while(offset<=b.size()-20) { // 20 = 4 'at' symbols + 16 hash digits
+    int bufferSize = b.size();
+    while(offset<=bufferSize-20) { // 20 = 4 'at' symbols + 16 hash digits
         // Parse
-        while(offset<=b.size()-2 && (b[offset]!='@' || b[offset+1]!='@')) ++offset;
-        if(offset>b.size()-20) break;
-        u64 key;
-        if(sscanf((char*)&b[offset], "@@%16" PRIX64 "@@", &key)!=1) {
-            while(offset<b.size() && b[offset]!='\n') ++offset;
+        while(offset<=bufferSize-20 && (b[offset]!='@' || b[offset+1]!='@' || b[offset+18]!='@' || b[offset+19]!='@')) ++offset;
+        if(offset>bufferSize-20) break;
+
+        // Get the 64 bits key "manually". Indeed, sscanf (glibc linux) is very slow on long strings (it computes the string length probably)
+        u64 key = 0;
+        bool isValid = true;
+        for(int i=0; isValid && i<16; ++i) {
+            char c = b[offset+2+i];
+            if     (c>='0' && c<='9') key = (key<<4) | (u64)(c-'0');
+            else if(c>='a' && c<='f') key = (key<<4) | (u64)(10+(int)(c-'a'));
+            else if(c>='A' && c<='F') key = (key<<4) | (u64)(10+(int)(c-'A'));
+            else isValid = false;
+        }
+        if(!isValid) {
+            while(offset<bufferSize && b[offset]!='\n') ++offset;
             continue;
         }
+
+        // Get the string
         offset += 20;
         int startOffset = offset;
-        while(offset<b.size() && b[offset]!='\n') ++offset;
+        while(offset<bufferSize && b[offset]!='\n') ++offset;
         // Store the entry
         ADD_STRING(key, bsString((char*)&b[startOffset], (char*)&b[offset]));
     }
