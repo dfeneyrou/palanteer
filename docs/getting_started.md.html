@@ -275,37 +275,39 @@ This `Palanteer` flag activates the collection the virtual base address at runti
 **2) Add the following compilation flags on each file to auto-instrument**
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
--g -finstrument-functions -finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/
+-g -finstrument-functions -finstrument-functions-exclude-file-list=palanteer.h,include/c++ -finstrument-functions-exclude-function-list=__tls_init
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-These flags add the debug symbols in the executable (whatever the optimization level), enable the addition of the hooks and exclude some files from the auto-instrumentation (the provided exclusion list fits a Debian distribution). <br/>
+These flags add the debug symbols in the executable (whatever the optimization level), enable the addition of the hooks and exclude some files and functions from the auto-instrumentation (the provided exclusion list fits a Debian distribution). <br/>
 Indeed, it is important to not instrument the functions used during the low level event tracing to avoid a "Larsen effect". <br/>
-The [PL_IMPL_AUTO_INSTRUMENT section](instrumentation_configuration_cpp.md.html#pl_impl_auto_instrument) discusses this important point with more details.
+The [PL_IMPL_AUTO_INSTRUMENT](instrumentation_configuration_cpp.md.html#pl_impl_auto_instrument) section discusses this important point with more details.
 
 **3) Add the "-ldl" to the linker command line**
 
-Getting the virtual base address of the program at run time requires calling the `dlsym()` function from the `dl` library.
+Getting the virtual base address of the program at run time requires calling the `dlsym()` function from the `dl` library (not required in some [special cases](instrumentation_configuration_cpp.md.html#pl_impl_auto_instrument_pic))
 
 **4) Generate the lookup *function address->strings* from the ELF binary**
 
 It shall be generated with the external string lookup generation tool, after each new built ELF executable, as the function address are tighly linked to it.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
-./tools/extStringCppParser.py -exe ./build/bin/testprogram  > ./build/bin/testprogram.txt
+./tools/stringLookupGenerator.py --exe "C++ example" ./build/bin/testprogram  > ./build/bin/testprogram.txt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The first parameter shall be the exact application name string as provided in the first parameter of the call to 'plInitAndStart'.
 
 !!! note
     This tool can create a string lookup including both the strings from parsing the source (external string feature) and the strings from the ELF binary (automatic instrumentation feature)
 
 This lookup is text based, one entry per line, formatted as shown in the example below (see also [Quick C++ external string configuration](#quickc++externalstringconfiguration) in the next section):
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ none
-@@000000000000ADB0@@evaluatePerformance(plMode, char const*, int)
+@@8D966019BBCDECF6@@evaluatePerformance(plMode, char const*, int)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 **5) Provide the lookup path to the viewer**
 
 In the record catalog tab of the viewer, right clicking on the application name proposes to select the lookup *path*. <br/>
 The lookup file pointed by this lookup path is copied at recording time so that the record is associated with this particular lookup for this particular binary. <br/>
-The copied lookup for a particular record can always be replaced: right clicking on the record name proposes such action. This is convenient if the lookup at recording time was not the right one. Generating the lookup inside your build system, in association with the program build, is the best way to prevent any lookup mismatch problem.
+The copied lookup for a particular record can always be replaced: right clicking on the record name proposes such action. This is convenient if the lookup at recording time was not the right one. Generating the lookup inside your build system, in association with the program build, is the best way to prevent any lookup mismatch problem. <br/>
+The changes will be seen at the next record loading.
 
 If no lookup is provided or a string is not present inside the lookup, only the string hash will be shown instead of the text content (ex: `@@458F1F00DF1C00B1@@`)
 
@@ -323,10 +325,10 @@ add_compile_options(-g -finstrument-functions -finstrument-functions-exclude-fil
 
 # Command which builds the lookup from the sources (external strings feature) and the binary (auto instrumentation feature)
 # This working example is copied from the testprogram CMakeFile.txt. You shall adapt it by replacing the target "testprogram" with your own, and optionally modify
-# some options of the "extStringCppParser.py" tool as it currently generates the lookup for both the external strings feature and automatic instrumentation, 
+# some options of the "stringLookupGenerator.py" tool as it currently generates the lookup for both the external strings feature and automatic instrumentation, 
 # with a hash salt of zero and a 64 bit hash.
 add_custom_command(TARGET "testprogram" POST_BUILD
-    COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/extStringCppParser.py" --exe "$<TARGET_FILE:testprogram>" ${TESTPROGRAM_SRC} > "$<TARGET_FILE:testprogram>.txt"
+    COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/stringLookupGenerator.py" --exe "C++ example" "$<TARGET_FILE:testprogram>" ${TESTPROGRAM_SRC} > "$<TARGET_FILE:testprogram>.txt"
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Generating the string lookup..."
     )
@@ -362,7 +364,7 @@ strings ./bin/testprogram
 
 **2) Generate the lookup *hash->strings* from your sources**
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
-./tools/extStringCppParser.py ./c++/testprogram/testProgram.cpp > testProgramLookup.txt
+./tools/stringLookupGenerator.py ./c++/testprogram/testProgram.cpp > testProgramLookup.txt
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 !!! note
@@ -492,7 +494,7 @@ palanteer_scripting.uninitialize_scripting()
 *       |
 *       +-- 📄 palanteer_stub.py       (stub Python instrumentation module to fallback on empty functions)
 *       |
-*       +-- 📄 extStringCppParser.py   (tool to create a lookup for the C++ external string feature)
+*       +-- 📄 stringLookupGenerator.py   (tool to create a lookup for the C++ external string feature)
 *       |
 *       +-- 📄 extStringDecoder.py     (simple tool to decode a string from its hash)
 *       |

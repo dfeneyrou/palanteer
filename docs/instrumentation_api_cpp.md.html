@@ -640,20 +640,23 @@ The instrumentation in this chapter traces actions performed on locks (as a gene
 The usage of locks in multithreaded environment can deeply modify the dynamic behavior. <br/>
 Visualizing them becomes critical in complex programs, that is why a specific diagram in the viewer helps identifying the bottlenecks across threads.
 
-| Lock tracing API                      | Description                                         | Group variant | Dyn. string variant |
-| ---------                             | -----------                                         | :---:         | :----:              |
-| [plLockWait](#pllockwait)             | Trace a start of waiting on a lock                    | X             | X                   |
-| [plLockState](#pllockstate)           | Trace a state of the lock (taken or not)              | X             | X                   |
-| [plLockScopeState](#pllockscopestate) | Trace a state of the lock with an automatic unlocking | X             | X                   |
-| [plLockNotify](#pllocknotify)         | Trace a lock notification or post                     | X             | X                   |
+| Lock tracing API                      | Description                                           | Group variant | Dyn. string variant | plString_t variant |
+|---------------------------------------|-------------------------------------------------------|:-------------:|:-------------------:|:------------------:|
+| [plLockWait](#pllockwait)             | Trace a start of waiting on a lock                    | X             | X                   | X                  |
+| [plLockState](#pllockstate)           | Trace a state of the lock (taken or not)              | X             | X                   | X                  |
+| [plLockScopeState](#pllockscopestate) | Trace a state of the lock with an automatic unlocking | X             | X                   |                    |
+| [plLockNotify](#pllocknotify)         | Trace a lock notification or post                     | X             | X                   | X                  |
 
 The lock API is "low level" so that it adapts to many existing lock primitives (mutex, semaphores, std::unique_lock, condition variables...), at the price of some less automatic instrumentation work. <br/>
 This instrumentation becomes much lighter if the program uses an OS abstraction layer, as only this layer needs to be instrumented.
 
+The dynamic variant allows to provide dynamic lock name string, at the cost of some extra runtime computations (one copy and one hashing). <br/>
+The static variant allows to provide a static lock name through a function without extra runtime cost, which is convenient in some cases of wrapper implementation. It uses the structure [plString_t](base_concepts.md.html#plstring_t).
+
 Some examples of instrumentation of several usual primitives are shown [after the description of the lock API](#examplesoflockinstrumentation)
 
 !!!
-    The locking process has two different phases:
+    The locking process has two phases:
      - waiting for the lock: the wait for lock is started, then ended with a positive or negative outcome
      - using the lock: the lock is first taken, then released.
 
@@ -679,6 +682,12 @@ void plLockWait(const char* name);
 
 // If the group is enabled, set the start of waiting for a lock
 void plgLockWait(const char* group, const char* name);
+
+// Set the start of waiting for a lock which has a static name represented by a plString_t
+void plLockWaitStatic(plString_t name);
+
+// If the group is enabled, set the start of waiting for a lock which has a static name represented by a plString_t
+void plgLockWaitStatic(const char* group, plString_t name);
 
 // Set the start of waiting for a lock which has a dynamic name
 void plLockWaitDyn(const char* name);
@@ -714,6 +723,12 @@ void plLockState(const char* name, bool lockUseState);
 
 // If the group is enabled, set the lock state
 void plgLockState(const char* group, const char* name, bool lockUseState);
+
+// Set the lock state when the lock has a static name represented by a plString_t
+void plLockStateStatic(plString_t name, bool lockUseState);
+
+// If the group is enabled, set the lock state when the lock has a static name represented by a plString_t
+void plgLockStateStatic(const char* group, plString_t name, bool lockUseState);
 
 // Set the lock state when the lock has a dynamic name
 void plLockStateDyn(const char* name, bool lockUseState);
@@ -786,6 +801,12 @@ void plLockNotify(const char* name);
 
 // If the group is enabled, trace a lock notification
 void plgLockNotify(const char* group, const char* name);
+
+// Trace a lock notification when the lock has a static name represented by a plString_t
+void plLockNotifyStatic(plString_t name);
+
+// If the group is enabled, trace a lock notification when the lock has a static name represented by a plString_t
+void plgLockNotifyStatic(const char* group, plString_t name);
 
 // Trace a lock notification when the lock has a dynamic name
 void plLockNotifyDyn(const char* name);
@@ -1105,6 +1126,20 @@ In such case, try to isolate the faulty line from your sources, and check:
  - that the group is indeed defined, if you use groups
  - that the string is really static, if you use an API which requires a static string
  - that the logged variable is indeed one of the traceable type (i.e. C-string or a numerical value)
+
+<br/>
+**I really get a lot of preprocessor errors while using logging, talking about ambiguous overload stuff...***
+
+First, apologies for the quantity of thrown error, see the previous point. <br/>
+This problem is independent of the string format. It is purely related to the provided parameters.
+
+Of course, check first that the parameters can all be handled properly by printf (no struct, class, ...). <br/>
+Then the issue is probably due to the fixed width integer types, especially for 64 bits integers:
+ - `Palanteer` handles the non ambiguous definition (from C++11) int8_t, uint8_t, int16_t, uint16_t, int32_t uint32_t, int64_t and uint64_t
+ - these types do not correspond always to the "old" types. For instance, long long int is not always a int64_t
+ - some compilers get crazy when having to deal with such casts, hence the overload ambiguity
+
+To solve the issue, just cast the faulty parameter with its corresponding fixed width integer types (ex: `(int64_t)myLongLongInt`)
 
 <br>
 **plFunction does not compile**

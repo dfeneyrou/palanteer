@@ -98,7 +98,9 @@ def test_logs():
     """Logs"""
 
     LOG("Configure event to capture logs")
-    data_configure_events([EvtSpec(["Log test", "Not recorded", "threading", "important"])])
+    data_configure_events(
+        [EvtSpec(["Log test", "Not recorded", "threading", "important"])]
+    )
     launch_testprogram(duration=1)
     events = data_collect_events(wanted=["important", "threading"], timeout_sec=10.0)
     # print("\n" + "\n".join([str(e) for e in events]))
@@ -116,7 +118,7 @@ def test_logs():
         "We did not received any record-disabled log",
     )
     CHECK(
-        len([1 for e in events if e.path[-1]=="Log test"])==4,
+        len([1 for e in events if e.path[-1] == "Log test"]) == 4,
         "We received the 4 test log",
     )
     process_stop()

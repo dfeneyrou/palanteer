@@ -334,7 +334,7 @@ In this mode, all static strings used by `Palanteer` are stripped out at compila
 In order to properly work with a record where the external string feature has been enabled, the additional actions below are required:
 
  1. Generate a lookup file *hash -> strings* from all sources
-   - The provided tool `./tools/extStringCppParser.py` parses C++ source files and generates this lookup
+   - The provided tool `./tools/stringLookupGenerator.py` parses C++ source files and generates this lookup
    - A new lookup file shall be generated each time you add or modify an existing string used by `Palanteer`
    - This process is fast enough to be part of a build system
  2. This lookup shall be used to recover the plain content of the strings (the `Palanteer` viewer and Python scripting module do it)
@@ -345,8 +345,8 @@ In order to properly work with a record where the external string feature has be
 
 Example of generation of the static string lookup on the full `Palanteer` viewer sources (on Linux with zsh shell supporting `**`):
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ shell
-palanteer > time ./tools/extStringCppParser.py c++/palanteer.h server/**/*.{c,cpp,h} > palanteer_string_lkup.txt
-./tools/extStringCppParser.py c++/palanteer.h server/**/*.{c,cpp,h} >   1.73s user 0.01s system 99% cpu 1.749 total
+palanteer > time ./tools/stringLookupGenerator.py c++/palanteer.h server/**/*.{c,cpp,h} > palanteer_string_lkup.txt
+./tools/stringLookupGenerator.py c++/palanteer.h server/**/*.{c,cpp,h} >   1.73s user 0.01s system 99% cpu 1.749 total
 
 palanteer > wc -l -c c++/palanteer.h server/**/*.{c,cpp,h} | tail -1
  137149 6921792 total
@@ -370,6 +370,9 @@ palanteer > wc -l palanteer_string_lkup.txt
 These logs show:
  - the full source (~137 Klines and ~6.9 Mcharacters, which includes dependencies like `Dear ImGui` and `Zstd`) is processed in less than 2 seconds
  - the generated lookup contains 1165 unique strings from events, assertions and filenames
+
+!!! tip
+    The tool `./tools/stringLookupGenerator.py` is also used to generate the lookup for the function symbols from a GCC Linux auto instrumented program.
 
 ### Enhanced assertions
 

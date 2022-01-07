@@ -40,7 +40,14 @@ _is_activated = False
 _is_with_functions = True
 
 # Log levels
-LOG_LEVEL_ALL, LOG_LEVEL_DEBUG, LOG_LEVEL_INFO, LOG_LEVEL_WARN, LOG_LEVEL_ERROR, LOG_LEVEL_NONE = (
+(
+    LOG_LEVEL_ALL,
+    LOG_LEVEL_DEBUG,
+    LOG_LEVEL_INFO,
+    LOG_LEVEL_WARN,
+    LOG_LEVEL_ERROR,
+    LOG_LEVEL_NONE,
+) = (
     0,
     0,
     1,

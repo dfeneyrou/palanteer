@@ -224,7 +224,7 @@ def measure_event_size_and_timing():
 
     KPI(
         "Log compilation speed (-O2) ",
-        "%.1f logs/s" % (1024./(logO_build_time_sec - refO_build_time_sec)),
+        "%.1f logs/s" % (1024.0 / (logO_build_time_sec - refO_build_time_sec)),
     )
     KPI(
         "Log with 1 integer param code size ",

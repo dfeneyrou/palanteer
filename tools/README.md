@@ -3,10 +3,11 @@ This folder contains various standalone tools, all in Python.
 Content
 =======
 
-**extStringCppParser.py** <br/>
+**stringLookupGenerator.py** <br/>
 This tool is associated to the "external string" feature of the C++ instrumentation library. <br/>
 It parses (with simple regexp) the provided files, extracts and hashes the static strings used in the instrumentation API
 and also the filenames, and output them in a "lookup" file that the server understands.
+It is also used to generate the lookup for the function symbols from a GCC Linux auto instrumented program.
 
 **extStringDecoder.py** <br/>
 This tool is associated to the "external string" feature of the C++ instrumentation library. <br/>

@@ -443,7 +443,7 @@ def test_external_short_string():
     res = run_cmd(
         [
             sys.executable,
-            os.path.join(rootPath, "tools", "extStringCppParser.py"),
+            os.path.join(rootPath, "tools", "stringLookupGenerator.py"),
             "--hash32",
         ]
         + glob.glob(os.path.join(rootPath, "c++", "testprogram", "*.cpp"))
@@ -513,8 +513,9 @@ def test_autoinstrumentation():
     res = run_cmd(
         [
             sys.executable,
-            os.path.join("..", "..", "..", "tools") + "/extStringCppParser.py",
+            os.path.join("..", "..", "..", "tools") + "/stringLookupGenerator.py",
             "--exe",
+            "C++ example",
             "./bin/testprogram",
         ]
     )

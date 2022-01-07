@@ -104,18 +104,20 @@ They fully define the [memory usage](index.html#c++memoryusage) of the library.
     These configuration variables exist just in case a finer control is required on the memory, or in case of "outstanding" usage.
 <br/>
 
-| Event collection                                                                    | Description                                                          | Default |
-|-------------------------------------------------------------------------------------|----------------------------------------------------------------------|:-------:|
-| [PL_IMPL_CATCH_SIGNALS](#pl_impl_catch_signals)                                     | Enables catching OS signals (segv, etc...)                           | 1       |
-| [PL_IMPL_COLLECTION_BUFFER_BYTE_QTY](#pl_impl_collection_buffer_byte_qty)           | Buffer size for event collection (2 are needed)                      | 5000 KB |
-| [PL_IMPL_DYN_STRING_QTY](#pl_impl_dyn_string_qty)                                   | Defines the maximum quantity of dynamic strings per collection round | 1024    |
-| [PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY](#pl_impl_remote_request_buffer_byte_qty)   | Buffer size for remote command request                               | 8 KB    |
-| [PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY](#pl_impl_remote_response_buffer_byte_qty) | Buffer size for remote command response                              | 8 KB    |
-| [PL_IMPL_STRING_BUFFER_BYTE_QTY](#pl_impl_string_buffer_byte_qty)                   | Buffer size for new string batch sending                             | 8 KB    |
-| [PL_IMPL_MAX_EXPECTED_STRING_QTY](#pl_impl_max_expected_string_qty)                 | Expected quantity of unique string for the program under test        | 4096    |
-| [PL_IMPL_MAX_CLI_QTY](#pl_impl_max_cli_qty)                                         | Maximum registered CLI quantity                                      | 128     |
-| [PL_IMPL_CLI_MAX_PARAM_QTY](#pl_impl_cli_max_param_qty)                             | Defines the maximum CLI parameter quantity                           | 8       |
-| [PL_IMPL_MANAGE_WINDOWS_SOCKET](#pl_impl_manage_windows_socket)                     | Enables socket initialization (Windows only)                         | 1       |
+| Event collection                                                                    | Description                                                          | Default      |
+|-------------------------------------------------------------------------------------|----------------------------------------------------------------------|:------------:|
+| [PL_IMPL_AUTO_INSTRUMENT](#pl_impl_auto_instrument)                                 | Enables the auto instrumentation feature (GCC Linux only)            | 0 (disabled) |
+| [PL_IMPL_AUTO_INSTRUMENT_PIC](#pl_impl_auto_instrument_pic)                         | Enables the Position Independent Code for auto instrumentation       | 1 (enabled)  |
+| [PL_IMPL_CATCH_SIGNALS](#pl_impl_catch_signals)                                     | Enables catching OS signals (segv, etc...)                           | 1            |
+| [PL_IMPL_COLLECTION_BUFFER_BYTE_QTY](#pl_impl_collection_buffer_byte_qty)           | Buffer size for event collection (2 are needed)                      | 5000 KB      |
+| [PL_IMPL_DYN_STRING_QTY](#pl_impl_dyn_string_qty)                                   | Defines the maximum quantity of dynamic strings per collection round | 1024         |
+| [PL_IMPL_REMOTE_REQUEST_BUFFER_BYTE_QTY](#pl_impl_remote_request_buffer_byte_qty)   | Buffer size for remote command request                               | 8 KB         |
+| [PL_IMPL_REMOTE_RESPONSE_BUFFER_BYTE_QTY](#pl_impl_remote_response_buffer_byte_qty) | Buffer size for remote command response                              | 8 KB         |
+| [PL_IMPL_STRING_BUFFER_BYTE_QTY](#pl_impl_string_buffer_byte_qty)                   | Buffer size for new string batch sending                             | 8 KB         |
+| [PL_IMPL_MAX_EXPECTED_STRING_QTY](#pl_impl_max_expected_string_qty)                 | Expected quantity of unique string for the program under test        | 4096         |
+| [PL_IMPL_MAX_CLI_QTY](#pl_impl_max_cli_qty)                                         | Maximum registered CLI quantity                                      | 128          |
+| [PL_IMPL_CLI_MAX_PARAM_QTY](#pl_impl_cli_max_param_qty)                             | Defines the maximum CLI parameter quantity                           | 8            |
+| [PL_IMPL_MANAGE_WINDOWS_SOCKET](#pl_impl_manage_windows_socket)                     | Enables socket initialization (Windows only)                         | 1            |
 
 <br/>
 
@@ -167,8 +169,12 @@ To get a readable name, additional work is required:
 Only the external resolution of the function name is compatible with the "high performance" target: `Palanteer` uses this scheme. <br/>
 And fortunately, this requirement is very close to the `external strings` feature and shares its resolution mechanism:
   - the event carries a representation of the filename and name of the scope as string hashes, which are resolved on server side
-  - the tool `extStringCppParser.py` used to generate the external strings from the source code can also extract functions addresses and string names from the ELF binary (using `nm`)
+  - the tool `stringLookupGenerator.py` used to generate the external strings from the source code can also extract functions addresses and string names from the ELF binary (using `nm`)
   - the main difference is that the automatically instrumented functions have a hash-representation which varies at each build, while the external strings have a constant hash-representation for a given string content.
+
+!!!
+    The hash of the automatically instrumented functions are XORed with the hash of the application name, in order to seamlessly support multiple stream auto instrumented. <br/>
+    Also, both the symbol address and the address+1 are used, the latter being the coded string containing both the filename and the line number.
 
 The last piece of the puzzle is the matching of the collected function addresses during runtime, after relocation in a virtual memory space, with the function addresses from the ELF binary. <br/>
 ASLR (Address Space Layout Randomization) is enabled by default on many Linux distributions. Its aim is to protect against certain types of attacks by changing the base virtual address of programs at each run. <br/>
@@ -184,15 +190,15 @@ As the library uses small inlined functions during tracing for efficiency reason
 Thanks to the GCC flag `-finstrument-functions-exclude-file-list` excluding file by substring pattern matching, enforcing (1) is straightforward. <br/>
 The (2) depends on the GCC installation paths.
 
-On a Debian 11, the exclusion parameter value `-finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/` does the job, the last two parameters excludes all the standard library calls. <br/>
-A more fine grained working exclusion set (Debian 11 at least) is: `-finstrument-functions-exclude-file-list=palanteer.h,atomic,chrono,/bits/ -finstrument-functions-exclude-function-list=atomic,thread,operator,condition_variable`
+On a Debian 11, the exclusion parameter values `-finstrument-functions-exclude-file-list=palanteer.h,include/c++` and `-finstrument-functions-exclude-function-list=__tls_init` do the job, excluding all the standard library calls, inlined (which creates the problem) or not. <br/>
+A more fine grained working exclusion set (Debian 11 at least) is: `-finstrument-functions-exclude-file-list=palanteer.h,atomic,chrono,/bits/ -finstrument-functions-exclude-function-list=atomic,thread,operator,condition_variable,__tls_init`
 
   - it uses also the `-finstrument-functions-exclude-function-list` flag which excludes function based on a substring pattern matching.
   - it excludes more precisely the part of the standard library used in the event tracing, letting some parts of it auto-instrumented (compared to the version (1))
   - it was not easily found as any function called internally shall also be excluded, which means that the standard library structure and internals shall be taken into account.
 
 !!!
-    The recommended exclusion set is to use `-finstrument-functions-exclude-file-list=palanteer.h,include/c++,/bits/` (to adapt to the GCC installation if needed) <br/>
+    The recommended exclusion set is to use the coarse parameters (and adapt them to the GCC installation if needed) <br/>
     Indeed, the fine-grained exclusion method is much trickier to set properly and:
       - does not bring any real value as the standard library is heavily templatized and the function names get very long and are unreadable.
       - create an heavy tracing which affects the reliability of the performance measures.
@@ -200,6 +206,25 @@ A more fine grained working exclusion set (Debian 11 at least) is: `-finstrument
 !!! tip
     If you quickly encounter a `segmentation fault` specifically with automatic function instrumentation, this is probably due to an incorrect exclusion list. This can be checked under a debugger by looking at the stack trace. <br/>
     Beware that 2 code paths shall be considered: the event tracing itself (using `atomic`, `thread`...), and the contention resolution in case of buffer saturation which additionally uses `std::this_thread::yield()` with many sub function calls.
+
+### PL_IMPL_AUTO_INSTRUMENT_PIC
+
+The automatic C++ functions instrumentation feature receives function address values either relative to a runtime known offset or as an absolute value. <br/>
+This flag enables the removal of the dynamic offset of the address. The purpose is to have a match with the symbol addresses inside the ELF (using the UNIX  'nm' tool).
+
+On 64 bits Linux, ASLR (Address Space Layout Randomization) is enabled by default, so this flag should be enabled.<br/>
+On 32 bits Linux, the function addresses are often absolute, so this flag should be disabled. <br/>
+All depends on your build configuration...
+
+The default value is "enabled", which matches typical 64 bits Linux configuration:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ C++
+#define PL_IMPL_AUTO_INSTRUMENT_PIC 1
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+This flag is considered only if PL_IMPL_AUTO_INSTRUMENT is 1
+
+!!!
+    When this Position Independent Code flag is disabled, linking with the 'dl' library is not required.
 
 ### PL_IMPL_CATCH_SIGNALS
 

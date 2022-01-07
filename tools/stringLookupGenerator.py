@@ -137,7 +137,7 @@ def main(argv):
     hashSalt = 0
     isHash64bits = True
     doPrintUsage = False
-    exeName = None
+    exeNames = []
     fileNames = []
     i = 1
     while i < len(argv):
@@ -146,17 +146,23 @@ def main(argv):
         elif argv[i] == "--salt" and i + 1 < len(argv):
             i = i + 1
             hashSalt = int(argv[i])
-        elif argv[i] == "--exe" and i + 1 < len(argv):
-            i = i + 1
-            exeName = argv[i]
+        elif argv[i] == "--exe" and i + 2 < len(argv):
+            exeNames.append((argv[i + 1], argv[i + 2]))
+            i = i + 2
         elif argv[i][0] == "-":
             doPrintUsage = True  # Unknown option
             print("Unknown option '%s'" % argv[i], file=sys.stderr)
         else:
             fileNames.append(argv[i])
         i = i + 1
-    if not fileNames and not exeName:
+    if not fileNames and not exeNames:
         doPrintUsage = True
+    if exeNames and sys.platform != "linux":
+        print(
+            "Automatic instrumentation requires the 'nm' tool (Unix)", file=sys.stderr
+        )
+        doPrintUsage = True
+
     if doPrintUsage:
         print(
             """This tool is a part of Palanteer and useful for the 'external string' feature.
@@ -167,13 +173,19 @@ Syntax: %s [options] [<source filenames>*]
 Options:
   --hash32      : generate 32 bits hash (to use with PL_SHORT_STRING_HASH=1)
   --salt <value>: hash salt value (shall match PL_HASH_SALT, default value is 0)
-  --exe  <name> : ELF executable from which to extract the function names and addresses
-                  Useful only when using PL_IMPL_AUTO_INSTRUMENT (Linux only)
-Note 1: The 'hand-made' code parsing is simple but should be enough for most need.
+  --exe  <appName> <name> : Provided appName and ELF executable from which to extract the function names and addresses
+                            'appName' must exactly match the name provided as 1st argument of plInitAndStart
+                            Useful only when using PL_IMPL_AUTO_INSTRUMENT (Linux only)
+                            May be used several times in case of auto-instrumented multistreams
+Note 1: The 'hand-made' code parsing for processing external strings is simple but should be enough for most need.
         It may fail in some corner cases (C macro masking values etc...).
 Note 2: If Palanteer commands are encapsulated inside custom macros in your code, the list of command
-        at the top of this file shall probably be modified."""
-            % argv[0],
+        at the top of this file shall probably be modified.
+
+Ex: %s src/*.cpp thirdParty/*.cc     (external strings)
+Ex: %s --exe "name1" bin/myFirstProcess.exe --exe "name2" bin/mySecondProcess.exe  src/*.cpp  (external strings and auto-instrumented multistream)
+"""
+            % (argv[0], argv[0], argv[0]),
             file=sys.stderr,
         )
         sys.exit(1)
@@ -183,7 +195,8 @@ Note 2: If Palanteer commands are encapsulated inside custom macros in your code
 
     hashToStringlkup, collisions = {}, {}
 
-    if exeName and sys.platform == "linux":
+    for exeParams in exeNames:
+        appName, exeName = exeParams
         if not os.path.exists(exeName):
             printf("Input executable '%s' does not exist" % exeName, file=sys.stderr)
             sys.exit(1)
@@ -195,6 +208,9 @@ Note 2: If Palanteer commands are encapsulated inside custom macros in your code
             universal_newlines=True,
             capture_output=True,
         )
+
+        # Get the hash of the appName. This allows seamless usage of auto instrumentation with multiple streams
+        appNameHash = computeHash(appName, isHash64bits, hashSalt)
 
         for l in nmProcess.stdout.split("\n"):
             # Filter on symbols from the text section only
@@ -211,7 +227,7 @@ Note 2: If Palanteer commands are encapsulated inside custom macros in your code
                 collisions,
                 isHash64bits,
                 hashSalt,
-                hashValue,
+                hashValue ^ appNameHash,
             )
 
             # Add the function filename, augmented with the line number
@@ -223,7 +239,7 @@ Note 2: If Palanteer commands are encapsulated inside custom macros in your code
                 collisions,
                 isHash64bits,
                 hashSalt,
-                hashValue + 1,
+                (hashValue + 1) ^ appNameHash,
                 doOverride=True,
             )
 
@@ -354,7 +370,7 @@ if __name__ == "__main__":
 # Unit test
 # =========
 
-# ./extStringCppParser.py extStringCppParser.py  shall give "good" followed by a sequential numbers, and no "BAD"
+# ./stringLookupGenerator.py stringLookupGenerator.py  shall give "good" followed by a sequential numbers, and no "BAD"
 """
 plBegin  aa("BAD0");
 
