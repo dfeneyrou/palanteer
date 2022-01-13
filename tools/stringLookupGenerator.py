@@ -159,9 +159,9 @@ def main(argv):
         doPrintUsage = True
     if exeNames and sys.platform != "linux":
         print(
-            "Automatic instrumentation requires the 'nm' tool (Unix)", file=sys.stderr
+            "Skipped executables: automatic instrumentation requires the 'nm' tool (Unix only)", file=sys.stderr
         )
-        doPrintUsage = True
+        exeNames = []
 
     if doPrintUsage:
         print(
