@@ -74,7 +74,7 @@ public:
         _size(0), _capacity((int)lst.size()), _array(lst.size()? new T[lst.size()]:0) {
         for(auto& e:lst) _array[_size++] = e;
     }
-    virtual ~bsVec(void) {
+    ~bsVec(void) {
         _size = 0 ; _capacity = 0 ; delete[] _array; _array = 0;
     }
 
