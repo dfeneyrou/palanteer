@@ -353,8 +353,10 @@ vwMain::draw(void)
         plData("Action mode", plMakeString("Start of record"));
         updateRecordList(); // Populate with updated record list
         findRecord((*recordPtr)->recordPath, _underRecordAppIdx, _underRecordRecIdx);
-        if(_underRecordRecIdx==-1) logToConsole(LOG_ERROR, "WEIRD: file %s (under record) not found...\n", (*recordPtr)->recordPath.toChar());
-        plAssert(_underRecordRecIdx>=0, _underRecordRecIdx);
+        if(_underRecordRecIdx==-1) {
+            logToConsole(LOG_ERROR, "BUG: file %s (current record) not found...\n", (*recordPtr)->recordPath.toChar());
+            _clientCnx->disconnect();
+        }
         _forceOpenAppIdx = _underRecordAppIdx;
         _msgRecordStarted.releaseMsg();
         osSetWindowTitle("Palanteer - RECORDING");
@@ -394,8 +396,7 @@ vwMain::draw(void)
     if(_actionMode==READY && (isEndedRecordOkPtr=_msgRecordEnded.getReceivedMsg())) {
         plData("Action mode", plMakeString("End of record"));
         bool isEndedRecordOk = *isEndedRecordOkPtr;
-        plAssert(_underRecordRecIdx>=0);
-        bsString recordPath = _cmRecordInfos[_underRecordAppIdx].records[_underRecordRecIdx].path;
+        bsString recordPath = (_underRecordRecIdx>=0)? _cmRecordInfos[_underRecordAppIdx].records[_underRecordRecIdx].path : "";
         updateRecordList(); // Populate with updated record list
         _underRecordAppIdx = -1;
         _underRecordRecIdx = -1;
@@ -594,7 +595,7 @@ vwMain::notifyRecordStarted(const cmStreamInfo& infos, s64 timeTickOrigin, doubl
     // Notify the GUI
     cmRecord** recordPtr = _msgRecordStarted.t1GetFreeMsg();
     if(!recordPtr) {
-        delete _record;
+        delete record;
         return false;  // No message available (which would be very weird...)
     }
 

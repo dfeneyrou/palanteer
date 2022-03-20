@@ -42,7 +42,7 @@ constexpr int SUPPORTED_MIN_PROTOCOL = 3;
 constexpr int SUPPORTED_MAX_PROTOCOL = 3;
 
 cmCnx::cmCnx(cmInterface* itf, int port) :
-    _itf(itf), _port(port), _doStopThreads(0)
+    _itf(itf), _port(port), _doStopThreads(0), _doAbortConnection(0)
 {
 #if defined(_WIN32)
     // Windows special case: initialize the socket library
@@ -246,6 +246,7 @@ cmCnx::checkConnection(const bsVec<bsString>& importedFilenames, bsSocket_t mast
     // ==========
     else {
         _isSocketInput = true;
+        _doAbortConnection.store(0);
 
         // Wait for a client program to connect
         int connectionQty = 0;
@@ -405,6 +406,9 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
     plgText(CLIENTRX, "State", "Start data reception");
     while(!_doStopThreads.load()) {
 
+        // Abort case
+        if(_doAbortConnection.load()) break;
+
         // Manage the periodic live display update
         bsUs_t currentTime = bsGetClockUs();
         if(areNewDataReceived && (currentTime-_lastDeltaRecordTime)>=deltaRecordFactor*cmConst::DELTARECORD_PERIOD_US) {
@@ -417,7 +421,7 @@ cmCnx::dataReceptionLoop(bsSocket_t masterSockFd)
         // Read the data
         int qty;
         if(!_isSocketInput) {
-            // Read the file streams one after the other @#LATER The next stream could be computed a the "most late" one, for a better live display
+            // Read the file streams one after the other @#LATER The next stream could be computed a the latest one, for a better live display
             plAssert(_streams[streamId].fileDescr);
             qty = (int)fread(_recBuffer, 1, _recBufferSize, _streams[streamId].fileDescr);
             if(qty<=0) ++streamId;  // Go to next file

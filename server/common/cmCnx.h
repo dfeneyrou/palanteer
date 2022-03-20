@@ -46,6 +46,7 @@ public:
 
     bsVec<u8>* getTxBuffer (int streamId);
     void       sendTxBuffer(int streamId);
+    void       disconnect(void) { _doAbortConnection.store(1); }
 
 private:
     cmCnx(const cmCnx& other); // To please static analyzers
@@ -100,6 +101,7 @@ private:
     cmInterface*     _itf;
     int              _port;
     std::atomic<int> _doStopThreads;
+    std::atomic<int> _doAbortConnection;
     bsSocket_t       _clientSocket[cmConst::MAX_STREAM_QTY];
     bool             _rxIsStarted = false;
     bool             _txIsStarted = false;
