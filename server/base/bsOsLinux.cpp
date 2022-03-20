@@ -1003,7 +1003,6 @@ osGetDirStatusCodeStr(bsDirStatusCode status)
 bsDirStatusCode
 osGetDirContent(const bsString& path, bsVec<bsDirEntry>& entries)
 {
-    if(1) return DOES_NOT_EXIST;
     // Open directory
     entries.clear();
     DIR* dir = opendir(path.toChar());
