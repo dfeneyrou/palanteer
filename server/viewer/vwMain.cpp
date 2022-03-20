@@ -866,8 +866,10 @@ vwMain::updateRecordList(void)
 
     // List the folder in the record folder
     bsVec<bsDirEntry> dirEntries;
-    if(osGetDirContent(_storagePath, dirEntries)!=bsDirStatusCode::OK) {
-        logToConsole(LOG_ERROR, "Update record list: Unable to read the directory content of %s", _storagePath.toChar());
+    bsDirStatusCode status;
+    if((status=osGetDirContent(_storagePath, dirEntries))!=bsDirStatusCode::OK) {
+        logToConsole(LOG_ERROR, "Update record list: Unable to read the directory content of %s. Reason is '%s'",
+                     _storagePath.toChar(), osGetDirStatusCodeStr(status));
         return;
     }
 
@@ -881,7 +883,11 @@ vwMain::updateRecordList(void)
 
         // Collect its list of records
         bsVec<bsDirEntry> appEntries;
-        if(osGetDirContent(appElem.path, appEntries)!=bsDirStatusCode::OK) continue;
+        if((status=osGetDirContent(appElem.path, appEntries))!=bsDirStatusCode::OK) {
+            logToConsole(LOG_ERROR, "Update record list: Unable to read the directory content of %s. Reason is '%s'",
+                         appElem.path.toChar(), osGetDirStatusCodeStr(status));
+            continue;
+        }
         for(auto& recEntry : appEntries) {
             if(recEntry.isDir || !recEntry.name.endsWith(".plt")) continue; // We are looking for .plt files only
             RecordInfos recElem;

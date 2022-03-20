@@ -983,9 +983,27 @@ osMakeDir(const bsString& path)
 }
 
 
+const char*
+osGetDirStatusCodeStr(bsDirStatusCode status)
+{
+    switch(status) {
+    case bsDirStatusCode::OK: return "OK";
+    case bsDirStatusCode::FAILURE: return "Generic failure";
+    case bsDirStatusCode::DOES_NOT_EXIST: return "Does not exist";
+    case bsDirStatusCode::NOT_A_DIRECTORY: return "Not a directory";
+    case bsDirStatusCode::PERMISSION_DENIED: return "Permission denied";
+    case bsDirStatusCode::ALREADY_EXISTS: return "Already exists";
+    default:
+        plAssert(false, "Bad directory status code", (int)status);
+        return NULL;
+    }
+}
+
+
 bsDirStatusCode
 osGetDirContent(const bsString& path, bsVec<bsDirEntry>& entries)
 {
+    if(1) return DOES_NOT_EXIST;
     // Open directory
     entries.clear();
     DIR* dir = opendir(path.toChar());

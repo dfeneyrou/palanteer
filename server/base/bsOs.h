@@ -93,6 +93,7 @@ bsString osGetCurrentPath(void);
 bsString osGetBasename(const bsString& path);
 bsString osGetDirname (const bsString& path);
 enum bsDirStatusCode { OK, FAILURE, DOES_NOT_EXIST, NOT_A_DIRECTORY, PERMISSION_DENIED, ALREADY_EXISTS };
+const char* osGetDirStatusCodeStr(bsDirStatusCode status);
 struct bsDirEntry {
     bsString name;
     bool isDir;
