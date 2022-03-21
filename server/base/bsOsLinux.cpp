@@ -1015,8 +1015,14 @@ osGetDirContent(const bsString& path, bsVec<bsDirEntry>& entries)
 
     struct dirent* fe;
     while((fe=readdir(dir))) {
-        if(fe->d_type==DT_REG || (fe->d_type==DT_DIR && strcmp(fe->d_name, ".")!=0 && strcmp(fe->d_name, "..")!=0)) {
-            entries.push_back(bsDirEntry{fe->d_name, fe->d_type==DT_DIR});
+        u8 d_type = fe->d_type;
+        if(d_type==DT_UNKNOWN) {
+            struct stat s;
+            if(stat((path+bsString("/")+fe->d_name).toChar(), &s)==-1) continue;
+            d_type = S_ISDIR(s.st_mode)? DT_DIR : DT_REG;
+        }
+        if(d_type==DT_REG || (d_type==DT_DIR && strcmp(fe->d_name, ".")!=0 && strcmp(fe->d_name, "..")!=0)) {
+            entries.push_back(bsDirEntry{fe->d_name, d_type==DT_DIR});
         }
     }
 
@@ -1048,7 +1054,13 @@ osGetSize(const bsString& path)
     if(!dir) return 0;
     struct dirent* fe;
     while((fe=readdir(dir))) {
-        if(fe->d_type==DT_REG || (fe->d_type==DT_DIR && strcmp(fe->d_name, ".")!=0 && strcmp(fe->d_name, "..")!=0)) {
+        u8 d_type = fe->d_type;
+        if(d_type==DT_UNKNOWN) {
+            struct stat s;
+            if(stat((path+bsString("/")+fe->d_name).toChar(), &s)==-1) continue;
+            d_type = S_ISDIR(s.st_mode)? DT_DIR : DT_REG;
+        }
+        if(d_type==DT_REG || (d_type==DT_DIR && strcmp(fe->d_name, ".")!=0 && strcmp(fe->d_name, "..")!=0)) {
             dirSize += osGetSize((path+"/")+bsString(fe->d_name));
         }
     }
@@ -1093,7 +1105,13 @@ osRemoveDir(const bsString& path, bool onlyIfEmpty)
     if(!onlyIfEmpty) {
         struct dirent* fe;
         while((fe=readdir(dir))) {
-            if(fe->d_type==DT_REG || (fe->d_type==DT_DIR && strcmp(fe->d_name, ".")!=0 && strcmp(fe->d_name, "..")!=0)) {
+        u8 d_type = fe->d_type;
+            if(d_type==DT_UNKNOWN) {
+                struct stat s;
+                if(stat((path+bsString("/")+fe->d_name).toChar(), &s)==-1) continue;
+                d_type = S_ISDIR(s.st_mode)? DT_DIR : DT_REG;
+            }
+            if(d_type==DT_REG || (d_type==DT_DIR && strcmp(fe->d_name, ".")!=0 && strcmp(fe->d_name, "..")!=0)) {
                 unlink(((path+"/")+fe->d_name).toChar());
             }
         }
