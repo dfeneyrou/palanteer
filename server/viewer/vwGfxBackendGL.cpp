@@ -202,7 +202,7 @@ vwCaptureScreen(int* width, int* height, u8** buffer)
 {
     if(vwGlCtx.frameBufferWidth==0 || vwGlCtx.frameBufferHeight==0) return false;
     plAssert(width && height && buffer);
-    *width  = vwGlCtx.frameBufferWidth;
+    *width  = vwGlCtx.frameBufferWidth & 0x3; // Ensure multiple of 4 for better compatibility
     *height = vwGlCtx.frameBufferHeight;
     *buffer = new u8[3*(*width)*(*height)];  // RGB = 3 components
     glReadPixels(0, 0, *width, *height, GL_RGB, GL_UNSIGNED_BYTE, *buffer);
