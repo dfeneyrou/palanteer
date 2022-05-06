@@ -581,8 +581,8 @@ vwMain::drawPlot(int curPlotWindowIdx)
 
         float sWidth = ImGui::CalcTextSize(s).x;
         ImU32 color = getConfig().getCurveColor(curve.elemIdx, false);
-        DRAWLIST->AddRectFilled(ImVec2(x+5, y), ImVec2(x+5+sWidth, y+fontHeightNoSpacing), color);
-        DRAWLIST->AddText(ImVec2(x+5, y), vwConst::uWhite, s);
+        DRAWLIST->AddRectFilled(ImVec2(x+10, y), ImVec2(x+10+sWidth, y+fontHeightNoSpacing), color);
+        DRAWLIST->AddText(ImVec2(x+10, y), vwConst::uWhite, s);
     }
 
     // Highlight selected points (after curve drawing to ensure that highlight is visible)
