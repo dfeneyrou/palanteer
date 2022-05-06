@@ -1549,7 +1549,7 @@ cmRecording::writeElemChunk(ElemBuild& elem, bool isLast)
                 buildLvl.back().items.reserve(cmMRElemSize);
             }
             h[hLvl+1].push_back( { (u32)(speckNs>>10), h[hLvl][selectedIdx].lIdx } );
-            buildLvl[hLvl+1].items.push_back( { buildLvl[hLvl].items[selectedIdx].value, bl.lastTimeNs } );
+            buildLvl[hLvl+1].items.push_back( { buildLvl[hLvl].items[selectedIdx].value, buildLvl[hLvl].lastTimeNs } );
         }
     }
     plgEnd(REC, "Update MR pyramid");
@@ -1585,7 +1585,7 @@ cmRecording::writeElemChunk(ElemBuild& elem, bool isLast)
             buildLvl.push_back({ buildLvl[hLvl].lastValue, elem.firstTimeNs });
         }
         h[hLvl+1].push_back( { (u32)(speckNs>>10), h[hLvl][selectedIdx].lIdx } );
-        buildLvl[hLvl+1].items.push_back( { buildLvl[hLvl].items[selectedIdx].value, bl.lastTimeNs } );
+        buildLvl[hLvl+1].items.push_back( { buildLvl[hLvl].items[selectedIdx].value, buildLvl[hLvl].lastTimeNs } );
         lastLevelModified = true;
     }
 
