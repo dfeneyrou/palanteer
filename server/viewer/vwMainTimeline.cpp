@@ -1609,6 +1609,7 @@ vwMain::drawTimeline(int tlWindowIdx)
     }
 
     // Thread dragging, to reorder them
+    bool wasReordered = false;
     if(tl.ctxDraggedId>=0) {
         if(ImGui::IsMouseDragging(0)) {// Drag on-going: print preview
             bool isThreadHovered=false, isGroupHovered=false;
@@ -1617,21 +1618,24 @@ vwMain::drawTimeline(int tlWindowIdx)
         else { // End of drag: apply the change in group/thread order
             getConfig().moveDragThreadId(tl.ctxDraggedIsGroup, tl.ctxDraggedId, hoveredThreadId);
             tl.ctxDraggedId = -1; // Stop drag automata
+            wasReordered = true;
+            tl.isCacheDirty = true;
         }
     }
 
     // Draw the vertical overview bar
-    float yEnd     = yThread-(ctx.winY-ImGui::GetScrollY());
-    float vBarCoef = ctx.winHeight/bsMax(1.f, yEnd);
-    for(int layoutIdx=0; layoutIdx<layouts.size(); ++layoutIdx) {
-        if(!layouts[layoutIdx].isVisible) continue;
-        bool isLast = (layoutIdx==layouts.size()-1);
-        DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY+vBarCoef*vBarData[layoutIdx].yStart),
-                                ImVec2(ctx.winX+ctx.winWidth+vwConst::OVERVIEW_VBAR_WIDTH, ctx.winY+vBarCoef*(isLast? yEnd : vBarData[layoutIdx+1].yStart)),
-                                ImColor(getConfig().getThreadColor(vBarData[layoutIdx].threadId)));
+    if(!wasReordered) {
+        float yEnd     = yThread-(ctx.winY-ImGui::GetScrollY());
+        float vBarCoef = ctx.winHeight/bsMax(1.f, yEnd);
+        for(int layoutIdx=0; layoutIdx<layouts.size(); ++layoutIdx) {
+            if(!layouts[layoutIdx].isVisible) continue;
+            bool isLast = (layoutIdx==layouts.size()-1);
+            DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY+vBarCoef*vBarData[layoutIdx].yStart),
+                                    ImVec2(ctx.winX+ctx.winWidth+vwConst::OVERVIEW_VBAR_WIDTH, ctx.winY+vBarCoef*(isLast? yEnd : vBarData[layoutIdx+1].yStart)),
+                                    ImColor(getConfig().getThreadColor(vBarData[layoutIdx].threadId)));
+        }
+        DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY), ImVec2(ctx.winX+ctx.winWidth+4.f, ctx.winY+ctx.winHeight), vwConst::uGreyDark);
     }
-    DRAWLIST->AddRectFilled(ImVec2(ctx.winX+ctx.winWidth, ctx.winY), ImVec2(ctx.winX+ctx.winWidth+4.f, ctx.winY+ctx.winHeight), vwConst::uGreyDark);
-
 
     // Navigation
     // ==========
