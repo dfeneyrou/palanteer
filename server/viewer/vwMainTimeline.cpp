@@ -1519,7 +1519,9 @@ vwMain::drawTimeline(int tlWindowIdx)
     ctx.colorGap    = vwConst::uLightGrey;
 
     // Get keyboard focus on window hovering
-    if(ctx.isWindowHovered && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) ImGui::SetWindowFocus();
+    if(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) {
+        ImGui::SetWindowFocus();
+    }
 
     float scrollbarY = ImGui::GetScrollY();
     float yThread = ctx.winY-scrollbarY;

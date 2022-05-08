@@ -439,7 +439,7 @@ vwMain::drawProfiles(void)
             a = 1.1f; ImGui::PushStyleColor(ImGuiCol_TitleBgActive,      ImVec4(a*c.x, a*c.y, a*c.z, 1.f));
         }
 
-        if(prof.isWindowSelected) {
+        if(prof.computationLevel==100 && prof.isWindowSelected) {
             prof.isWindowSelected = false;
             ImGui::SetNextWindowFocus();
         }
@@ -752,7 +752,9 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
     ImU32 colorText2     = vwConst::uGrey;
 
     // Get keyboard focus on window hovering
-    if(isWindowHovered && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) ImGui::SetWindowFocus();
+    if(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) {
+        ImGui::SetWindowFocus();
+    }
 
     auto getValueString = [this] (const vwMain::Profile& prof, double value) {
         if(prof.kind==TIMINGS) return bsString(getNiceDuration((s64)value));

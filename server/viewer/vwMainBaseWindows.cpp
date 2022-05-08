@@ -585,14 +585,20 @@ vwMain::drawAbout(void)
     ImGui::Separator();
     ImGui::Spacing();
     ImGui::SetCursorPosX(0.2f*winWidth);
-    if(ImGui::Button("License")) ImGui::OpenPopup("Viewer license");
+    bool doOpenLicense = false;
+    if(ImGui::Button("License")) {
+        doOpenLicense = true;
+    }
     ImGui::SameLine(0.7f*winWidth);
     if(ImGui::Button("Close")) _showAbout = false;
 
     // License popup
     static constexpr char const* noteTextDescr = "NOTE: the instrumentation libraries are under the MIT license.\nYou do not have to open the source code of your program\n\n";
     bool openPopupModal = true;
-    ImGui::SetNextWindowSize(ImVec2(ImGui::CalcTextSize(noteTextDescr).x*1.2f+2.f*fontSize, fontSize*25.f));
+    if(doOpenLicense) {
+        ImGui::OpenPopup("Viewer license");
+        ImGui::SetNextWindowSize(ImVec2(ImGui::CalcTextSize(noteTextDescr).x*1.2f+2.f*fontSize, fontSize*25.f));
+    }
     if(ImGui::BeginPopupModal("Viewer license", &openPopupModal, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize)) {
 
         static char licenseText[1024] = \

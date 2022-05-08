@@ -851,7 +851,7 @@ vwMain::displayPlotContextualMenu(int threadId, const char* rootText, float head
         if(ImGui::BeginCombo("", pmi.comboSelectionString.toChar(), 0)) {
             // None
             bool isSelected = (pmi.comboSelectionExistingIdx==-1 && pmi.comboSelectionNewIdx==-1);
-            if(ImGui::Selectable("", isSelected)) {
+            if(ImGui::Selectable("-", isSelected)) {
                 if(pmi.comboSelectionNewIdx>=0) _plotMenuNewPlotCount[pmi.comboSelectionNewIdx] -= 1;
                 pmi.comboSelectionExistingIdx = pmi.comboSelectionNewIdx = -1;
                 pmi.comboSelectionRemoval = false;
@@ -1055,7 +1055,7 @@ vwMain::displayHistoContextualMenu(float headerWidth, float comboWidth)
         float cursorX = ImGui::GetCursorPosX();
         if(ImGui::BeginCombo("", pmi.comboHistoSelectionString.toChar(), 0)) {
             // Empty
-            if(ImGui::Selectable("", false)) {
+            if(ImGui::Selectable("-", false)) {
                 pmi.comboHistoSelectionString.clear();
                 pmi.comboHistoSelectionIdx = -1;
             }

@@ -269,7 +269,9 @@ vwMain::drawLog(LogView& lv)
     const bool isWindowHovered = ImGui::IsWindowHovered();
 
     // Get keyboard focus on window hovering
-    if(isWindowHovered && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) ImGui::SetWindowFocus();
+    if(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) {
+        ImGui::SetWindowFocus();
+    }
 
     constexpr int maxMsgSize = 256;
     char tmpStr [maxMsgSize];

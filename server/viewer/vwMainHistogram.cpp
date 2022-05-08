@@ -470,7 +470,7 @@ vwMain::drawHistograms(void)
             if(histogram.newDockId!=0xFFFFFFFF) ImGui::SetNextWindowDockID(histogram.newDockId);
             else selectBestDockLocation(true, false);
         }
-        if(histogram.isWindowSelected) {
+        if(histogram.computationLevel==100 && histogram.isWindowSelected) {
             histogram.isWindowSelected = false;
             ImGui::SetNextWindowFocus();
         }
@@ -510,7 +510,7 @@ vwMain::drawHistogram(int histogramIdx)
     const float winHeight = bsMax(ImGui::GetWindowSize().y, 1.f);
     const float mouseX    = ImGui::GetMousePos().x;
     const float mouseY    = ImGui::GetMousePos().y;
-    const bool   isWindowHovered = ImGui::IsWindowHovered();
+    const bool  isWindowHovered = ImGui::IsWindowHovered();
     const float fontHeight   = ImGui::GetTextLineHeight();
     const float topBarHeight = ImGui::GetTextLineHeightWithSpacing();
     const float uMargin   = 5.f;
@@ -518,7 +518,9 @@ vwMain::drawHistogram(int histogramIdx)
     const float pointSize = 3.f;
 
     // Get keyboard focus on window hovering
-    if(isWindowHovered && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) ImGui::SetWindowFocus();
+    if(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) {
+        ImGui::SetWindowFocus();
+    }
 
     Histogram& h = _histograms[histogramIdx];
     prepareHistogram(h); // Ensure cache is up to date, even at window creation

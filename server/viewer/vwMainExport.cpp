@@ -819,7 +819,7 @@ vwMain::handleExports(void)
     if(!_isExportOnGoing && _exportScreenshot.state==IDLE && ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(KC_P)) {
         _exportScreenshot.free(); // Ensure that previous capture is released
         if(_platform->captureScreen(&_exportScreenshot.width, &_exportScreenshot.height, &_exportScreenshot.buffer)) {
-            bsString filenameProposal = osGetDirname(getConfig().getLastFileExportScreenshotPath())+bsString(PL_DIR_SEP)+(_record? _record->appName+".png" : bsString("Default.png"));
+            bsString filenameProposal = osGetDirname(getConfig().getLastFileExportScreenshotPath())+bsString(PL_DIR_SEP)+(_record? _record->appName+".png" : bsString("default.png"));
             _fileDialogExportScreenshot->open(filenameProposal);
             _exportScreenshot.state = FILE_DIALOG;
             _isExportOnGoing = true;

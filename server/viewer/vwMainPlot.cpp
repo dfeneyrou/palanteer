@@ -262,7 +262,9 @@ vwMain::drawPlot(int curPlotWindowIdx)
     const float vMargin = ImGui::GetTextLineHeight();
 
     // Get keyboard focus on window hovering
-    if(isWindowHovered && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) ImGui::SetWindowFocus();
+    if(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootWindow) && !_search.isInputPopupOpen && !ImGui::IsWindowFocused()) {
+        ImGui::SetWindowFocus();
+    }
 
     // Prepare if cache is dirty (in case of removed curve for instance)
     preparePlot(pw);
