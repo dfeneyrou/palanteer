@@ -31,16 +31,16 @@
 static const GLchar* guiVertexShaderSrc =
     "#version 300 es\n"
     "uniform mat4 ProjMtx;\n"
-    "in vec2 Position;\n"
-    "in vec2 UV;\n"
-    "in vec4 Color;\n"
+    "layout (location = 0) in vec2 Position;\n"
+    "layout (location = 1) in vec2 UV;\n"
+    "layout (location = 2) in vec4 Color;\n"
     "out vec2 Frag_UV;\n"
     "out vec4 Frag_Color;\n"
     "void main()\n"
     "{\n"
-    "   Frag_UV = UV;\n"
-    "   Frag_Color = Color;\n"
-    "   gl_Position = ProjMtx * vec4(Position.xy,0,1);\n"
+    "    Frag_UV = UV;\n"
+    "    Frag_Color = Color;\n"
+    "    gl_Position = ProjMtx * vec4(Position.xy,0,1);\n"
     "}\n";
 
 static const GLchar* guiFragmentShaderSrc =
@@ -49,7 +49,7 @@ static const GLchar* guiFragmentShaderSrc =
     "uniform sampler2D Texture;\n"
     "in vec2 Frag_UV;\n"
     "in vec4 Frag_Color;\n"
-    "out vec4 Out_Color;\n"
+    "layout (location = 0) out vec4 Out_Color;\n"
     "void main()\n"
     "{\n"
     "   Out_Color = vec4(Frag_Color.xyz, Frag_Color.w*texture(Texture, Frag_UV.st));\n"
@@ -153,7 +153,6 @@ vwBackendDraw(void)
     for(int n=0; n<drawData->CmdListsCount; ++n) {
         plScope("ImGui list");
         const ImDrawList* cmdList = drawData->CmdLists[n];
-        const ImDrawIdx* indexBufferOffset = 0;
 
         glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)cmdList->VtxBuffer.Size * sizeof(ImDrawVert),
                      (const GLvoid*)cmdList->VtxBuffer.Data, GL_STREAM_DRAW);
@@ -166,25 +165,23 @@ vwBackendDraw(void)
                 plScope("GL user callback");
                 cmd->UserCallback(cmdList, cmd);
             }
-            else {
+            else if(cmd->ElemCount) {
                 plScope("GL draw command");
                 plData("elements", cmd->ElemCount);
                 // Project scissor/clipping rectangles into framebuffer space
-                ImVec4 clipRect;
-                clipRect.x = (cmd->ClipRect.x-clipOff.x)*clipScale.x;
-                clipRect.y = (cmd->ClipRect.y-clipOff.y)*clipScale.y;
-                clipRect.z = (cmd->ClipRect.z-clipOff.x)*clipScale.x;
-                clipRect.w = (cmd->ClipRect.w-clipOff.y)*clipScale.y;
-                if(clipRect.x<vwGlCtx.frameBufferWidth && clipRect.y<vwGlCtx.frameBufferHeight && clipRect.z>=0.0f && clipRect.w>=0.0f) {
-                    // Apply scissor/clipping rectangle
-                    glScissor((int)cmd->ClipRect.x, (int)(vwGlCtx.frameBufferHeight-cmd->ClipRect.w),
-                              (int)(cmd->ClipRect.z-cmd->ClipRect.x), (int)(cmd->ClipRect.w-cmd->ClipRect.y));
-                    // Bind texture, Draw
-                    glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)cmd->TextureId);
-                    glDrawElements(GL_TRIANGLES, (GLsizei)cmd->ElemCount, GL_UNSIGNED_INT, indexBufferOffset);
-                }
+                ImVec2 clipMin((cmd->ClipRect.x - clipOff.x) * clipScale.x, (cmd->ClipRect.y - clipOff.y) * clipScale.y);
+                ImVec2 clipMax((cmd->ClipRect.z - clipOff.x) * clipScale.x, (cmd->ClipRect.w - clipOff.y) * clipScale.y);
+                if (clipMax.x <= clipMin.x || clipMax.y <= clipMin.y)
+                    continue;
+
+                // Apply scissor/clipping rectangle (Y is inverted in OpenGL)
+                glScissor((int)clipMin.x, (int)((float)vwGlCtx.frameBufferHeight - clipMax.y),
+                          (int)(clipMax.x - clipMin.x), (int)(clipMax.y - clipMin.y));
+
+                // Bind texture, Draw
+                glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)cmd->GetTexID());
+                glDrawElements(GL_TRIANGLES, (GLsizei)cmd->ElemCount, GL_UNSIGNED_INT, (void*)(intptr_t)(cmd->IdxOffset * sizeof(ImDrawIdx)));
             }
-            indexBufferOffset += cmd->ElemCount;
         }
     }
 
