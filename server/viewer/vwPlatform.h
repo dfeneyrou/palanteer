@@ -49,7 +49,7 @@ public:
     bool   captureScreen(int* width, int* height, u8** buffer);
 
     // Event handling
-    bool redraw(void);
+    bool redraw(bool doSaveLayout);
     void notifyDrawDirty(void) { _dirtyRedrawCount.store(VW_REDRAW_PER_NTF); }
     void notifyWindowSize(int windowWidth, int windowHeight) { _displayWidth = windowWidth; _displayHeight = windowHeight; notifyDrawDirty(); }
     bool isVisible(void) const { return _isVisible.load(); }

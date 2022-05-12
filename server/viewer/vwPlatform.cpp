@@ -295,18 +295,27 @@ vwPlatform::~vwPlatform(void)
 void
 vwPlatform::run(void)
 {
-    bool doExit = false;
-    while(!doExit) {
+    enum { NO_EXIT, EXIT_REQUESTED, EXIT_NOW } exitState = NO_EXIT;
+
+    while(exitState!=EXIT_NOW) {
 
         // Inputs
         bsUs_t frameStartUs = bsGetClockUs();
         osProcessInputs(this);
-        if(_doExit.load()) doExit = true; // Required to have 1 frame drawn with the exit flag set
 
         // Render
-        if(redraw()) {
+        bool doSaveLayout = (exitState==EXIT_REQUESTED);
+        if(redraw(doSaveLayout)) {
             plScope("swapBuffer");
             osSwapBuffer();
+        }
+
+        if(exitState==NO_EXIT && _doExit.load()) {
+            exitState = EXIT_REQUESTED; // Required to have 1 frame drawn with the exit flag set
+            notifyDrawDirty();
+        }
+        else if(exitState==EXIT_REQUESTED) {
+            exitState = EXIT_NOW;
         }
 
         // Power management (frame rate limit)
@@ -321,7 +330,7 @@ vwPlatform::run(void)
 
 
 bool
-vwPlatform::redraw(void)
+vwPlatform::redraw(bool doSaveLayout)
 {
     // Filter out some redraw based on the dirtiness of the display state.
     // Dear Imgui requires several frames to handle user events properly, so we display per batch.
@@ -362,7 +371,7 @@ vwPlatform::redraw(void)
     _lastRenderingTimeUs = currentTimeUs;
 
     // Compute the vertices
-    _main->beforeDraw(_doExit.load());
+    _main->beforeDraw(doSaveLayout);
     ImGui::NewFrame();
     _main->draw();
     ImGui::Render();
