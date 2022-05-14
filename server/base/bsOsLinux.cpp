@@ -557,7 +557,6 @@ keysymToKeycode(KeySym symbol)
     case XK_semicolon:    return KC_Semicolon;
     case XK_slash:        return KC_Slash;
     case XK_equal:        return KC_Equal;
-    case XK_minus:        return KC_Hyphen;
     case XK_bracketleft:  return KC_LBracket;
     case XK_bracketright: return KC_RBracket;
     case XK_comma:        return KC_Comma;
@@ -576,7 +575,9 @@ keysymToKeycode(KeySym symbol)
     case XK_Home:         return KC_Home;
     case XK_Insert:       return KC_Insert;
     case XK_Delete:       return KC_Delete;
+    case XK_plus:
     case XK_KP_Add:       return KC_Add;
+    case XK_minus:
     case XK_KP_Subtract:  return KC_Subtract;
     case XK_KP_Multiply:  return KC_Multiply;
     case XK_KP_Divide:    return KC_Divide;
@@ -710,9 +711,8 @@ osProcessInputs(bsOsHandler* handler)
             break;
 
         case KeyPress:
-            for(int i=0; i<4; ++i) { // Try each KeySym index (modifier group) until we get a match
-                if((kc=keysymToKeycode(XLookupKeysym(&event.xkey, i)))!=KC_Unknown) break;
-            }
+            kc = keysymToKeycode(XLookupKeysym(&event.xkey, (event.xkey.state&ShiftMask)==0? 0:1));
+            printf("KC=%d valid=%d\n", kc, kc!=KC_Unknown);
             if(kc!=KC_Unknown) {
                 kms = { (bool)(event.xkey.state&ShiftMask), (bool)(event.xkey.state&ControlMask), (bool)(event.xkey.state&Mod1Mask), (bool)(event.xkey.state&Mod4Mask) };
                 gGlob.osHandler->eventKeyPressed(kc, kms);
@@ -744,9 +744,7 @@ osProcessInputs(bsOsHandler* handler)
             break;
 
         case KeyRelease:
-            for(int i=0; i<4; ++i) { // Try each KeySym index (modifier group) until we get a match
-                if((kc=keysymToKeycode(XLookupKeysym(&event.xkey, i)))!=KC_Unknown) break;
-            }
+            kc = keysymToKeycode(XLookupKeysym(&event.xkey, (event.xkey.state&ShiftMask)==0? 0:1));
             if(kc!=KC_Unknown) {
                 kms = { (bool)(event.xkey.state&ShiftMask), (bool)(event.xkey.state&ControlMask), (bool)(event.xkey.state&Mod1Mask), (bool)(event.xkey.state&Mod4Mask) };
                 gGlob.osHandler->eventKeyReleased(kc, kms);

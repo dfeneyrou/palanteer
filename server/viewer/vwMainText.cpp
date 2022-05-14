@@ -205,7 +205,7 @@ vwMain::drawTexts(void)
         if(hasColoredTab) ImGui::PopStyleColor(7);
     } // End of loop on texts
 
-    // Remove profile if needed
+    // Remove text if needed
     if(itemToRemoveIdx>=0) {
         releaseId((_texts.begin()+itemToRemoveIdx)->uniqueId);
         _texts.erase(_texts.begin()+itemToRemoveIdx);

@@ -481,6 +481,20 @@ vwMain::draw(void)
     drawSettings();
     drawErrorMsg();
 
+    // Handle the font size hotkeys globally
+    if(ImGui::GetIO().KeyCtrl) {
+        if(ImGui::IsKeyPressed(KC_Add)) {
+            getConfig().setFontSize(getConfig().getFontSize()+1);
+            _platform->setNewFontSize(getConfig().getFontSize());
+            allIsDirty();
+        }
+        if(ImGui::IsKeyPressed(KC_Subtract)) {
+            getConfig().setFontSize(getConfig().getFontSize()-1);
+            _platform->setNewFontSize(getConfig().getFontSize());
+            allIsDirty();
+        }
+    }
+
     if(!_hlHasBeenSet) _hlThreadId = cmConst::MAX_THREAD_QTY; // Reset the highlight if not set anywhere
     ImGui::End(); // End of global window
 }

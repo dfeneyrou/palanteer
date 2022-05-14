@@ -533,6 +533,20 @@ vwMain::AggregatedIterator::getPreviousTime(int rewindItemQty)
 // =======================
 
 void
+vwMain::allIsDirty(void)
+{
+#define LOOP_ALL_IS_DIRTY(array)				\
+    for(auto& t : (array)) {                    \
+        t.isCacheDirty = true;					\
+	}
+	LOOP_ALL_IS_DIRTY(_timelines);
+    LOOP_ALL_IS_DIRTY(_memTimelines);
+	LOOP_ALL_IS_DIRTY(_plots);
+	LOOP_ALL_IS_DIRTY(_texts);
+	LOOP_ALL_IS_DIRTY(_logViews);
+}
+
+void
 vwMain::getSynchronizedRange(int syncMode, s64& startTimeNs, s64& timeRangeNs)
 {
 #define LOOP_GET_RANGE(array)                   \
@@ -1621,7 +1635,7 @@ vwMain::drawTimeRuler(float winX, float winY, float winWidth, float rulerHeight,
 
     // Draw the tooltip showing the range if hovered, else the current time
     if(isWindowHovered) {
-        ImGui::SetTooltip("Range { %s } %s -> %s", getNiceDuration(timeRangeNs),
+        ImGui::SetTooltip("Range { %s } - %s -> %s", getNiceDuration(timeRangeNs),
                           getNiceTime(startTimeNs, timeRangeNs, 0),
 						  getNiceTime(startTimeNs+timeRangeNs, timeRangeNs, 1));
     } else {

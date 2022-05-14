@@ -174,6 +174,7 @@ private:
     void synchronizeNewRange(int syncMode, s64 startTimeNs, s64 timeRangeNs);
     void synchronizeText(int syncMode, int threadId, int level, u32 lIdx, s64 timeNs, u32 idToIgnore=(u32)-1);
     void synchronizeThreadLayout(void);
+    void allIsDirty(void);
     void ensureThreadVisibility(int syncMode, int threadId);
     inline s64 getUpdatedRange(int deltaWheel, s64 newRangeNs) {
         // Scroll factor of 25%
