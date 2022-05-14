@@ -712,7 +712,6 @@ osProcessInputs(bsOsHandler* handler)
 
         case KeyPress:
             kc = keysymToKeycode(XLookupKeysym(&event.xkey, (event.xkey.state&ShiftMask)==0? 0:1));
-            printf("KC=%d valid=%d\n", kc, kc!=KC_Unknown);
             if(kc!=KC_Unknown) {
                 kms = { (bool)(event.xkey.state&ShiftMask), (bool)(event.xkey.state&ControlMask), (bool)(event.xkey.state&Mod1Mask), (bool)(event.xkey.state&Mod4Mask) };
                 gGlob.osHandler->eventKeyPressed(kc, kms);

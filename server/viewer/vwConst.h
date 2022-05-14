@@ -41,12 +41,18 @@ class vwConst {
     static constexpr int    FONT_SIZE_MIN = 10;
     static constexpr int    FONT_SIZE_MAX = 30;
     static constexpr int    LOCK_LATENCY_LIMIT_MAX_US = 20000;  // Maximum lock latency limit set to 20 ms
-    static constexpr int    MAX_OVERLAPPED_THREAD = 8;  // Maximum stored overlapped thread in timeline. Excess is ignored
+    static constexpr int    MAX_OVERLAPPED_THREAD     = 8;  // Maximum stored overlapped thread in timeline. Excess is ignored
+    static constexpr int    MIN_TIMERANGE_NS          = 1000;  // Cannot zoom more than 1 µs
 
     // Built-in thread IDs for display
     static constexpr int    LOCKS_THREADID            = cmConst::MAX_THREAD_QTY+1;
     static constexpr int    CORE_USAGE_THREADID       = cmConst::MAX_THREAD_QTY+2;
     static constexpr int    QUANTITY_THREADID         = cmConst::MAX_THREAD_QTY+3;
+
+    // Time formats
+    static constexpr int TIME_FORMAT_SECOND = 0;
+    static constexpr int TIME_FORMAT_HHMMSS = 1;
+    static constexpr int TIME_FORMAT_QTY    = 2;
 
     // Colors
     static const ImVec4 gold;

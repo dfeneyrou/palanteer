@@ -100,8 +100,7 @@ public:
     // Helper methods
     void        dirty(void); // Force several frame of redrawing
     const char* getNiceDate(const bsDate& date, const bsDate& now) const;
-    const char* getNiceTime(s64 ns, s64 tickNs, int bank=0) const;
-    const char* getNiceFullTime(s64 ns) const;  // With hours and minutes
+    const char* getNiceTime(s64 ns, s64 tickNs, int bank, int timeFormat) const;
     int         getFormattedTimeStringCharQty(int timeFormat);
     const char* getFormattedTimeString(s64 ns, int timeFormat) const;
     const char* getNiceDuration(s64 ns, s64 displayRangeNs=0, int bank=0) const;
@@ -180,7 +179,7 @@ private:
         // Scroll factor of 25%
         while(deltaWheel>0) { newRangeNs -= newRangeNs/4; --deltaWheel; }
         while(deltaWheel<0) { newRangeNs += newRangeNs/4; ++deltaWheel; }
-        if(newRangeNs<1000) newRangeNs = 1000; // Limit on zooming
+        if(newRangeNs<vwConst::MIN_TIMERANGE_NS) newRangeNs = vwConst::MIN_TIMERANGE_NS; // Limit on zooming
         return newRangeNs;
     }
     void displayColorSelectMenu(const char* title, const int initialColorIdx, std::function<void(int)>& setter);

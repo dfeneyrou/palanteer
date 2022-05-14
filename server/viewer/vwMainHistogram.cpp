@@ -895,7 +895,9 @@ vwMain::drawHistogram(int histogramIdx)
                     offset += snprintf(tmpStr+offset, sizeof(tmpStr)-offset, "%s>", _record->getString(_record->elems[path[i]].nameIdx).value.toChar());
                 }
                 tmpStr[offset-1] = 0; // Remove the last '>'
-                ImGui::SetTooltip("%s\nFrom %s to %s", tmpStr, getNiceTime(h.startTimeNs, 0, 0), getNiceTime(h.startTimeNs+h.timeRangeNs, 0, 1));
+                int timeFormat = getConfig().getTimeFormat();
+                ImGui::SetTooltip("%s\nFrom %s to %s", tmpStr, getNiceTime(h.startTimeNs, 0, 0, timeFormat),
+                                  getNiceTime(h.startTimeNs+h.timeRangeNs, 0, 1, timeFormat));
             }
 
             // Dragging

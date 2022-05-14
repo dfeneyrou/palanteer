@@ -368,7 +368,7 @@ vwMain::drawSettings(void)
         ImGui::AlignTextToFramePadding();
         ImGui::PushItemWidth(sliderWidth);
         int timeFormat = getConfig().getTimeFormat();
-        if(ImGui::Combo("##DateFormat", &timeFormat, "ss.ns\0ss:ms:µs:ns\0hh:mm:ss.ns\0\0")) {
+        if(ImGui::Combo("##DateFormat", &timeFormat, "ss.ns\0hh:mm:ss.ns\0\0")) {
             getConfig().setTimeFormat(timeFormat);
         }
         ImGui::PopItemWidth();

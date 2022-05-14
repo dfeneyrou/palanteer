@@ -52,8 +52,8 @@ vwMain::addText(int id, int threadId, u64 threadUniqueHash, int startNestingLeve
             threadId = i;
             break;
         }
-        if(threadId<0) return false;  // No text view added
     }
+    if(threadId<0 && threadUniqueHash==0) return false;  // No text view added as the reference is unresolvable
     if(threadUniqueHash==0) {
         plAssert(threadId>=0, threadId);
         threadUniqueHash = _record->threads[threadId].threadUniqueHash;
@@ -569,7 +569,7 @@ vwMain::drawText(Text& t)
 
             // Tooltip
             if(mouseX<winX+textPixMargin+charWidth*14) {
-                ImGui::SetTooltip("%s", getNiceTime(_mouseTimeNs, 0));
+                ImGui::SetTooltip("%s", getNiceTime(_mouseTimeNs, 0, 0, getConfig().getTimeFormat()));
             }
             else if((flags&PL_FLAG_SCOPE_BEGIN) && scopeEndTimeNs>=0) {
                 ImGui::SetTooltip("Duration: %s", getNiceDuration(scopeEndTimeNs-evt.vS64));

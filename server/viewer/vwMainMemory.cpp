@@ -479,6 +479,7 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
     const double  bottomValue = mw.valuePerThread[mw.allocBlockThreadId]+mw.cachedThreadData[mw.allocBlockThreadId].maxAllocSizeValue;;
     const float  baseY        = winY+fullHeaderHeight+(float)(yFactor*(bottomValue-mw.viewByteMin - yBlockFactor/yFactor*mw.startTimeVPtr));
     const float  minCharWidth = 2.f*8.f+textMargin;
+    int   timeFormat = main->getConfig().getTimeFormat();
 
     char tmpStr[128];
     mw.workLkupFusionedBlocks.clear();
@@ -550,11 +551,11 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
             ImGui::BeginTooltip();
             s64 timeRangeNs = mw.allocBlockEndTimeNs-mw.allocBlockStartTimeNs;
             if(timeRangeNs<=0) {
-                ImGui::TextColored(vwConst::gold, "All allocations present at time %s", main->getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0));
+                ImGui::TextColored(vwConst::gold, "All allocations present at time %s", main->getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0, timeFormat));
             } else {
                 ImGui::TextColored(vwConst::gold, "Allocations from scope '%s' (%s -> %s)", mw.allocScopeName.toChar(),
-                                   main->getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0),
-                                   main->getNiceTime(mw.allocBlockEndTimeNs, timeRangeNs, 1));
+                                   main->getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0, timeFormat),
+                                   main->getNiceTime(mw.allocBlockEndTimeNs, timeRangeNs, 1, timeFormat));
             }
             ImGui::Separator();
             ImGui::TextColored(vwConst::grey, "%s", main->getNiceBigPositiveNumber(ma.size)); ImGui::SameLine();
@@ -574,7 +575,7 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
                                hasDetailedName? "/":"", hasDetailedName? record->getString(ma.startNameIdx).value.toChar():"");
             ImGui::SameLine();
             ImGui::TextColored(vwConst::white, "at time"); ImGui::SameLine();
-            ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ma.startTimeNs, (s64)(0.1*mw.timeRangeNs))); // Time precision is ~10% if the range
+            ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ma.startTimeNs, (s64)(0.1*mw.timeRangeNs), 0, timeFormat)); // Time precision is ~10% if the range
             if(ma.endTimeNs>=0) {
                 ImGui::TextColored(vwConst::white, "Deallocated in"); ImGui::SameLine();
                 hasDetailedName = !record->getString(ma.endNameIdx).value.empty();
@@ -584,7 +585,7 @@ MemoryDrawHelper::drawDetailedBlocks(vwMain::MemoryTimeline& mw)
                                    hasDetailedName? "/":"", hasDetailedName? record->getString(ma.endNameIdx).value.toChar():"");
                 ImGui::SameLine();
                 ImGui::TextColored(vwConst::white, "at time"); ImGui::SameLine();
-                ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ma.endTimeNs, (s64)(0.1*mw.timeRangeNs)));
+                ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ma.endTimeNs, (s64)(0.1*mw.timeRangeNs), 0, timeFormat));
             }
             ImGui::EndTooltip();
         }
@@ -907,6 +908,7 @@ vwMain::drawMemoryTimelines(void)
     if(!_record) return;
     plgScope(MEM, "drawMemoryTimelines");
     char tmpStr[128];
+    int timeFormat = getConfig().getTimeFormat();
 
     // Loop on memory timelines
     int itemToRemoveIdx = -1;
@@ -950,11 +952,11 @@ vwMain::drawMemoryTimelines(void)
         s64 timeRangeNs = m.endTimeNs-m.startTimeNs;
         if(timeRangeNs<=0) {
             snprintf(tmpStr, sizeof(tmpStr), "[%s] List of the %d memory allocations present at time %s###list%d", _record->getString(_record->threads[m.threadId].nameIdx).value.toChar(),
-                     _memDetails[detailWindowIdx].allocBlocks.size(), getNiceTime(m.startTimeNs, timeRangeNs, 0), m.uniqueId);
+                     _memDetails[detailWindowIdx].allocBlocks.size(), getNiceTime(m.startTimeNs, timeRangeNs, 0, timeFormat), m.uniqueId);
         } else {
             snprintf(tmpStr, sizeof(tmpStr), "[%s] List of the %d memory allocations from scope '%s' (%s -> %s)###list%d", _record->getString(_record->threads[m.threadId].nameIdx).value.toChar(),
                      _memDetails[detailWindowIdx].allocBlocks.size(), m.allocScopeName.toChar(),
-                     getNiceTime(m.startTimeNs, timeRangeNs, 0), getNiceTime(m.endTimeNs, timeRangeNs, 1), m.uniqueId);
+                     getNiceTime(m.startTimeNs, timeRangeNs, 0, timeFormat), getNiceTime(m.endTimeNs, timeRangeNs, 1, timeFormat), m.uniqueId);
         }
 
         // Window & content
@@ -985,6 +987,7 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
     plgScope(MEM, "drawMemoryTimeline");
     plgData(MEM, "number", curMwWindowIdx);
     MemoryTimeline& mw = _memTimelines[curMwWindowIdx];
+    int timeFormat = getConfig().getTimeFormat();
 
     // Ruler and visible range bar
     float rbWidth, rbStartPix, rbEndPix;
@@ -1191,7 +1194,7 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
                 s64 newTimeRangeNs = mw.getTimeRangeNs();
                 while(deltaWheel>0) { newTimeRangeNs -= newTimeRangeNs/4; --deltaWheel; }
                 while(deltaWheel<0) { newTimeRangeNs += newTimeRangeNs/4; ++deltaWheel; }
-                if(newTimeRangeNs<1000) newTimeRangeNs = 1000; // No point zooming more than this
+                if(newTimeRangeNs<vwConst::MIN_TIMERANGE_NS) newTimeRangeNs = vwConst::MIN_TIMERANGE_NS; // No point zooming more than this
                 mw.setView(mw.getStartTimeNs()+(s64)((mouseX-winX)/winWidth*(mw.getTimeRangeNs()-newTimeRangeNs)), newTimeRangeNs);
                 changedNavigation = true;
             }
@@ -1290,10 +1293,10 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
     if(ImGui::BeginPopup("Detail mem menu", ImGuiWindowFlags_AlwaysAutoResize)) {
         s64 timeRangeNs = mw.allocBlockEndTimeNs-mw.allocBlockStartTimeNs;
         if(timeRangeNs<=0) {
-            ImGui::TextColored(vwConst::gold, "All allocations present at time %s", getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0));
+            ImGui::TextColored(vwConst::gold, "All allocations present at time %s", getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0, timeFormat));
         } else {
             ImGui::TextColored(vwConst::gold, "Allocations from scope '%s' (%s -> %s)", mw.allocScopeName.toChar(),
-                               getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0), getNiceTime(mw.allocBlockEndTimeNs, timeRangeNs, 1));
+                               getNiceTime(mw.allocBlockStartTimeNs, timeRangeNs, 0, timeFormat), getNiceTime(mw.allocBlockEndTimeNs, timeRangeNs, 1, timeFormat));
         }
         ImGui::Separator();
         ImGui::Separator();
@@ -1349,6 +1352,7 @@ vwMain::drawMemoryDetailList(int detailWindowIdx)
     MemDetailListWindow& mdl = _memDetails[detailWindowIdx];
     bsVec<MemAlloc>& data    = mdl.allocBlocks;
     bsVec<int>& lkup         = mdl.listDisplayIdx;
+    int timeFormat           = getConfig().getTimeFormat();
 
     // First run: populate the lookup and sort it for size (default)
     if(mdl.sortKind==-1) {
@@ -1460,11 +1464,11 @@ vwMain::drawMemoryDetailList(int detailWindowIdx)
 
                 // Alloc time
                 ImGui::TableNextColumn();
-                ImGui::Text("%s", getNiceTime(d.startTimeNs, 0));
+                ImGui::Text("%s", getNiceTime(d.startTimeNs, 0, 0, timeFormat));
 
                 // Dealloc time
                 ImGui::TableNextColumn();
-                if(d.endTimeNs>=0) ImGui::Text("%s", getNiceTime(d.endTimeNs, 0));
+                if(d.endTimeNs>=0) ImGui::Text("%s", getNiceTime(d.endTimeNs, 0, 0, timeFormat));
                 else               ImGui::TextColored(vwConst::grey, "[Leaked]");
 
                 // Synchronized navigation

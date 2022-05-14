@@ -56,7 +56,7 @@ template <class T1, class T2> T1 bsMin(T1 a, T2 b) { return (T1)(a<b? a:b); }
 template <class T> T    bsMinMax(T v, T min, T max) { return v<=min? min: ((v>=max)?max:v); }
 template <class T> int  bsSign(T a)     { return a>=(T)0? 1:-1; }
 template <class T> void bsSwap(T& a, T& b) { T tmp = b; b = a; a = tmp; }
-inline int bsDivCeil(int num, int denum) { return (num+denum-1)/denum; }
+template <class T> T bsDivCeil(T num, T denum) { return (num+denum-1)/denum; }
 
 // 2D position
 struct bsVI2 {

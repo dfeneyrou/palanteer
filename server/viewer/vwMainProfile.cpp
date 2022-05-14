@@ -476,8 +476,9 @@ vwMain::drawProfiles(void)
         ImGui::SameLine();
         ImGui::Text("(%s range)", isFullRange?"Full":"Partial");
         if(ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Range: %s -> %s", getNiceTime(prof.startTimeNs, prof.timeRangeNs),
-                              getNiceTime(prof.startTimeNs+prof.timeRangeNs, prof.timeRangeNs, 1));
+            int timeFormat = getConfig().getTimeFormat();
+            ImGui::SetTooltip("Range: %s -> %s", getNiceTime(prof.startTimeNs, prof.timeRangeNs, 0, timeFormat),
+                              getNiceTime(prof.startTimeNs+prof.timeRangeNs, prof.timeRangeNs, 1, timeFormat));
         }
 
         // Drawing kind selection

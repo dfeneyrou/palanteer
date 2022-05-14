@@ -695,7 +695,7 @@ vwMain::drawPlot(int curPlotWindowIdx)
                 s64 newTimeRangeNs = pw.getTimeRangeNs();
                 while(deltaWheel>0) { newTimeRangeNs -= newTimeRangeNs/4; --deltaWheel; }
                 while(deltaWheel<0) { newTimeRangeNs += newTimeRangeNs/4; ++deltaWheel; }
-                if(newTimeRangeNs<1000) newTimeRangeNs = 1000; // No point zooming more than this
+                if(newTimeRangeNs<vwConst::MIN_TIMERANGE_NS) newTimeRangeNs = vwConst::MIN_TIMERANGE_NS; // No point zooming more than this
                 pw.setView(pw.getStartTimeNs()+(s64)((mouseX-winX)/winWidth*(pw.getTimeRangeNs()-newTimeRangeNs)), newTimeRangeNs);
                 changedNavigation = true;
             }

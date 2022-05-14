@@ -70,28 +70,27 @@ vwMain::getNiceDate(const bsDate& date, const bsDate& now) const
 
 
 const char*
-vwMain::getNiceTime(s64 ns, s64 tickNs, int bank) const
+vwMain::getNiceTime(s64 ns, s64 tickNs, int bank, int timeFormat) const
 {
     static char outBuf1[64];
     static char outBuf2[64];
     char* outBuf = (bank==0)? outBuf1 : outBuf2;
-    int   offset = snprintf(outBuf, sizeof(outBuf1), "%llds", ns/1000000000LL);
-    if(tickNs<60000000000LL) offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, ":%03lldms", (ns/1000000LL)%1000); // Below 1 mn, always display at least ms
-    if(tickNs<1000000LL)     offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, ":%03lldµs", (ns/1000LL)%1000);
-    if(tickNs<1000LL)                  snprintf(outBuf+offset, sizeof(outBuf1)-offset, ":%03" PRId64 "ns", (ns%1000));
-    return outBuf;
-}
-
-
-const char*
-vwMain::getNiceFullTime(s64 ns) const
-{
-    static char outBuf[64];
-    snprintf(outBuf, sizeof(outBuf), "%lldh:%02lldmn:%02llds.%09lld",
-             (ns/3600000000000LL),
-             (ns/60000000000LL)%60,
-             (ns/1000000000LL)%60,
-             (ns%1000000000LL));
+    if(timeFormat==vwConst::TIME_FORMAT_HHMMSS) {
+        int offset = snprintf(outBuf, sizeof(outBuf1), "%02lld:%02lld:%02lld",
+                              (ns/3600000000000LL),
+                              (ns/60000000000LL)%60,
+                              (ns/1000000000LL)%60);
+        if(tickNs<60000000000LL) offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, ".%03d", (int)((ns/1000000LL)%1000));
+        if(tickNs<1000000LL)     offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, "_%03d", (int)((ns/1000LL)%1000));
+        if(tickNs<10000LL)       offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, "_%03d", (int)(ns%1000));
+    }
+    else {
+        int offset = snprintf(outBuf, sizeof(outBuf1), "%lld", ns/1000000000LL);
+        if(tickNs<60000000000LL) offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, ".%03d", (int)((ns/1000000LL)%1000));
+        if(tickNs<1000000LL)     offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, "_%03d", (int)((ns/1000LL)%1000));
+        if(tickNs<10000LL)       offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, "_%03d", (int)((ns%1000)));
+        offset += snprintf(outBuf+offset, sizeof(outBuf1)-offset, "s");
+    }
     return outBuf;
 }
 
@@ -99,8 +98,8 @@ vwMain::getNiceFullTime(s64 ns) const
 int
 vwMain::getFormattedTimeStringCharQty(int timeFormat)
 {
-    constexpr int timeStrCharQtyArray[3] = { 16+2, 23+2, 22+2 }; // 2 char of margin
-    plAssert(timeFormat>=0 && timeFormat<3, timeFormat);
+    constexpr int timeStrCharQtyArray[vwConst::TIME_FORMAT_QTY] = { 17+2, 21+2 }; // 2 char of margin
+    plAssert(timeFormat>=0 && timeFormat<vwConst::TIME_FORMAT_QTY, timeFormat);
     return timeStrCharQtyArray[timeFormat];
 }
 
@@ -109,9 +108,22 @@ const char*
 vwMain::getFormattedTimeString(s64 ns, int timeFormat) const
 {
     static char outBuf[64];
-    if     (timeFormat==1) return getNiceTime(ns, 0);
-    else if(timeFormat==2) return getNiceFullTime(ns);
-    snprintf(outBuf, sizeof(outBuf), "%.9fs", 0.000000001*(double)ns);
+    if(timeFormat==vwConst::TIME_FORMAT_HHMMSS) {
+        snprintf(outBuf, sizeof(outBuf), "%02d:%02d:%02d.%03d_%03d_%03d",
+                 (int)(ns/3600000000000LL),
+                 (int)((ns/60000000000LL)%60),
+                 (int)((ns/1000000000LL)%60),
+                 (int)((ns/1000000LL)%1000),
+                 (int)((ns/1000LL)%1000),
+                 (int)(ns%1000));
+    }
+    else {
+        snprintf(outBuf, sizeof(outBuf), "%d.%03d_%03d_%03ds",
+                 (int)(ns/1000000000LL),
+                 (int)((ns/1000000LL)%1000),
+                 (int)((ns/1000LL)%1000),
+                 (int)(ns%1000));
+    }
     return outBuf;
 }
 
@@ -319,7 +331,7 @@ vwMain::precomputeRecordDisplay(void)
 void
 vwMain::TimeRangeBase::setView(s64 newStartTimeNs, s64 newTimeRangeNs, bool noTransition)
 {
-    if(newTimeRangeNs<1000) newTimeRangeNs = 1000; // 1 micro second minimum range
+    if(newTimeRangeNs<vwConst::MIN_TIMERANGE_NS) newTimeRangeNs = vwConst::MIN_TIMERANGE_NS;
     if(animTimeUs>0 && animStartTimeNs2==newStartTimeNs && animTimeRangeNs2==newTimeRangeNs) return; // Already set
     animStartTimeNs1 = startTimeNs; animStartTimeNs2 = newStartTimeNs;
     animTimeRangeNs1 = timeRangeNs; animTimeRangeNs2 = newTimeRangeNs;
@@ -1377,7 +1389,7 @@ vwMain::displayScopeTooltip(const char* titleStr, const bsVec<cmRecord::Evt>& da
     ImGui::TextColored(vwConst::grey, "%s", _record->getString(evt.filenameIdx).value.toChar());
     int eType = evt.flags&PL_FLAG_TYPE_MASK;
     if(eType==PL_FLAG_TYPE_DATA_TIMESTAMP || (eType>=PL_FLAG_TYPE_WITH_TIMESTAMP_FIRST && eType<=PL_FLAG_TYPE_WITH_TIMESTAMP_LAST)) {
-        ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", getNiceTime(evt.vS64, 0));
+        ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", getNiceTime(evt.vS64, 0, 0, getConfig().getTimeFormat()));
     }
     if(isTruncated) {
         ImGui::TextColored(vwConst::red, "(Truncated data, too much children)");
@@ -1623,9 +1635,10 @@ vwMain::drawTimeRuler(float winX, float winY, float winWidth, float rulerHeight,
     // Draw the major ticks
     s64 timeTick = (s64)(scaleMajorTick*floor(startTimeNs/scaleMajorTick));
     pixTick = (float)(nsToPix*(timeTick-startTimeNs));
+    int timeFormat = getConfig().getTimeFormat();
     while(pixTick<winWidth) {
         DRAWLIST->AddLine(ImVec2(winX+pixTick, rulerY), ImVec2(winX+pixTick, rulerY+rulerHeight), vwConst::uWhite, 2.0f);
-        DRAWLIST->AddText(ImVec2(winX+pixTick+textPixMargin, rulerY+fontYSpacing), vwConst::uWhite, getNiceTime(timeTick, (s64)scaleMajorTick));
+        DRAWLIST->AddText(ImVec2(winX+pixTick+textPixMargin, rulerY+fontYSpacing), vwConst::uWhite, getNiceTime(timeTick, (s64)scaleMajorTick, 0, timeFormat));
         pixTick  += (float)(nsToPix*scaleMajorTick);
         timeTick += (s64)scaleMajorTick;
     }
@@ -1636,11 +1649,11 @@ vwMain::drawTimeRuler(float winX, float winY, float winWidth, float rulerHeight,
     // Draw the tooltip showing the range if hovered, else the current time
     if(isWindowHovered) {
         ImGui::SetTooltip("Range { %s } - %s -> %s", getNiceDuration(timeRangeNs),
-                          getNiceTime(startTimeNs, timeRangeNs, 0),
-						  getNiceTime(startTimeNs+timeRangeNs, timeRangeNs, 1));
+                          getNiceTime(startTimeNs, timeRangeNs, 0, timeFormat),
+						  getNiceTime(startTimeNs+timeRangeNs, timeRangeNs, 1, timeFormat));
     } else {
         char tmpStr[128];
-        snprintf(tmpStr, sizeof(tmpStr),  "%s", getNiceTime(_mouseTimeNs, (s64)(0.02f*scaleMajorTick))); // x50 precision for the time
+        snprintf(tmpStr, sizeof(tmpStr),  "%s", getNiceTime(_mouseTimeNs, (s64)(0.02f*scaleMajorTick), 0, timeFormat)); // x50 precision for the time
         DRAWLIST->AddText(ImVec2(winX+(float)(nsToPix*(_mouseTimeNs-startTimeNs))-0.5f*ImGui::CalcTextSize(tmpStr).x,
                                  winY+0.5f*rbInnerBarOffset), vwConst::uBlack, tmpStr);
     }

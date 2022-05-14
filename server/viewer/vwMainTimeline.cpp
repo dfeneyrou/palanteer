@@ -362,6 +362,7 @@ TimelineDrawHelper::drawLocks(float& yThread)
         return;
     }
 
+    int timeFormat = main->getConfig().getTimeFormat();
     float maxLockNameWidth = 1.;
     for(int lockIdx=0; lockIdx<tl->cachedLockUse.size(); ++lockIdx) {
         maxLockNameWidth = bsMax(maxLockNameWidth, ImGui::CalcTextSize(record->getString(record->locks[lockIdx].nameIdx).value.toChar()).x);
@@ -437,7 +438,7 @@ TimelineDrawHelper::drawLocks(float& yThread)
                         ImGui::Text("In"); ImGui::SameLine();
                     }
                     ImGui::TextColored(vwConst::grey, "%s", record->getString(cl.e.filenameIdx).value.toChar());
-                    ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cl.e.vS64, 0));
+                    ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cl.e.vS64, 0, 0, timeFormat));
                     ImGui::EndTooltip();
                 }
 
@@ -537,7 +538,7 @@ TimelineDrawHelper::drawLocks(float& yThread)
                     ImGui::Text("In"); ImGui::SameLine();
                 }
                 ImGui::TextColored(vwConst::grey, "%s", record->getString(cl.e.filenameIdx).value.toChar());
-                ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cl.e.vS64, 0));
+                ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cl.e.vS64, 0, 0, timeFormat));
                 ImGui::EndTooltip();
             }
 
@@ -622,7 +623,7 @@ TimelineDrawHelper::drawLocks(float& yThread)
                     ImGui::Text("In"); ImGui::SameLine();
                 }
                 ImGui::TextColored(vwConst::grey, "%s", record->getString(ntf.e.filenameIdx).value.toChar());
-                ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ntf.e.vS64, 0));
+                ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(ntf.e.vS64, 0, 0, timeFormat));
                 ImGui::EndTooltip();
             }
 
@@ -694,6 +695,7 @@ TimelineDrawHelper::drawScopes(float& yThread, int tId)
     float widthCoreXX = font->CalcTextSizeA(coreFontRatio*ImGui::GetFontSize(), 1000.f, 0.f, "CoreX").x; // Display "Core%d" if enough space
     float widthCoreX  = font->CalcTextSizeA(coreFontRatio*ImGui::GetFontSize(), 1000.f, 0.f, "X").x;     // Second choice is displaying "%d", else nothing
     int nestingLevelQty = tl->cachedScopesPerThreadPerNLevel[tId].size();
+    int timeFormat = main->getConfig().getTimeFormat();
 
     plgScope (TML, "Display Thread");
     plgVar(TML, tId, nestingLevelQty);
@@ -783,7 +785,7 @@ TimelineDrawHelper::drawScopes(float& yThread, int tId)
                 ImGui::Text("In"); ImGui::SameLine();
             }
             ImGui::TextColored(vwConst::grey, "%s", record->getString(cl.e.filenameIdx).value.toChar());
-            ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cl.e.vS64, 0));
+            ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cl.e.vS64, 0, 0, timeFormat));
             ImGui::EndTooltip();
         }
     }
@@ -840,7 +842,7 @@ TimelineDrawHelper::drawScopes(float& yThread, int tId)
             };
             ImGui::SameLine();
             ImGui::TextColored(vwConst::gold, "[%s] %s", record->getString(cm.e.nameIdx).value.toChar(), cm.message.toChar());
-            ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cm.e.vS64, 0));
+            ImGui::Text("At time"); ImGui::SameLine(); ImGui::TextColored(vwConst::grey, "%s", main->getNiceTime(cm.e.vS64, 0, 0, timeFormat));
             ImGui::EndTooltip();
         }
 

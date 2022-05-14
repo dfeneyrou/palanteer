@@ -151,6 +151,7 @@ vwConfig::setTimeFormat(int timeFormat)
 {
     plgScope(CFG, "setTimeFormat");
     if(_timeFormat==timeFormat) return true;
+    if(timeFormat<0 || timeFormat>=vwConst::TIME_FORMAT_QTY) return false;
     plgVar(CFG, timeFormat);
     _timeFormat = timeFormat;
     _globalNeedsSaving = true;
@@ -793,6 +794,7 @@ vwConfig::loadGlobal(void)
             _vTimelineSpacing = 0.01f*tmp;
         }
         READ_GLOBAL(timeFormat, 1, "%d", &_timeFormat);
+        if(_timeFormat<0 || _timeFormat>=vwConst::TIME_FORMAT_QTY) _timeFormat = 0;
         READ_GLOBAL(winVisiCatalog, 1, "%d", &_winVisiCatalog);
         READ_GLOBAL(winVisiRecord, 1, "%d", &_winVisiRecord);
         READ_GLOBAL(winVisiSearch, 1, "%d", &_winVisiSearch);
