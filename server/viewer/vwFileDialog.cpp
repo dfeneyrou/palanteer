@@ -63,7 +63,7 @@ vwFileDialog::open(const bsString& initialPath, int maxSelectionQty)
 
 
 bool
-vwFileDialog::draw(int fontSize)
+vwFileDialog::draw(void)
 {
     static const char* months[13] = { "NULL", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 

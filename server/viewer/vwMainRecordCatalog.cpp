@@ -681,7 +681,7 @@ vwMain::drawCatalog(void)
         }
 
         // Handle the external string file dialog
-        if(_fileDialogExtStrings->draw(getConfig().getFontSize())) dirty();
+        if(_fileDialogExtStrings->draw()) dirty();
         if(_fileDialogExtStrings->hasSelection()) {
             const bsVec<bsString>& result = _fileDialogExtStrings->getSelection();
             if(!result.empty()) {

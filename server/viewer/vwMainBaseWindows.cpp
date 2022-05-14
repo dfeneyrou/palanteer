@@ -279,7 +279,7 @@ vwMain::drawMainMenuBar(void)
     }
 
     // Handle the import file dialog
-    if(_fileDialogImport->draw(getConfig().getFontSize())) dirty();
+    if(_fileDialogImport->draw()) dirty();
     if(_fileDialogImport->hasSelection()) {
         const bsVec<bsString>& result = _fileDialogImport->getSelection();
         if(!result.empty()) {
@@ -452,7 +452,7 @@ vwMain::drawSettings(void)
     }
 
     // Handle the record storage path selection file dialog
-    if(_fileDialogSelectRecord->draw(getConfig().getFontSize())) dirty();
+    if(_fileDialogSelectRecord->draw()) dirty();
     if(_fileDialogSelectRecord->hasSelection()) {
         getConfig().setRecordStoragePath(_fileDialogSelectRecord->getSelection()[0]);
         _fileDialogSelectRecord->clearSelection();

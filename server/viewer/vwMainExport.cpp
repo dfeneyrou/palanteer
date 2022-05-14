@@ -143,7 +143,7 @@ vwMain::handleExportCTF(void)
 
     // Display the file dialog to get the name of the capture
     if(exp.state==FILE_DIALOG) {
-        if(_fileDialogExportChromeTF->draw(getConfig().getFontSize())) dirty();
+        if(_fileDialogExportChromeTF->draw()) dirty();
         if(_fileDialogExportChromeTF->hasSelection()) {
             const bsVec<bsString>& result = _fileDialogExportChromeTF->getSelection();
             if(result.empty()) {
@@ -308,7 +308,7 @@ vwMain::handleExportScreenshot(void)
 {
     // Display the file dialog to get the name of the capture
     if(_exportScreenshot.state==FILE_DIALOG) {
-        if(_fileDialogExportScreenshot->draw(getConfig().getFontSize())) dirty();
+        if(_fileDialogExportScreenshot->draw()) dirty();
         if(_fileDialogExportScreenshot->hasSelection()) {
             const bsVec<bsString>& result = _fileDialogExportScreenshot->getSelection();
             if(result.empty()) {
@@ -373,7 +373,7 @@ vwMain::handleExportText(void)
 
     // Display the file dialog to get the name of the capture
     if(exp.state==FILE_DIALOG) {
-        if(_fileDialogExportText->draw(getConfig().getFontSize())) dirty();
+        if(_fileDialogExportText->draw()) dirty();
         if(_fileDialogExportText->hasSelection()) {
             const bsVec<bsString>& result = _fileDialogExportText->getSelection();
             if(result.empty()) {
@@ -514,7 +514,7 @@ vwMain::handleExportLog(void)
 
     // Display the file dialog to get the name of the capture
     if(exp.state==FILE_DIALOG) {
-        if(_fileDialogExportLog->draw(getConfig().getFontSize())) dirty();
+        if(_fileDialogExportLog->draw()) dirty();
         if(_fileDialogExportLog->hasSelection()) {
             const bsVec<bsString>& result = _fileDialogExportLog->getSelection();
             if(result.empty()) {
@@ -637,7 +637,7 @@ vwMain::handleExportPlot(void)
 
     // Display the file dialog to get the name of the capture
     if(exp.state==FILE_DIALOG) {
-        if(_fileDialogExportPlot->draw(getConfig().getFontSize())) dirty();
+        if(_fileDialogExportPlot->draw()) dirty();
         if(_fileDialogExportPlot->hasSelection()) {
             const bsVec<bsString>& result = _fileDialogExportPlot->getSelection();
             if(result.empty()) {

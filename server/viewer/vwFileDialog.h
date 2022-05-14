@@ -27,7 +27,7 @@ public:
 
     void open (const bsString& initialPath, int maxSelectionQty=1);
     void close(void) { _shallClose = true; }
-    bool draw (int fontSize);
+    bool draw (void);
 
     bool hasSelection(void) const  { return _hasSelection; }
     void clearSelection(void)      { _hasSelection = false; _selection.clear(); }
