@@ -1521,9 +1521,7 @@ vwMain::drawTimeline(int tlWindowIdx)
     ctx.colorGap    = vwConst::uLightGrey;
 
     // Get keyboard focus on window hovering
-    if(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && !_search.isInputPopupOpen && !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
-        ImGui::SetWindowFocus();
-    }
+    getKeyboardFocusIfWindowHovering();
 
     float scrollbarY = ImGui::GetScrollY();
     float yThread = ctx.winY-scrollbarY;
@@ -1686,7 +1684,7 @@ vwMain::drawTimeline(int tlWindowIdx)
     }
 
     // Double click: range focus on an item (detected above at drawing time)
-    if(ctx.forceRangeNs!=0.) {
+    if(ctx.forceRangeNs!=0) {
         tl.setView(ctx.forceStartNs, ctx.forceRangeNs);
         ctx.nsToPix = ctx.winWidth/tl.timeRangeNs;
         changedNavigation = true;

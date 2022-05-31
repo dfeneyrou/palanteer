@@ -653,6 +653,29 @@ vwMain::synchronizeThreadLayout(void) // Invalidate the cache
 }
 
 
+void
+vwMain::getKeyboardFocusIfWindowHovering(void)
+{
+    // The automata delaying the keyboard focus capture by 1 frame is required in order
+    // not to prevent the opening of modal windows
+    static int count = -1;
+
+    // Window is hovered and does not have the keyboard focus?
+    if(!_search.isInputPopupOpen && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
+       !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+        if(count<0) count = 1; // Arm the count
+        else --count;          // or decrement it
+    }
+    else count = -1;
+
+    // Take the focus after the second frame only
+    if(count==0) {
+        count = -1;
+        ImGui::SetWindowFocus();
+    }
+}
+
+
 // Contextual menu helpers
 // =======================
 

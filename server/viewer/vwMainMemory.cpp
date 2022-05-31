@@ -1033,9 +1033,7 @@ vwMain::drawMemoryTimeline(int curMwWindowIdx)
     const float fullHeaderHeight = ctx.fullHeaderHeight;
 
     // Get keyboard focus on window hovering
-    if(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && !_search.isInputPopupOpen && !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
-        ImGui::SetWindowFocus();
-    }
+    getKeyboardFocusIfWindowHovering();
 
     prepareMemoryTimeline(mw); // Ensure cache is up-to-date, even at window creation
     ctx.computeLayout(mw);

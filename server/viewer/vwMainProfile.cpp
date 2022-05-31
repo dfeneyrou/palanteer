@@ -753,9 +753,7 @@ vwMain::_drawFlameGraph(bool doDrawDownward, Profile& prof)
     ImU32 colorText2     = vwConst::uGrey;
 
     // Get keyboard focus on window hovering
-    if(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && !_search.isInputPopupOpen && !ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
-        ImGui::SetWindowFocus();
-    }
+    getKeyboardFocusIfWindowHovering();
 
     auto getValueString = [this] (const vwMain::Profile& prof, double value) {
         if(prof.kind==TIMINGS) return bsString(getNiceDuration((s64)value));
