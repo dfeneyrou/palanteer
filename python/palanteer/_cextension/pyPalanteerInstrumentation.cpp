@@ -35,6 +35,7 @@
 
 // Configure and implement the C++ Palanteer instrumentation
 #define USE_PL 1
+#define PL_STANDARD_CLOCK 1
 #define PL_VIRTUAL_THREADS 1
 #define PL_IMPLEMENTATION 1
 #define PL_IMPL_OVERLOAD_NEW_DELETE 0    // Overload from a dynamic library does not work

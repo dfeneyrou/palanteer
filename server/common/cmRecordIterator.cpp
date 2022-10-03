@@ -1194,7 +1194,7 @@ cmRecordIteratorLog::getNextLog(bool& isCoarse, cmRecord::Evt& eOut, bsVec<cmLog
                 int paramType = (paramEvt.lineNbr>>(3*paramIdx))&0x7;
                 if(paramType==0) break; // Last parameter in this event
 
-                params.push_back({paramType, 0});
+                params.push_back({paramType, {0}});
                 cmLogParam& p = params.back();
                 switch(paramType) {
                 case PL_FLAG_TYPE_DATA_S32:

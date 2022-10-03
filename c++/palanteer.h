@@ -284,6 +284,7 @@
 //  Its prototype is without parameter and returning a monotonic unsigned integer of size
 //  uint32_t if PL_SHORT_DATE==1 else uint64_t. See getClockTick() definition below, as an example.
 // Note: Context switch collection may not work with user-defined clocks if clocks are not matching
+// Note2: You can use the undocumented compilation flag PL_STANDARD_CLOCK=1 to force the usage of the standard clock on Linux
 #ifndef PL_GET_CLOCK_TICK_FUNC
 #define PL_GET_CLOCK_TICK_FUNC() plPriv::getClockTick()
 #endif
@@ -1562,7 +1563,7 @@ namespace plPriv {
         // Windows
         // Context switch events are using QPC, so a date conversion for these events is needed on Windows
         return (clockType_t) int64_t(__rdtsc());
-#elif defined(__x86_64__)
+#elif defined(__x86_64__) && PL_STANDARD_CLOCK!=1
         // Linux
         // Kernel events can be configured to use RDTSC too, so no extra work on converting clocks under Linux
         uint64_t low, high;
