@@ -28,6 +28,9 @@
 #   except ModuleNotFoundError:
 #     import palanteer_stub as palanteer  # Fallback to empty functions
 
+def plIsActivated():
+    return False
+
 
 def plFunction(func):
     return func

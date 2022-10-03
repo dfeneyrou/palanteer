@@ -98,7 +98,7 @@ globalRandomGenerator = RandomLCM()
 
 def crashSubContractor(crashKind):
     if crashKind == 0:
-        printf("%d", 1 / zero)
+        print("%d", 1 / zero)
     elif crashKind == 1:
         a = range(5)[6]
     elif crashKind == 2:

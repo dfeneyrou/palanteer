@@ -129,6 +129,15 @@ def plStopAndUninit()
     If not called explicitly before exiting the program (case of a crash, or simply not called at all), the service stopping is performed implicitly, unless the process is hard-killed.
     This behavior ensures that all last events are properly recorded, which is critical in case of crash.
 
+### plIsActivated
+
+This function returns the boolean state of the `Palanteer` service, `True` if activated and `False` if not.
+
+The declaration is:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Python
+def plIsActivated()
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 ## Structure tracing
 

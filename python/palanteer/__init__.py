@@ -70,6 +70,11 @@ def plMarker(category, msg):
     plLogWarn(category, msg)
 
 
+def plIsActivated():
+    global _is_activated
+    return _is_activated
+
+
 # Decorator to identify test functions
 def plFunction(func):
     global _is_activated, _is_with_functions
