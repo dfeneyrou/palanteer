@@ -952,7 +952,7 @@ namespace plPriv {
     template<typename T> inline void printParamType_(char* infoStr, int& offset, const char* name, T  param)
     { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - %s is not a numeric or string type (enum?)\n", name); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; PL_UNUSED(param); }
     template<typename T> inline void printParamType_(char* infoStr, int& offset, const char* name, T* param)
-    { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - %-7s %-20s = %p\n", "pointer", name, param); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; }
+    { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - %-7s %-20s = %p\n", "pointer", name, (void*)param); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; }
     template<> inline void printParamType_<bool>(char* infoStr, int& offset, const char* name, bool param)
     { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - %-7s %-20s = %s\n", "bool", name, param?"true":"false"); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; }
     template<> inline void printParamType_<char>(char* infoStr, int& offset, const char* name, char* param)
@@ -1014,7 +1014,7 @@ namespace plPriv {
     template<typename T> inline void printParamTypeEs_(char* infoStr, int& offset, hashStr_t nameHash, T  param)
     { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - @@%016" PL_PRI_HASH "@@ is not a numeric or string type (enum?)\n", nameHash); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; PL_UNUSED(param); }
     template<typename T> inline void printParamTypeEs_(char* infoStr, int& offset, hashStr_t nameHash, T* param)
-    { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - pointer @@%016" PL_PRI_HASH "@@ = %p\n", nameHash, param); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; }
+    { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - pointer @@%016" PL_PRI_HASH "@@ = %p\n", nameHash, (void*)param); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; }
     template<> inline void printParamTypeEs_<bool>(char* infoStr, int& offset, hashStr_t nameHash, bool param)
     { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - bool    @@%016" PL_PRI_HASH "@@ = %s\n", nameHash, param?"true":"false"); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; }
     template<> inline void printParamTypeEs_<char>(char* infoStr, int& offset, hashStr_t nameHash, char* param)
@@ -1024,18 +1024,18 @@ namespace plPriv {
 #define PL_DECLARE_ASSERT_TYPE(type_, code_, display_)                  \
     template<> inline void printParamTypeEs_<type_>(char* infoStr, int& offset, hashStr_t nameHash, type_ param) \
     { offset += snprintf(infoStr+offset, CRASH_MSG_SIZE-offset, "    - %-7s @@%016" PL_PRI_HASH "@@ = %" #code_ "\n", #display_, nameHash, param); if(offset>CRASH_MSG_SIZE-1) offset = CRASH_MSG_SIZE-1; }
-    PL_DECLARE_ASSERT_TYPE(char,           d, s8);
-    PL_DECLARE_ASSERT_TYPE(unsigned char,  d, u8);
-    PL_DECLARE_ASSERT_TYPE(short int,      d, s16);
-    PL_DECLARE_ASSERT_TYPE(unsigned short, d, u16);
-    PL_DECLARE_ASSERT_TYPE(int,            d, int);
-    PL_DECLARE_ASSERT_TYPE(unsigned int,   u, u32);
-    PL_DECLARE_ASSERT_TYPE(long,           ld, s64);
-    PL_DECLARE_ASSERT_TYPE(unsigned long,  lu, u64);
-    PL_DECLARE_ASSERT_TYPE(long long,      lld, s64);
-    PL_DECLARE_ASSERT_TYPE(unsigned long long, llu, u64);
-    PL_DECLARE_ASSERT_TYPE(float,          f,  float);
-    PL_DECLARE_ASSERT_TYPE(double,         lf, double);
+    PL_DECLARE_ASSERT_TYPE(char,           d, s8)
+    PL_DECLARE_ASSERT_TYPE(unsigned char,  d, u8)
+    PL_DECLARE_ASSERT_TYPE(short int,      d, s16)
+    PL_DECLARE_ASSERT_TYPE(unsigned short, d, u16)
+    PL_DECLARE_ASSERT_TYPE(int,            d, int)
+    PL_DECLARE_ASSERT_TYPE(unsigned int,   u, u32)
+    PL_DECLARE_ASSERT_TYPE(long,           ld, s64)
+    PL_DECLARE_ASSERT_TYPE(unsigned long,  lu, u64)
+    PL_DECLARE_ASSERT_TYPE(long long,      lld, s64)
+    PL_DECLARE_ASSERT_TYPE(unsigned long long, llu, u64)
+    PL_DECLARE_ASSERT_TYPE(float,          f,  float)
+    PL_DECLARE_ASSERT_TYPE(double,         lf, double)
     template<typename T> inline void printParamsEs_(char* infoStr, int& offset, hashStr_t nameHash, T param)
     { if(nameHash) { printParamTypeEs_(infoStr, offset, nameHash, param); } }
     template<typename T, typename... Args> inline void printParamsEs_(char* infoStr, int& offset, hashStr_t nameHash, T value, Args... args)
@@ -2470,7 +2470,7 @@ namespace plPriv {
                     Parameter& p = newCli.parameters[newCli.paramQty-1];
                     p.hasDefaultValue = 1;
                     if(p.type==PL_INTEGER) {
-                        int readQty = sscanf(s, "[[%" PRId64 "]]", &p.defaultValue);
+                        int readQty = sscanf(s, "[[%" PRId64 "]]", (int64_t*)&p.defaultValue);
                         plAssert(readQty==1, "Unable to parse the integer default value of the parameter", newCli.paramQty-1);
                         int tmp; getString(s, tmp);
                     } else if(p.type==PL_FLOAT) {
@@ -2567,7 +2567,7 @@ namespace plPriv {
                         ++foundParamQty;
                     }
                     if(cli->parameters[paramIdx].type==PL_INTEGER) {
-                        if(sscanf(s, "%" PRId64, &_cio._paramValues[paramIdx])!=1 || !skipValue(s))
+                        if(sscanf(s, "%" PRId64, (int64_t*)&_cio._paramValues[paramIdx])!=1 || !skipValue(s))
                             CLI_INPUT_ERROR("Parameter '%.*s' is not a valid integer", (int)(s-sNameStart-1), sNameStart);
                     } else if(cli->parameters[paramIdx].type==PL_FLOAT) {
                         if(sscanf(s, "%lf", (double*)&_cio._paramValues[paramIdx])!=1 || !skipValue(s))
@@ -3054,7 +3054,9 @@ namespace plPriv {
 
             // Set the timeout on reception
 #ifdef __unix__
-            const struct timeval socketTimeout = { .tv_sec=0, .tv_usec=10000 };
+            struct timeval socketTimeout{};
+            socketTimeout.tv_sec = 0;
+            socketTimeout.tv_usec = 10000;
 #endif
 #ifdef _WIN32
             DWORD socketTimeout = 10*1000;
