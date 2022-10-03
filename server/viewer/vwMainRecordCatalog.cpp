@@ -329,7 +329,7 @@ vwMain::drawRecord(void)
                     // Thread and event names
                     ImGui::TableNextColumn();
                     if(e.type==cmRecord::ERROR_MAX_THREAD_QTY_REACHED) {
-                        ImGui::Text("%s", _record->getString(e.nameIdx).value.toChar());
+                        ImGui::Text(" - ");
                         ImGui::TableNextColumn();
                         ImGui::Text(" - ");
                     } else {

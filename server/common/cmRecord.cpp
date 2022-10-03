@@ -667,7 +667,7 @@ cmRecord::buildLogCategories(void)
 cmRecord*
 cmLoadRecord(const bsString& path, int cacheMBytes, bsString& errorMsg)
 {
-    constexpr int SANE_MAX_ELEMENT_QTY = 1000000; // Maximum entity kind quantity, with a margin. For robustness only
+    constexpr int SANE_MAX_ELEMENT_QTY = 5000000; // Maximum entity kind quantity, with a margin. For robustness only
     constexpr int SANE_MAX_EVENT_QTY   = 2147483647; // 2^31 - 1
 
     // Init and macro definitions

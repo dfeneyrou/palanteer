@@ -251,6 +251,7 @@ class vwConfig {
     bsVec<Group> _groups;
     bsVec<int>   _order;
     bsVec<Elem>  _elems;
+    bsHashMap<u64, u32> _hashToLiveElemIdx;
     bsVec<bsString> _cliHistory;
     bsVec<ThreadLayout> _export; // Precomputed for export
     bsVec<bsString> _extraLines; // Allows some persistency on temporarily non-used config lines

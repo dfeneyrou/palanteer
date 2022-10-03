@@ -868,7 +868,9 @@ cmRecording::processScopeEvent(plPriv::EventExt& evtx, ThreadBuild& tc, int leve
 {
     plgScope(REC, "processScopeEvent");
 #define LOG_ERROR(type_)                                                \
-    u64  errHash   = bsHashStepChain(evtx.threadId, evtx.nameIdx, type_, evtx.lineNbr); \
+    u64  errHash   = (type_==cmRecord::ERROR_MAX_THREAD_QTY_REACHED)?   \
+        bsHashStepChain(cmConst::MAX_THREAD_QTY, 0, type_, 0) :         \
+        bsHashStepChain(evtx.threadId, evtx.nameIdx, type_, evtx.lineNbr); \
     int* errIdxPtr = _recErrorLkup.find(errHash, type_);                \
     if(errIdxPtr) _recErrors[*errIdxPtr].count += 1;                    \
     else if(_recErrorQty<cmRecord::MAX_REC_ERROR_QTY) {                 \
@@ -1260,7 +1262,7 @@ cmRecording::storeNewEvents(int streamId, plPriv::EventExt* events, int eventQty
 
             if(evtx.threadId>=cmConst::MAX_THREAD_QTY) {
                 LOG_ERROR(cmRecord::ERROR_MAX_THREAD_QTY_REACHED);
-                continue; // Limitation due to optimized storage: 63 threads (other threads are ignored)
+                continue; // Limitation due to optimized storage (other threads are ignored)
             }
 
             while(_recThreads.size()<=evtx.threadId) {

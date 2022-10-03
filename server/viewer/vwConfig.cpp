@@ -398,6 +398,7 @@ vwConfig::notifyNewRecord(cmRecord* record)
     _liveConfigThreads.clear();
     _liveConfigGroups.clear();
     _liveConfigElems.clear();
+    _hashToLiveElemIdx.clear();
     _cliHistory.clear();
     _currentLayout = { "", "", {} };
     _templateLayouts.clear();
@@ -520,18 +521,14 @@ vwConfig::notifyUpdatedRecord(cmRecord* record)
         cmRecord::Elem& recordElem = record->elems[_elems.size()];
         u64  hashPath = recordElem.hashPath;
         if(recordElem.isThreadHashed) hashPath = bsHashStep(record->threads[recordElem.threadId].threadUniqueHash, hashPath);
-        bool foundInConfig = false;
         // Use the values from the config file, if present
-        for(int i=0; i<_liveConfigElems.size(); ++i) {
-            Elem& cfgElem = _liveConfigElems[i];
-            if(hashPath!=cfgElem.hash) continue;
+        u32* elemIdxPtr = _hashToLiveElemIdx.find(hashPath);
+        if(elemIdxPtr) {
+            Elem& cfgElem = _liveConfigElems[*elemIdxPtr];
             _elems.push_back(cfgElem);
-            cfgElem = _liveConfigElems.back(); _liveConfigElems.pop_back();
-            foundInConfig = true;
-            break;
         }
-        // Else default values
-        if(!foundInConfig) {
+        else {
+            // Else default values
             int eType = (record->elems[_elems.size()].flags&PL_FLAG_TYPE_MASK);
             CurveStyle style = LINE;
             int        pointSize = 3;
@@ -923,6 +920,10 @@ vwConfig::loadApplication(const bsString& appName)
     _extraLines.clear();
     _appliNeedsSaving  = false;
 
+    // Build the elem access accelerator
+    bsHashMap<u64, u32> hashToElemIdx;
+    for(int i=0; i<_elems.size(); ++i) hashToElemIdx.insert(_elems[i].hash, _elems[i].hash, i);
+
     constexpr int lineSize = 100*1024; // 100 KB limit for the ImGui Layout
     bsString lineBuffer; lineBuffer.resize(lineSize);
     char* line = (char*)&lineBuffer[0];
@@ -980,16 +981,15 @@ vwConfig::loadApplication(const bsString& appName)
         // "elem" display attribute of each curve
         READ_APPLI(elem, 4, "%" PRIX64 " %d %d %d", &hash, &tmp1, &tmp2, &tmp3);
         if(isKwFound) {
-            bool isFound = false;
-            // @#OPTIM Hash table useful here as there can be many elem?
-            for(Elem& elem : _elems) {
-                if(hash!=elem.hash) continue;
+            u32* elemIdxPtr = hashToElemIdx.find(hash);
+            if(elemIdxPtr) {
+                Elem& elem = _elems[*elemIdxPtr];
                 elem.colorIdx = tmp1; elem.pointSize = tmp2; elem.style = (vwConfig::CurveStyle)tmp3;
-                isFound = true; break;
             }
-            if(!isFound) {
+            else {
                 if(_extraLines.size()<vwConst::MAX_EXTRA_LINE_PER_CONFIG) _extraLines.push_back(line);
                 _liveConfigElems.push_back({tmp1, tmp2, (CurveStyle)tmp3, hash});
+                _hashToLiveElemIdx.insert(hash, hash, _hashToLiveElemIdx.size());
             }
         }
 
