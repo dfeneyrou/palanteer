@@ -33,7 +33,7 @@ isDevMode = False  # Enable to speed up development cycles. Shall be False for f
 
 # Deduce some parameters
 extra_link_args = []
-extra_compilation_flags = ["-I", "palanteer/_cextension"]
+extra_compilation_flags = ["-I", "palanteer/_cextension", "-std=c++11"]
 
 if isDevMode:
     if sys.platform == "win32":

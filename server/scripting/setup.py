@@ -57,6 +57,7 @@ extra_compilation_flags = [
     "-DPL_NOCONTROL=1",
     "-DPL_NOEVENT=1",
     "-DPL_GROUP_BSVEC=0",  # Force deactivation of array bound check
+    "-std=c++14",
 ]
 
 extra_compilation_flags.extend(["-I", os.path.normpath(destC)])
