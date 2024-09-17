@@ -363,7 +363,6 @@ genGetParam(S32, int);
 genGetParam(U32, uint32_t);
 genGetParam(S64, int64_t);
 genGetParam(U64, uint64_t);
-genGetParam(Float, float);
 genGetParam(Double, double);
 
 static inline const char*

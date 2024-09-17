@@ -115,14 +115,14 @@ plPriv::hashStr_t gFilterOutFunctionDb[] = {
     0
 };
 
-
-// Python compatibility
-#if PY_VERSION_HEX<0x030a00b1
-  #define USE_TRACING_ACCESS use_tracing
+static PyCodeObject *
+wrapGetCode(PyFrameObject* frame) {
+#if PY_VERSION_HEX >= 0x030a0000
+    return PyFrame_GetCode(frame);
 #else
-  #define USE_TRACING_ACCESS cframe->use_tracing
+    return frame->f_code;
 #endif
-
+}
 
 // Debug macro
 // ===========
@@ -177,14 +177,20 @@ pyGetNameFilenameLineNbr(const char* name,
 {
     // Module/filename and line number
     PyThreadState* threadState = PyThreadState_GET();
-    plAssert(threadState && threadState->frame);
+    plAssert(threadState);
+#if PY_VERSION_HEX > 0x030b0000
+    PyFrameObject* frame = PyThreadState_GetFrame(threadState);
+#else
+    PyFrameObject* frame = threadState->frame;
+#endif
+    plAssert(frame);
 
     // Get the line number
-    lineNbr = PyFrame_GetLineNumber(threadState->frame);
+    lineNbr = PyFrame_GetLineNumber(frame);
 
     // Get the filename
     filename = 0; palanteerFilenameStrHash = 0;
-    PyCodeObject* objectCode = threadState->frame->f_code;
+    PyCodeObject* objectCode = wrapGetCode(frame);
     objectFilenameHash       = pyHashPointer(objectCode->co_filename);
 
     // Note: We must not call Python function with a lock taken (with the GIL, it would create a double mutex deadlock)
@@ -258,13 +264,15 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
 
 #define HASH_FRAME(frame) (uint32_t)((uintptr_t)frame)
     bool isCoroutineNew = false;
-    bool isCoroutine = (frame->f_code->co_flags & (CO_COROUTINE|CO_ITERABLE_COROUTINE|CO_ASYNC_GENERATOR)) && !calledFromC;
-#if PY_MINOR_VERSION >= 10
+    bool isCoroutine = (wrapGetCode(frame)->co_flags & (CO_COROUTINE|CO_ITERABLE_COROUTINE|CO_ASYNC_GENERATOR)) && !calledFromC;
+#if PY_VERSION_HEX >= 0x030b0000
+    PyGenObject* genObj = (PyGenObject *)PyFrame_GetGenerator(frame);
+    bool isCoroutineSuspended = isCoroutine && !isEnter && (genObj && genObj->gi_frame_state==-1);
+#elif PY_VERSION_HEX >= 0x030a00b1
     bool isCoroutineSuspended = isCoroutine && !isEnter && (frame->f_state==FRAME_SUSPENDED);
 #else
     bool isCoroutineSuspended = isCoroutine && !isEnter && (frame->f_stacktop!=0);
 #endif
-
 
     plPriv::hashStr_t hashedFrame = 0;
     if(isCoroutine) {
@@ -378,7 +386,7 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
     else {
         // Do not get any info if it is filtered. The stack level is enough
         if(pctc && pctc->stackDepth<pctc->filterOutDepth) {
-            PyCodeObject*     objectCode         = frame->f_code;
+            PyCodeObject*     objectCode         = wrapGetCode(frame);
             plPriv::hashStr_t objectNameHash     = pyHashPointer(objectCode);
             plPriv::hashStr_t objectFilenameHash = pyHashPointer(objectCode->co_filename);
             lineNbr                              = objectCode->co_firstlineno;
@@ -398,24 +406,35 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
             else {
                 PyFrame_FastToLocals(frame); // Update locals for access
                 // Try getting the class name only if the first argument is "self"
-                if(objectCode->co_argcount && !strcmp(PyUnicode_AsUTF8(PyTuple_GET_ITEM(objectCode->co_varnames, 0)), "self")) {
-                    PyObject* locals = frame->f_locals;
-                    if(locals) {
-                        PyObject* self = PyDict_GetItemString(locals, "self");
-                        if(self) {
-                            PyObject* classObj = PyObject_GetAttrString(self, "__class__");
-                            if(classObj) {
-                                PyObject* classNameObj = PyObject_GetAttrString(classObj, "__name__");
-                                if(classNameObj) {  // The name is "<class>.<symbol>"
-                                    const char* classStr = PyUnicode_AsUTF8(classNameObj);
-                                    // Check if this class is filtered out
-                                    gFilterOutClassName.find(plPriv::hashString(classStr), isNewFilterOut);
-                                    // Build the name
-                                    snprintf(tmpStr, sizeof(tmpStr), "%s.%s", classStr, PyUnicode_AsUTF8(objectCode->co_name));
-                                    name = tmpStr;  // Note: tmpStr shall not be reused before logging the enter/leave event
-                                    Py_DECREF(classNameObj);
+                if(objectCode->co_argcount) {
+#if PY_VERSION_HEX >= 0x030b0000
+                    PyObject* coVarnames = PyCode_GetVarnames(objectCode); // Python >= 3.11
+#else
+                    PyObject* coVarnames = objectCode->co_varnames;
+#endif
+                    if(!strcmp(PyUnicode_AsUTF8(PyTuple_GET_ITEM(coVarnames, 0)), "self")) {
+#if PY_VERSION_HEX >= 0x030b0000
+                        PyObject* locals = PyFrame_GetLocals(frame); // Python >= 3.11
+#else
+                        PyObject* locals = frame->f_locals;
+#endif
+                        if(locals) {
+                            PyObject* self = PyDict_GetItemString(locals, "self");
+                            if(self) {
+                                PyObject* classObj = PyObject_GetAttrString(self, "__class__");
+                                if(classObj) {
+                                    PyObject* classNameObj = PyObject_GetAttrString(classObj, "__name__");
+                                    if(classNameObj) {  // The name is "<class>.<symbol>"
+                                        const char* classStr = PyUnicode_AsUTF8(classNameObj);
+                                        // Check if this class is filtered out
+                                        gFilterOutClassName.find(plPriv::hashString(classStr), isNewFilterOut);
+                                        // Build the name
+                                        snprintf(tmpStr, sizeof(tmpStr), "%s.%s", classStr, PyUnicode_AsUTF8(objectCode->co_name));
+                                        name = tmpStr;  // Note: tmpStr shall not be reused before logging the enter/leave event
+                                        Py_DECREF(classNameObj);
+                                    }
+                                    Py_DECREF(classObj);
                                 }
-                                Py_DECREF(classObj);
                             }
                         }
                     }
@@ -626,7 +645,7 @@ traceCallback(PyObject* Py_UNUSED(self), PyFrameObject* frame, int what, PyObjec
         // Add a log with the line number (function is the current scope) and the exception text
         PyObject* exceptionRepr = PyObject_Repr(PyTuple_GET_ITEM(arg, 1)); // Representation of the exception "value"
         char msg[256];
-        snprintf(msg, sizeof(msg), "In %s (%d): %s", PyUnicode_AsUTF8(frame->f_code->co_filename), PyFrame_GetLineNumber(frame), PyUnicode_AsUTF8(exceptionRepr));
+        snprintf(msg, sizeof(msg), "In %s (%d): %s", PyUnicode_AsUTF8(wrapGetCode(frame)->co_filename), PyFrame_GetLineNumber(frame), PyUnicode_AsUTF8(exceptionRepr));
         plPriv::hashStr_t palanteerCategoryStrHash, palanteerMsgStrHash, strHash;
 
         gGlobMutex.lock();
@@ -639,7 +658,7 @@ traceCallback(PyObject* Py_UNUSED(self), PyFrameObject* frame, int what, PyObjec
     }
 
     // Store upper level so that we skip it
-    ctc.nextExceptionFrame = frame->f_back;
+    ctc.nextExceptionFrame = PyFrame_GetBack(frame);
     gOsThread.isBootstrap = 0;
 
     // Restore the error state
@@ -948,6 +967,36 @@ pyPlEnd(PyObject* Py_UNUSED(self), PyObject* args)
 // Profiler
 // ========
 
+static void
+installCallbacks(PyThreadState* threadState)
+{
+#if PY_VERSION_HEX >= 0x030b0000
+    _PyEval_SetProfile(threadState, gWithFunctions ? profileCallback : 0, NULL); // Python >= 3.11
+#elif PY_VERSION_HEX >= 0x030a00b1
+    threadState->cframe->use_tracing = 1; // Python 3.10
+    threadState->c_profilefunc       = gWithFunctions ? profileCallback : 0;
+#else
+    threadState->use_tracing   = 1;  // Python <= 3.9
+    threadState->c_profilefunc = gWithFunctions ? profileCallback : 0;
+#endif
+    threadState->c_tracefunc = gWithExceptions? traceCallback   : 0;
+}
+
+static void
+uninstallCallbacks(PyThreadState* threadState)
+{
+#if PY_VERSION_HEX >= 0x030b0000
+    _PyEval_SetProfile(threadState, NULL, NULL); // Python >= 3.11
+#elif PY_VERSION_HEX >= 0x030a00b1
+    threadState->cframe->use_tracing = 0; // Python 3.10
+    threadState->c_profilefunc       = 0;
+#else
+    threadState->use_tracing   = 0;  // Python <= 3.9
+    threadState->c_profilefunc = 0;
+#endif
+    threadState->c_tracefunc = 0;
+}
+
 static PyObject*
 _profiling_bootstrap_callback(PyObject* self, PyObject* args)
 {
@@ -961,9 +1010,7 @@ _profiling_bootstrap_callback(PyObject* self, PyObject* args)
     PyThreadState* threadState = PyThreadState_GET();
     if(threadState->c_profilefunc!=profileCallback) {
         // Replace callbacks. This function is called so it means that one of the two is enabled.
-        threadState->USE_TRACING_ACCESS = 1;
-        threadState->c_profilefunc      = gWithFunctions ? profileCallback : 0;
-        threadState->c_tracefunc        = gWithExceptions? traceCallback   : 0;
+        installCallbacks(threadState);
     }
 
     if(gWithFunctions) {
@@ -1216,9 +1263,7 @@ _profiling_start(PyObject* Py_UNUSED(self), PyObject* args)
         for(PyInterpreterState* interpState=PyInterpreterState_Head(); interpState; interpState=PyInterpreterState_Next(interpState)) {
             for(PyThreadState* threadState=PyInterpreterState_ThreadHead(interpState); threadState; threadState=threadState->next) {
                 // Replace callbacks
-                threadState->USE_TRACING_ACCESS = 1;
-                threadState->c_profilefunc      = gWithFunctions ? profileCallback : 0;
-                threadState->c_tracefunc        = gWithExceptions? traceCallback   : 0;
+                installCallbacks(threadState);
             }
         }
     }
@@ -1238,9 +1283,7 @@ _profiling_stop(PyObject* Py_UNUSED(self), PyObject* args)
     // De-activate profiling on all threads
     for(PyInterpreterState* interpState=PyInterpreterState_Head(); interpState; interpState=PyInterpreterState_Next(interpState)) {
         for(PyThreadState* threadState=PyInterpreterState_ThreadHead(interpState); threadState; threadState=threadState->next) {
-            threadState->USE_TRACING_ACCESS = 0;
-            threadState->c_profilefunc      = 0;
-            threadState->c_tracefunc        = 0;
+            uninstallCallbacks(threadState);
         }
     }
     plStopAndUninit();
@@ -1284,8 +1327,8 @@ static PyMethodDef module_methods[] = {
 PyMODINIT_FUNC
 PyInit__cextension(void)
 {
-    static struct PyModuleDef totoModuleDef = { PyModuleDef_HEAD_INIT, "_cextension", "Palanteer Python instrumentation C extension",
+    static struct PyModuleDef palanteerModuleDef = { PyModuleDef_HEAD_INIT, "_cextension", "Palanteer Python instrumentation C extension",
                                                 -1, module_methods, 0, 0, 0, 0 };
-    PyObject* m = PyModule_Create(&totoModuleDef);
+    PyObject* m = PyModule_Create(&palanteerModuleDef);
     return m;
 }

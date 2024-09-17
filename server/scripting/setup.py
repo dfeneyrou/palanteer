@@ -57,7 +57,6 @@ extra_compilation_flags = [
     "-DPL_NOCONTROL=1",
     "-DPL_NOEVENT=1",
     "-DPL_GROUP_BSVEC=0",  # Force deactivation of array bound check
-    "-std=c++14",
 ]
 
 extra_compilation_flags.extend(["-I", os.path.normpath(destC)])
@@ -84,6 +83,7 @@ classifiers_list = [
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: Implementation :: CPython",
     "Operating System :: Microsoft :: Windows :: Windows 10",
     "Operating System :: POSIX :: Linux",
