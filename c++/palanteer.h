@@ -378,7 +378,9 @@
 
 // This line is unfortunately the only way found to remove the zero-arguments-variadic-macro and the
 // prohibited-anonymous-structs warnings with GCC when the build is using the option -Wpedantic
+#ifndef _WIN32
 #pragma GCC system_header
+#endif
 
 #if USE_PL==1 && PL_NOASSERT==0
 

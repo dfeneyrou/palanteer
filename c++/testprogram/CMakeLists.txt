@@ -63,7 +63,9 @@ set(TESTPROGRAM_SRC testProgram.cpp testPart.cpp testPart.h)
 # =======================
 add_executable            ("testprogram" ${TESTPROGRAM_SRC})
 target_link_libraries     ("testprogram" libpalanteer ${STACKTRACE_LIBS} ${DYNLIB_LIBS} Threads::Threads)
-target_compile_options    ("testprogram" PRIVATE -Wno-mismatched-new-delete)
+if(NOT WIN32)
+  target_compile_options    ("testprogram" PRIVATE -Wno-mismatched-new-delete)
+endif()
 
 if(NOT CUSTOM_FLAGS MATCHES ".*USE_PL=0.*")
   target_compile_options    ("testprogram" PRIVATE            -DUSE_PL=1)
