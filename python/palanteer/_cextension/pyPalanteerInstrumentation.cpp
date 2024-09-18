@@ -658,7 +658,11 @@ traceCallback(PyObject* Py_UNUSED(self), PyFrameObject* frame, int what, PyObjec
     }
 
     // Store upper level so that we skip it
-    ctc.nextExceptionFrame = PyFrame_GetBack(frame);
+#if PY_VERSION_HEX >= 0x03090000
+    ctc.nextExceptionFrame = PyFrame_GetBack(frame); // Python 3.9 and above
+#else
+    ctc.nextExceptionFrame = frame->f_back;
+#endif
     gOsThread.isBootstrap = 0;
 
     // Restore the error state
