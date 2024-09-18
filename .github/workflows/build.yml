@@ -93,9 +93,9 @@ jobs:
     - name: Create wheel packages for python 3.7
       run: |
           cd python
-          python -m --wheel
+          python -m build --wheel
           cd ..\server\scripting
-          python -m --wheel
+          python -m build --wheel
 
     - uses: actions/setup-python@v5
       with:
@@ -106,9 +106,9 @@ jobs:
     - name: Create a wheel package instrumentation module for python 3.8
       run: |
           cd python
-          python -m --wheel
+          python -m build --wheel
           cd ..\server\scripting
-          python -m --wheel
+          python -m build --wheel
 
     - uses: actions/setup-python@v5
       with:
@@ -119,9 +119,9 @@ jobs:
     - name: Create a wheel package instrumentation module for python 3.9
       run: |
           cd python
-          python -m --wheel
+          python -m build --wheel
           cd ..\server\scripting
-          python -m --wheel
+          python -m build --wheel
 
     - uses: actions/setup-python@v5
       with:
@@ -132,9 +132,9 @@ jobs:
     - name: Create a wheel package instrumentation module for python 3.10
       run: |
           cd python
-          python -m --wheel
+          python -m build --wheel
           cd ..\server\scripting
-          python -m --wheel
+          python -m build --wheel
 
     - uses: actions/setup-python@v5
       with:
@@ -145,9 +145,9 @@ jobs:
     - name: Create a source and wheel package instrumentation module for python 3.11
       run: |
           cd python
-          python -m --wheel --sdist
+          python -m build --wheel --sdist
           cd ..\server\scripting
-          python -m --wheel --sdist
+          python -m build --wheel --sdist
 
 
     - uses: actions/upload-artifact@v4
