@@ -70,7 +70,7 @@ vwFileDialog::draw(void)
     plgScope(FDIAG, "vwFileDialog::draw");
     bool hasWorked = false;
     ImGui::PushID(this);
-    float dialogWidth = bsMinMax(ImGui::GetFontSize()*60.f, 600.f, 1200.f);
+    float dialogWidth = bsMinMax(ImGui::GetFontSize()*90.f, 600.f, bsMax(600.f, ImGui::GetWindowSize().x));
 
     // Handle the opening
     if(_shallOpen) {
@@ -205,11 +205,11 @@ vwFileDialog::draw(void)
     bsString* filterExtension = (_typeFilters[_selectedFilterIdx].back()!='*')? &_typeFilters[_selectedFilterIdx] : 0;
 
     if(ImGui::BeginTable("##table files", 3, ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_ScrollY |
-                         ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)) {
+                         ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
         ImGui::TableSetupScrollFreeze(0, 1); // Make top row always visible
-        ImGui::TableSetupColumn("Filename");
-        ImGui::TableSetupColumn("Size");
-        ImGui::TableSetupColumn("Date");
+        ImGui::TableSetupColumn("Filename", 0, 3.);
+        ImGui::TableSetupColumn("Size", 0, 0.5);
+        ImGui::TableSetupColumn("Date", 0, 1.0);
         ImGui::TableHeadersRow();
 
         // Sort files if required

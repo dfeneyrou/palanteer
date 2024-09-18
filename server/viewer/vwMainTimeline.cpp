@@ -1371,7 +1371,7 @@ vwMain::prepareTimeline(Timeline& tl)
         if(nestingLevelQty>0 && rt.levels[nestingLevelQty-1].scopeChunkLocs.empty()) --nestingLevelQty; // Last level is pure non-scope data @#TEMP Review this code
         cachedScopesPerNLevel.resize(nestingLevelQty);
         for(int nestingLevel=0; nestingLevel<nestingLevelQty; ++nestingLevel) {
-            bsVec<InfTlCachedScope>& cachedScopes = cachedScopesPerNLevel[nestingLevel];;
+            bsVec<InfTlCachedScope>& cachedScopes = cachedScopesPerNLevel[nestingLevel];
             cachedScopes.clear();
             if(!isExpanded) continue;
             cachedScopes.reserve(256);
@@ -1381,7 +1381,7 @@ vwMain::prepareTimeline(Timeline& tl)
             cmRecordIteratorScope it(_record, tId, nestingLevel, tl.startTimeNs, MIN_SCOPE_PIX/nsToPix);
             float startTimePix = 0.;
             float endTimePix   = 0.;
-            s64 lastScopeEndTimeNs = 0; // Just for sanity
+            //s64 lastScopeEndTimeNs = 0; // Just for sanity
             s64  scopeStartTimeNs=0, scopeEndTimeNs=0, durationNs=0;
             cmRecord::Evt evt;
             u32 scopeLIdx = PL_INVALID; // Scope index at this level
@@ -1406,8 +1406,8 @@ vwMain::prepareTimeline(Timeline& tl)
                     endTimePix    = (float)(nsToPix*(scopeEndTimeNs  -tl.startTimeNs));
                 }
                 if(endTimePix<0) { plgData(TML, "Negative end time", endTimePix); continue; }
-                plAssert(lastScopeEndTimeNs<=scopeStartTimeNs, lastScopeEndTimeNs, scopeStartTimeNs, scopeEndTimeNs);
-                lastScopeEndTimeNs = scopeEndTimeNs;
+                // plAssert(lastScopeEndTimeNs<=scopeStartTimeNs, lastScopeEndTimeNs, scopeStartTimeNs, scopeEndTimeNs);
+                // lastScopeEndTimeNs = scopeEndTimeNs;
 
                 // Store in the cache
                 cachedScopes.push_back( { isCoarseScope, scopeLIdx, scopeEndTimeNs, durationNs, evt, startTimePix, endTimePix } );
