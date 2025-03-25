@@ -11,7 +11,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y mesa-utils libglu1-mesa-dev mesa-common-dev gcc-multilib g++-multilib libunwind-dev libdw-dev
+        sudo apt-get install -y mesa-utils libglu1-mesa-dev mesa-common-dev libxrender-dev gcc-multilib g++-multilib libunwind-dev libdw-dev
 
     - name: Build components
       run: |
