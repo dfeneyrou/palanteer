@@ -168,6 +168,13 @@ pyHashPointer(const void* p) {
         gHashStrLookup.insert(strHash, plPriv::hashString(s));          \
     }
 
+#define CACHE_STRING2(s, outputHash)                                     \
+    strHash    = plPriv::hashString(s);                                      \
+    outputHash = 0;                                                     \
+    if(!gHashStrLookup.find(strHash, outputHash)) {                     \
+        gHashStrLookup.insert(strHash, strHash);          \
+    }
+
 
 inline
 void
@@ -432,8 +439,12 @@ logFunctionEvent(PyObject* Py_UNUSED(self), PyFrameObject* frame, PyObject* arg,
                                         snprintf(tmpStr, sizeof(tmpStr), "%s.%s", classStr, PyUnicode_AsUTF8(objectCode->co_name));
                                         name = tmpStr;  // Note: tmpStr shall not be reused before logging the enter/leave event
                                         Py_DECREF(classNameObj);
+                                    } else {
+                                        PyErr_Clear();
                                     }
                                     Py_DECREF(classObj);
+                                }  else {
+                                    PyErr_Clear();
                                 }
                             }
                         }
@@ -649,17 +660,20 @@ traceCallback(PyObject* Py_UNUSED(self), PyFrameObject* frame, int what, PyObjec
         plPriv::hashStr_t palanteerCategoryStrHash, palanteerMsgStrHash, strHash;
 
         gGlobMutex.lock();
-        CACHE_STRING("Exception", palanteerCategoryStrHash);
-        CACHE_STRING(msg,         palanteerMsgStrHash);
+        CACHE_STRING2("Exception", palanteerCategoryStrHash);
+        CACHE_STRING2(msg,         palanteerMsgStrHash);
         gGlobMutex.unlock();
-        pyEventLogRaw(palanteerMsgStrHash, palanteerCategoryStrHash, msg, "Exception",0x8000 | (int)PL_LOG_LEVEL_WARN,
-                      PL_FLAG_TYPE_LOG, PL_GET_CLOCK_TICK_FUNC());
+
+        pyEventLogRaw(palanteerMsgStrHash, palanteerCategoryStrHash, msg, "Exception", 0x8000 | (int)PL_LOG_LEVEL_WARN, PL_FLAG_TYPE_LOG, PL_GET_CLOCK_TICK_FUNC());
         Py_XDECREF(exceptionRepr);
     }
 
     // Store upper level so that we skip it
-#if PY_VERSION_HEX >= 0x03090000
-    ctc.nextExceptionFrame = PyFrame_GetBack(frame); // Python 3.9 and above
+#if PY_VERSION_HEX >= 0x030b0000
+    // Do nothing, PyFrame_GetBack(frame) seems to have stability issues on 3.11
+    ctc.nextExceptionFrame = nullptr;
+#elif PY_VERSION_HEX >= 0x03090000
+    ctc.nextExceptionFrame = PyFrame_GetBack(frame);
 #else
     ctc.nextExceptionFrame = frame->f_back;
 #endif
@@ -974,8 +988,10 @@ pyPlEnd(PyObject* Py_UNUSED(self), PyObject* args)
 static void
 installCallbacks(PyThreadState* threadState)
 {
-#if PY_VERSION_HEX >= 0x030b0000
-    _PyEval_SetProfile(threadState, gWithFunctions ? profileCallback : 0, NULL); // Python >= 3.11
+#if PY_VERSION_HEX > 0x030c0000
+    PyEval_SetProfileAllThreads(gWithFunctions ? profileCallback : 0, NULL);
+#elif PY_VERSION_HEX > 0x030b0000
+    _PyEval_SetProfile(threadState, gWithFunctions ? profileCallback : 0, NULL);
 #elif PY_VERSION_HEX >= 0x030a00b1
     threadState->cframe->use_tracing = 1; // Python 3.10
     threadState->c_profilefunc       = gWithFunctions ? profileCallback : 0;
@@ -989,7 +1005,9 @@ installCallbacks(PyThreadState* threadState)
 static void
 uninstallCallbacks(PyThreadState* threadState)
 {
-#if PY_VERSION_HEX >= 0x030b0000
+#if PY_VERSION_HEX > 0x030c0000
+    PyEval_SetProfileAllThreads(NULL, NULL);
+#elif PY_VERSION_HEX > 0x030b0000
     _PyEval_SetProfile(threadState, NULL, NULL); // Python >= 3.11
 #elif PY_VERSION_HEX >= 0x030a00b1
     threadState->cframe->use_tracing = 0; // Python 3.10
