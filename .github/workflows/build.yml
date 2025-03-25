@@ -149,6 +149,32 @@ jobs:
           cd ..\server\scripting
           python -m build --wheel --sdist
 
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      shell: cmd
+      run: python -m pip install --upgrade pip setuptools wheel build
+    - name: Create a source and wheel package instrumentation module for python 3.12
+      run: |
+          cd python
+          python -m build --wheel --sdist
+          cd ..\server\scripting
+          python -m build --wheel --sdist
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+    - name: Install dependencies
+      shell: cmd
+      run: python -m pip install --upgrade pip setuptools wheel build
+    - name: Create a source and wheel package instrumentation module for python 3.13
+      run: |
+          cd python
+          python -m build --wheel --sdist
+          cd ..\server\scripting
+          python -m build --wheel --sdist
+
 
     - uses: actions/upload-artifact@v4
       with:

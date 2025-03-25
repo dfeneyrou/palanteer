@@ -51,9 +51,9 @@ import subprocess
 # =========
 
 # Regexp to detect if a word which starts with pl[g] (so that it looks like a command) followed with a parenthesis
-MATCH_DETECT = re.compile(".*?(^|[^a-zA-Z\d])pl(g?)([a-zA-Z]*)\s*\((.*)")
+MATCH_DETECT = re.compile(r".*?(^|[^a-zA-Z\d])pl(g?)([a-zA-Z]*)\s*\((.*)")
 # Regexp to extract the symbols from the text section, and also the weak ones
-MATCH_INFO_LINE = re.compile("^([0-9a-z]+)\s+[TW]\s(.*?)\s(\S+):(\d+)$", re.IGNORECASE)
+MATCH_INFO_LINE = re.compile(r"^([0-9a-z]+)\s+[TW]\s(.*?)\s(\S+):(\d+)$", re.IGNORECASE)
 
 # Commands whose parameters shall be processed. Associated values are: 0=convert only strings   1=convert all parameters
 PL_COMMANDS_TYPE = {
@@ -228,6 +228,7 @@ Ex: %s --exe "name1" bin/myFirstProcess.exe --exe "name2" bin/mySecondProcess.ex
                 isHash64bits,
                 hashSalt,
                 hashValue ^ appNameHash,
+                doOverride=True,
             )
 
             # Add the function filename, augmented with the line number

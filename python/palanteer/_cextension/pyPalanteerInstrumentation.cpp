@@ -990,6 +990,7 @@ installCallbacks(PyThreadState* threadState)
 {
 #if PY_VERSION_HEX > 0x030c0000
     PyEval_SetProfileAllThreads(gWithFunctions ? profileCallback : 0, NULL);
+    PyEval_SetTraceAllThreads(gWithExceptions? traceCallback   : 0, NULL);
 #elif PY_VERSION_HEX > 0x030b0000
     _PyEval_SetProfile(threadState, gWithFunctions ? profileCallback : 0, NULL);
 #elif PY_VERSION_HEX >= 0x030a00b1

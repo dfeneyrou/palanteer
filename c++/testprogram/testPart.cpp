@@ -31,6 +31,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <string>
+
 // Local includes
 #include "palanteer.h"
 #include "testPart.h"

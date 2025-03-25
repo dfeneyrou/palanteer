@@ -75,7 +75,7 @@ endif()
 # As it is a demo, the lookup contains the informations for both cases. It also does not take into account a different hash salt nor the
 # 32 bit hash case (all this would translate into additional parameter to the python lookup generation tool)
 add_custom_command(TARGET "testprogram" POST_BUILD
-  COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/stringLookupGenerator.py" --exe "C++ example" "$<TARGET_FILE:testprogram>" ${TESTPROGRAM_SRC} > "$<TARGET_FILE:testprogram>.txt"
+  COMMAND ${Python3_EXECUTABLE} "${PROJECT_SOURCE_DIR}/tools/stringLookupGenerator.py" --exe "\"C++ example\"" "$<TARGET_FILE:testprogram>" ${TESTPROGRAM_SRC} > "$<TARGET_FILE:testprogram>.txt"
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   COMMENT "Generating the string lookup..."
 )
