@@ -713,7 +713,29 @@ osProcessInputs(bsOsHandler* handler)
         case KeyPress:
             kc = keysymToKeycode(XLookupKeysym(&event.xkey, (event.xkey.state&ShiftMask)==0? 0:1));
             if(kc!=KC_Unknown) {
-                kms = { (bool)(event.xkey.state&ShiftMask), (bool)(event.xkey.state&ControlMask), (bool)(event.xkey.state&Mod1Mask), (bool)(event.xkey.state&Mod4Mask) };
+                    kms = {(bool)(event.xkey.state & ShiftMask), (bool)(event.xkey.state & ControlMask),
+                           (bool)(event.xkey.state & Mod1Mask), (bool)(event.xkey.state & Mod4Mask)};
+                    // KMS reflects the state *before* the key event... It must be updated
+                    switch (kc) {
+                        case KC_LShift:
+                        case KC_RShift:
+                            kms.shift = true;
+                            break;
+                        case KC_LControl:
+                        case KC_RControl:
+                            kms.ctrl = true;
+                            break;
+                        case KC_LAlt:
+                        case KC_RAlt:
+                            kms.alt = true;
+                            break;
+                        case KC_LSystem:
+                        case KC_RSystem:
+                            kms.sys = true;
+                            break;
+                        default:
+                            break;
+                    }
                 gGlob.osHandler->eventKeyPressed(kc, kms);
             }
 
@@ -745,7 +767,28 @@ osProcessInputs(bsOsHandler* handler)
         case KeyRelease:
             kc = keysymToKeycode(XLookupKeysym(&event.xkey, (event.xkey.state&ShiftMask)==0? 0:1));
             if(kc!=KC_Unknown) {
-                kms = { (bool)(event.xkey.state&ShiftMask), (bool)(event.xkey.state&ControlMask), (bool)(event.xkey.state&Mod1Mask), (bool)(event.xkey.state&Mod4Mask) };
+                    kms = {(bool)(event.xkey.state & ShiftMask), (bool)(event.xkey.state & ControlMask),
+                           (bool)(event.xkey.state & Mod1Mask), (bool)(event.xkey.state & Mod4Mask)};
+                    switch (kc) {
+                        case KC_LShift:
+                        case KC_RShift:
+                            kms.shift = false;
+                            break;
+                        case KC_LControl:
+                        case KC_RControl:
+                            kms.ctrl = false;
+                            break;
+                        case KC_LAlt:
+                        case KC_RAlt:
+                            kms.alt = false;
+                            break;
+                        case KC_LSystem:
+                        case KC_RSystem:
+                            kms.sys = false;
+                            break;
+                        default:
+                            break;
+                    }
                 gGlob.osHandler->eventKeyReleased(kc, kms);
             }
             break;
