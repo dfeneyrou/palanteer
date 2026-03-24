@@ -1571,7 +1571,7 @@ namespace plPriv {
         // RDTSC instruction is ~7x times more precise than the std::chrono or Windows' QPC timer.
         //  And nowadays it is reliable (it was not the case on older processors where its frequency was changing with power plans).
         //  The potential wrong instruction order (no fence here) is considered as noise on the timestamp, with the benefit of a much smaller average resolution.
-#if defined(_WIN32)
+#if defined(_WIN32) //&& !defined(_M_ARM64)
         // Windows
         // Context switch events are using QPC, so a date conversion for these events is needed on Windows
         return (clockType_t) int64_t(__rdtsc());
